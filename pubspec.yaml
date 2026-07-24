@@ -1,0 +1,42 @@
+name: capy_vocab
+description: "Capy Vocab — Spa Từ Vựng Chill: app học từ vựng tiếng Anh AI Vision, Lesson Map, Mini-games, Solo Arena, Pet ảo, mạng xã hội bạn bè."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Routing (tương đương activateView)
+  go_router: ^14.2.0
+
+  # UI / Fonts (Fredoka, Nunito)
+  google_fonts: ^6.2.1
+
+  # Local persistence (theme, session tạm)
+  shared_preferences: ^2.2.3
+
+  # Âm thanh (beep đúng/sai)
+  audioplayers: ^6.0.0
+
+  # Phát âm từ vựng (Web Speech API tương đương)
+  flutter_tts: ^4.0.2
+
+  # Pháo hoa Confetti
+  confetti: ^0.7.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  # TODO: khai báo fonts/assets (mascot svg, icon linh vật, âm thanh) tại đây
