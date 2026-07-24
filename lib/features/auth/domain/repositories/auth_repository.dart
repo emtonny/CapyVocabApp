@@ -1,6 +1,32 @@
-// UC-AUTH-01
-// TODO: Sinh bởi scaffold tự động từ FRD/Use Case. Cần hiện thực hoá chi tiết.
+import 'package:firebase_auth/firebase_auth.dart';
 
 abstract class AuthRepository {
-  // TODO: khai báo các method nghiệp vụ cho UC-AUTH-01
+  /// Stream trạng thái đăng nhập của User
+  Stream<User?> get authStateChanges;
+
+  /// User hiện tại
+  User? get currentUser;
+
+  /// Đăng nhập bằng Email & Mật khẩu
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  });
+
+  /// Đăng ký tài khoản mới bằng Email & Mật khẩu
+  Future<UserCredential> signUpWithEmailAndPassword({
+    required String email,
+    required String password,
+    String? displayName,
+  });
+
+  /// Đăng nhập bằng Google
+  Future<UserCredential?> signInWithGoogle();
+
+  /// Đăng xuất
+  Future<void> signOut();
+
+  /// Gửi email khôi phục mật khẩu
+  Future<void> sendPasswordResetEmail(String email);
 }
+
