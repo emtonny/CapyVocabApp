@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
+import 'core/services/supabase_service.dart';
 import 'app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    await dotenv.load(fileName: '.env');
   } catch (e) {
-    debugPrint('Firebase initialization warning: $e');
+    debugPrint('Dotenv load warning: $e');
+  }
+
+  try {
+    await SupabaseService.initialize();
+  } catch (e) {
+    debugPrint('Supabase initialization warning: $e');
   }
 
   runApp(const ProviderScope(child: CapyVocabApp()));
 }
-

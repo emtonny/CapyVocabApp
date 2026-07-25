@@ -1,25 +1,30 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../domain/repositories/auth_repository.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
-  final FirebaseAuth _firebaseAuth;
+  final SupabaseClient _supabaseClient;
 
-  AuthRepositoryImpl({FirebaseAuth? firebaseAuth})
-      : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
-
-  @override
-  Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
+  AuthRepositoryImpl({SupabaseClient? supabaseClient})
+      : _supabaseClient = supabaseClient ?? SupabaseService.client;
 
   @override
-  User? get currentUser => _firebaseAuth.currentUser;
+  Stream<User?> get authStateChanges {
+    return _supabaseClient.auth.onAuthStateChange.map(
+      (data) => data.session?.user,
+    );
+  }
 
   @override
-  Future<UserCredential> signInWithEmailAndPassword({
+  User? get currentUser => _supabaseClient.auth.currentUser;
+
+  @override
+  Future<AuthResponse> signInWithEmailAndPassword({
     required String email,
     required String password,
   }) async {
     try {
-      return await _firebaseAuth.signInWithEmailAndPassword(
+      return await _supabaseClient.auth.signInWithPassword(
         email: email,
         password: password,
       );
@@ -29,39 +34,39 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<UserCredential> signUpWithEmailAndPassword({
+  Future<AuthResponse> signUpWithEmailAndPassword({
     required String email,
     required String password,
     String? displayName,
   }) async {
     try {
-      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
+      final response = await _supabaseClient.auth.signUp(
         email: email,
         password: password,
+        data: displayName != null ? {'display_name': displayName} : null,
       );
-      if (displayName != null && credential.user != null) {
-        await credential.user!.updateDisplayName(displayName);
-      }
-      return credential;
+      return response;
     } catch (e) {
       rethrow;
     }
   }
 
   @override
-  Future<UserCredential?> signInWithGoogle() async {
-    // Tùy chọn triển khai GoogleSignInProvider khi cấu hình OAuth Client ID
-    throw UnimplementedError('Google Sign In yêu cầu GoogleSignIn SDK config');
+  Future<bool> signInWithOAuth(OAuthProvider provider) async {
+    try {
+      return await _supabaseClient.auth.signInWithOAuth(provider);
+    } catch (e) {
+      rethrow;
+    }
   }
 
   @override
   Future<void> signOut() async {
-    await _firebaseAuth.signOut();
+    await _supabaseClient.auth.signOut();
   }
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {
-    await _firebaseAuth.sendPasswordResetEmail(email: email);
+    await _supabaseClient.auth.resetPasswordForEmail(email);
   }
 }
-
