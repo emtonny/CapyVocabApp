@@ -18,13 +18,13 @@ lib/
 │   ├── theme/                # Light/Dark ThemeData + themeModeProvider (FR-SETT-01)
 │   ├── routes/               # AppRouter (go_router) — tương đương activateView(viewId)
 │   ├── widgets/               # Cute3DButton, MascotBanner, ConfirmDialog, LoadingOverlay...
-│   ├── services/              # AudioService, TtsService, ConfettiService, LocalStorage, CloudVisionService, PaymentService, FirestoreService
+│   ├── services/              # AudioService, TtsService, ConfettiService, LocalStorage, GeminiVisionService, PaymentService, FirestoreService
 │   └── utils/                 # Validators, Formatters (định dạng tên bạn mới...)
 ├── features/                 # Mỗi module M1–M9 trong FRD = 1 feature
 │   ├── auth/                  # M1 — AuthRepositoryImpl nối Firebase Auth thật
 │   ├── onboarding/            # M1 — FR-ONBD-xx, UC-ONBD-01 (wizard 5 bước)
 │   ├── home/                  # M2 — UserFirestoreDataSource (Streak, XP, Profile)
-│   ├── ai_scan/                # M3 — CloudVisionService (Label & Text OCR Detection)
+│   ├── ai_scan/                # M3 — GeminiVisionService (Gemini 1.5 Flash Vision nhận diện từ vựng + tọa độ)
 │   ├── mini_games/
 │   │   ├── photo_order_quiz/  # M4 — FR-GAME1-xx
 │   │   └── photo_letter_fill/ # M4 — FR-GAME2-xx
@@ -60,7 +60,7 @@ Mỗi feature tuân theo 3 lớp:
 
 ## Các thành phần hạ tầng mới được bổ sung
 1. **Firebase Integration**: `firebase_options.dart`, `Firebase.initializeApp()` trong `main.dart`, `AuthRepositoryImpl` tích hợp `FirebaseAuth.instance`.
-2. **Google Cloud Vision API Service**: `CloudVisionService` hỗ trợ Label Detection & Text Detection (OCR) cho tính năng AI Scan.
+2. **Gemini 1.5 Flash Vision Service**: `GeminiVisionService` gửi ảnh JPEG nén (< 300 KB) lên Gemini 1.5 Flash API, nhận về JSON chứa danh sách từ vựng + tọa độ tương đối (x, y, w, h) để render Canvas.
 3. **Payment Service Gateway**: `PaymentService` xử lý mua gói Pro & nạp Capy Coins trong Pet Shop qua IAP, MoMo, ZaloPay.
 4. **Firestore Data Sources**: `FirestoreService` (CRUD/Stream wrapper), `UserFirestoreDataSource`, `PetShopFirestoreDataSource`, `FriendsFirestoreDataSource`, `SoloArenaFirestoreDataSource`.
 

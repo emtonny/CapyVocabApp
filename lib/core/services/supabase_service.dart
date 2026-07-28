@@ -35,4 +35,16 @@ class SupabaseService {
 
     debugPrint('SupabaseService đã khởi tạo thành công.');
   }
+
+  /// Thử kết nối đến Supabase bằng cách query 1 bản ghi từ bảng 'vocabularies'
+  static Future<bool> testConnection() async {
+    try {
+      await client.from('vocabularies').select().limit(1);
+      debugPrint('✅ Supabase connected');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Supabase error: $e');
+      return false;
+    }
+  }
 }

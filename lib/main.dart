@@ -15,8 +15,9 @@ Future<void> main() async {
 
   try {
     await SupabaseService.initialize();
+    await SupabaseService.testConnection();
   } catch (e) {
-    debugPrint('Supabase initialization warning: $e');
+    debugPrint('❌ Supabase error: $e');
   }
 
   runApp(const ProviderScope(child: CapyVocabApp()));

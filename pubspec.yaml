@@ -13,8 +13,14 @@ dependencies:
   supabase_flutter: ^2.8.0
   flutter_dotenv: ^5.2.0
 
-  # HTTP Networking cho Google Cloud Vision API
+  # HTTP Networking cho Gemini 1.5 Flash API
   http: ^1.2.1
+
+  # Nén ảnh JPEG trước khi gửi Gemini (resize tối đa 1024×1024, < 300 KB)
+  flutter_image_compress: ^2.3.0
+
+  # SQLite cục bộ — cache kết quả AI Scan (local_path + vocab_json, không liên quan Supabase)
+  sqflite: ^2.3.3
 
   # State management
   flutter_riverpod: ^2.5.1
@@ -44,4 +50,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env
+
   # TODO: khai báo fonts/assets (mascot svg, icon linh vật, âm thanh) tại đây
