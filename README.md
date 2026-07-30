@@ -1,5 +1,12 @@
 # Capy Vocab — Spa Từ Vựng Chill (Flutter)
 
+> **Current implementation status and AI handoff:** see
+> [PROJECT_STATUS.md](PROJECT_STATUS.md). This is the source of truth for what
+> is working, what remains scaffolded, and how future websites should connect.
+>
+> The architecture notes below are legacy scaffold documentation and may still
+> contain outdated Firebase/Firestore references.
+
 Cấu trúc dự án được sinh tự động từ tài liệu **FRD & Full Use Case
 Specifications** (`capy_vocab_frd_usecases.md`). Đây là bộ khung
 (scaffold) theo **Feature-based Clean Architecture**, chưa hiện thực
@@ -73,4 +80,3 @@ Mỗi feature tuân theo 3 lớp:
 1. `flutter pub get`
 2. Kết nối Riverpod Providers ở tầng `presentation/` với các Data sources / Services vừa bổ sung.
 3. Build UI theo Design Tokens (`AppColors`, `AppTextStyles`) và micro-interactions mô tả ở Phần 5.
-

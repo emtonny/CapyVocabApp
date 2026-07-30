@@ -1,8 +1,55 @@
-// onboardData state - FR-ONBD-01
-// TODO: Sinh bởi scaffold tự động từ FRD/Use Case. Cần hiện thực hoá chi tiết.
-
 class OnboardingData {
-  const OnboardingData();
+  const OnboardingData({
+    this.displayName = '',
+    this.username = '',
+    this.age,
+    this.phone = '',
+    this.accountRole,
+    this.reminderTime = '20:00',
+    this.dailyTargetWords = 10,
+  });
 
-  // TODO: khai báo các field tương ứng use case onboardData state - FR-ONBD-01
+  static const Object _notProvided = Object();
+
+  final String displayName;
+  final String username;
+  final int? age;
+  final String phone;
+  final String? accountRole;
+  final String? reminderTime;
+  final int? dailyTargetWords;
+
+  OnboardingData copyWith({
+    String? displayName,
+    String? username,
+    Object? age = _notProvided,
+    String? phone,
+    Object? accountRole = _notProvided,
+    Object? reminderTime = _notProvided,
+    Object? dailyTargetWords = _notProvided,
+  }) {
+    return OnboardingData(
+      displayName: displayName ?? this.displayName,
+      username: username ?? this.username,
+      age: identical(age, _notProvided) ? this.age : age as int?,
+      phone: phone ?? this.phone,
+      accountRole: identical(accountRole, _notProvided)
+          ? this.accountRole
+          : accountRole as String?,
+      reminderTime: identical(reminderTime, _notProvided)
+          ? this.reminderTime
+          : reminderTime as String?,
+      dailyTargetWords: identical(dailyTargetWords, _notProvided)
+          ? this.dailyTargetWords
+          : dailyTargetWords as int?,
+    );
+  }
+
+  OnboardingData normalized() {
+    return copyWith(
+      displayName: displayName.trim(),
+      username: username.trim().toLowerCase(),
+      phone: phone.trim(),
+    );
+  }
 }

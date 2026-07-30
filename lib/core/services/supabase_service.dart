@@ -29,7 +29,7 @@ class SupabaseService {
 
     await Supabase.initialize(
       url: supabaseUrl,
-      anonKey: supabaseAnonKey,
+      publishableKey: supabaseAnonKey,
       debug: kDebugMode,
     );
 

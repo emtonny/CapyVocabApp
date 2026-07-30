@@ -17,7 +17,7 @@ abstract class AuthRepository {
   Future<AuthResponse> signUpWithEmailAndPassword({
     required String email,
     required String password,
-    String? displayName,
+    required String displayName,
   });
 
   /// Đăng nhập bằng OAuth (Google hoặc Facebook)

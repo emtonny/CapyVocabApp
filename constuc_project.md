@@ -187,7 +187,10 @@ c:\CapyVocabApp\capy_vocab\            ← ROOT PROJECT
 ├── .env.example                       # Template môi trường cho đồng đội
 ├── pubspec.yaml                       # Package config + assets khai báo .env
 ├── pubspec.lock                       # Lock file (commit nhưng không tự sửa)
-├── supabase_schema.sql                # Script SQL 15 bảng + RLS (đã chạy trên Supabase)
+├── supabase/                          # Quản lý Database & Migrations Supabase
+│   ├── migrations/                    # File SQL migrations theo thời gian
+│   ├── schema/                        # File snapshot schema tổng thể (supabase_schema_final_secure.sql)
+│   └── DATABASE_README.txt            # Tài liệu hướng dẫn sử dụng cơ sở dữ liệu
 ├── analysis_options.yaml              # Dart lint config
 ├── README.md                          # Tóm tắt dự án
 │

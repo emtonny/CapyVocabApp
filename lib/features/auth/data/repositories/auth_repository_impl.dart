@@ -37,13 +37,13 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthResponse> signUpWithEmailAndPassword({
     required String email,
     required String password,
-    String? displayName,
+    required String displayName,
   }) async {
     try {
       final response = await _supabaseClient.auth.signUp(
         email: email,
         password: password,
-        data: displayName != null ? {'display_name': displayName} : null,
+        data: {'display_name': displayName},
       );
       return response;
     } catch (e) {

@@ -1,4 +1,9 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../features/auth/presentation/screens/auth_screen.dart';
 import '../../features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
@@ -12,8 +17,48 @@ import '../../features/settings/presentation/screens/settings_screen.dart';
 class AppRouter {
   AppRouter._();
 
+  static final _authRefreshListenable = _SupabaseAuthRefreshListenable(
+    Supabase.instance.client.auth.onAuthStateChange,
+  );
+
   static final router = GoRouter(
     initialLocation: '/auth',
+    refreshListenable: _authRefreshListenable,
+    redirect: (context, state) async {
+      final client = Supabase.instance.client;
+      final session = client.auth.currentSession;
+      final isOnAuthScreen = state.matchedLocation == '/auth';
+      final isOnOnboardingScreen = state.matchedLocation == '/onboarding';
+
+      if (session == null) {
+        return isOnAuthScreen ? null : '/auth';
+      }
+
+      var hasCompletedOnboarding = false;
+
+      try {
+        final profile = await client
+            .from('users')
+            .select('onboarding_completed')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+        hasCompletedOnboarding = profile?['onboarding_completed'] == true;
+      } catch (error, stackTrace) {
+        debugPrint('Failed to load onboarding status: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
+      if (!hasCompletedOnboarding) {
+        return isOnOnboardingScreen ? null : '/onboarding';
+      }
+
+      if (isOnAuthScreen || isOnOnboardingScreen) {
+        return '/home';
+      }
+
+      return null;
+    },
     routes: [
       GoRoute(path: '/auth', builder: (context, state) => const AuthScreen()),
       GoRoute(
@@ -43,4 +88,23 @@ class AppRouter {
       ),
     ],
   );
+}
+
+class _SupabaseAuthRefreshListenable extends ChangeNotifier {
+  _SupabaseAuthRefreshListenable(Stream<AuthState> authStateChanges) {
+    _subscription = authStateChanges.listen(
+      (_) => notifyListeners(),
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('Supabase auth state error: $error');
+      },
+    );
+  }
+
+  late final StreamSubscription<AuthState> _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
 }

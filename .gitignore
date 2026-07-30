@@ -13,7 +13,9 @@
 *.iml
 
 # User / Agent specific
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 .agents/
 .gemini/
 
