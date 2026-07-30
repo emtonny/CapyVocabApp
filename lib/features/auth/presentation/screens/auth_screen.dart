@@ -62,7 +62,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (!mounted) return;
 
     if (session != null) {
-      context.go('/home');
       return;
     }
 
