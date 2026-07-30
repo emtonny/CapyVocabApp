@@ -1,7 +1,7 @@
 # Capy Vocab — Project Status & AI Handoff
 
-> Last audited: 2026-07-29  
-> Source of truth for current implementation status, integration boundaries, and next work.  
+> Last audited: 2026-07-30
+> Source of truth for current implementation status, integration boundaries, and next work.
 > Do not copy secrets, production URLs, access tokens, or service-role keys into this file.
 
 ```yaml
@@ -9,27 +9,28 @@ project:
   name: Capy Vocab
   type: Flutter client application
   version: 0.1.0
-  current_milestone: "Phase 1 — Technical foundation"
+  current_milestone: "Phase 2 — First usable learning loop"
   phase_1_code_status: "implemented"
   phase_1_acceptance_status: "pending production manual test and security audit"
-  product_status: "authentication shell; core learning features are not implemented"
+  product_status: "authentication and onboarding implemented; core learning features are not implemented"
   release_ready: false
 backend:
   provider: Supabase
   production_connection: "reachable from the configured Flutter environment"
   public_tables_detected: 15
 frontend:
-  working_user_flow: "startup -> health check -> email/password auth -> guarded /home"
+  working_user_flow: "startup -> health check -> email/password auth -> five-step onboarding -> guarded /home"
   first_blocking_placeholder: "/home"
 tests:
-  automated: "one Flutter startup smoke test"
-  last_result: "passing"
+  automated: "8 Flutter tests: startup, auth registration, onboarding state and wizard"
+  last_result: "8/8 passing on 2026-07-30"
 ```
 
 ## 1. Executive summary
 
-The project is at the end of the **technical foundation phase**, not at the
-end of the MVP.
+The project has completed the code portion of the **technical foundation
+phase** and has started the **first usable learning loop**. It is not yet an
+MVP.
 
 The application can currently:
 
@@ -41,13 +42,72 @@ The application can currently:
 6. Present distinct authentication errors.
 7. Persist/read the Supabase session.
 8. Guard application routes and react to auth session changes.
+9. Read `public.users.onboarding_completed` and route authenticated users to
+   onboarding or home.
+10. Collect and validate the five-step onboarding profile.
+11. Persist profile and learning settings atomically before marking onboarding
+    complete.
 
-After authentication, the router opens `/home`, but `HomeScreen` is still a
-placeholder. Onboarding, learning, scanning, games, arena, shop, friends,
-chat, notifications, and settings are not yet complete user flows.
+After authentication, incomplete profiles enter onboarding and completed
+profiles open `/home`. `HomeScreen` is still a placeholder. Learning,
+scanning, games, arena, shop, friends, chat, notifications, and settings are
+not yet complete user flows.
 
-**Practical description:** the app has a working front door and backend
-adapters, but most rooms behind that front door have not been built.
+**Practical description:** the app now has a working front door and profile
+setup flow, but the learning experience behind `/home` has not been built.
+
+### Update log — 2026-07-30
+
+The following work was completed or added to the repository today:
+
+1. **Three-state routing**
+   - No authenticated session routes to `/auth`.
+   - An authenticated user with `onboarding_completed = false` routes to
+     `/onboarding`.
+   - An authenticated user with `onboarding_completed = true` routes to
+     `/home`.
+   - The completion flag is read from `public.users`, not Auth session
+     metadata.
+2. **Registration profile name**
+   - Added the `Họ tên` field to registration.
+   - Trimmed and passed `displayName` through the provider and repository to
+     Supabase Auth metadata.
+3. **Five-step onboarding**
+   - Preserved the required order: name/username, age/phone, role, study time,
+     daily word target.
+   - Added per-step validation, username availability check, retained form
+     state, back/next navigation, loading protection, clear save errors, and
+     retry behavior.
+   - Implemented role selection with two cards and study time with Flutter's
+     time picker.
+4. **Atomic onboarding persistence**
+   - Added `public.complete_onboarding(...)` to update `users` and
+     `user_settings` together.
+   - `onboarding_completed` is set only after both profile and settings writes
+     succeed.
+   - Added migration
+     `supabase/migrations/20260730_complete_onboarding_rpc.sql`; the RPC was
+     applied and transaction rollback behavior was verified on Production.
+5. **Database security artifacts**
+   - Added the secure schema snapshot and
+     `20260730_align_secure_schema.sql`.
+   - The alignment migration is a reviewed target artifact; this status file
+     does not claim that the complete RLS alignment migration has been applied
+     to Production.
+6. **Automated coverage**
+   - Added Auth tests for the registration name field and trimmed repository
+     input.
+   - Added Onboarding provider tests for ordered validation, retained state,
+     duplicate-submit protection, and retry after failure.
+   - Added a widget test covering the five onboarding screens in order.
+7. **Project handoff and assets**
+   - Added repository operating instructions, local agent skills, Supabase
+     schema/migration structure, Flutter web bootstrap files, and the eight
+     supplied design reference images.
+
+Explicitly deferred: Google/Facebook OAuth UI, pixel-perfect implementation of
+the eight designs, real study reminder scheduling, and the `/home` learning
+experience.
 
 ## 2. Status legend
 
@@ -73,7 +133,7 @@ adapters, but most rooms behind that front door have not been built.
 | Riverpod auth state | ✅ Working | `AsyncValue<Session?>` |
 | Auth error mapping | ✅ Working | Invalid credentials, existing email, unconfirmed email |
 | Auth form | ✅ Working | Validation, loading state, inline error messages |
-| Route guard | ✅ Working | Session-based redirect with `onAuthStateChange` refresh |
+| Route guard | ✅ Working | Three-state redirect using session plus `public.users.onboarding_completed` |
 | Automatic `public.users` profile trigger | ✅ User-reported | Created manually in Supabase Dashboard; not independently audited |
 | Production auth acceptance test | ⚠️ Pending | Must be run with the owner's pre-created auto-confirmed account |
 | Production RLS/security audit | ⚠️ Pending | REST access does not prove every policy is safe |
@@ -81,17 +141,18 @@ adapters, but most rooms behind that front door have not been built.
 Phase 1 is **code-complete but not accepted for release** until the two
 pending production checks above pass.
 
-### Recommended next milestone
+### Current Phase 2 milestone
 
 **Phase 2 — First usable learning loop**
 
-Build this vertical slice before expanding into games or social features:
+Onboarding is complete. Continue this vertical slice before expanding into
+games or social features:
 
 ```text
 authenticated user
-  -> determine onboarding status
-  -> onboarding form
-  -> create/update profile and settings
+  -> determine onboarding status [implemented]
+  -> onboarding form [implemented]
+  -> create/update profile and settings [implemented]
   -> home lesson map
   -> open lesson
   -> complete one vocabulary activity
@@ -107,11 +168,11 @@ actually useful.”
 | Area | Status | Real implementation | Missing end-to-end work |
 | --- | --- | --- | --- |
 | Bootstrap / health | ✅ Working | Supabase init, connection test, retry screen | Reinitialize client if initialization itself fails |
-| Email/password Auth | ✅ Working | Repository, Riverpod notifier, form, validation, errors | Production manual acceptance; focused auth tests |
-| Session routing | ✅ Working | Guarded routes and auth stream listener | Intended-route restoration; explicit expired-session UX |
+| Email/password Auth | ✅ Working | Repository, Riverpod notifier, form, validation, name metadata, errors, focused widget tests | Production manual acceptance |
+| Session routing | ✅ Working | Guarded routes, auth stream listener, profile completion lookup | Intended-route restoration; explicit expired-session UX |
 | Google OAuth | ⏸ Deferred | Repository method exists | Provider config, UI, deep links/callbacks |
 | Password recovery | ⏸ Deferred | Send-reset repository method exists | Callback/deep link and update-password UI |
-| Onboarding | ⬜ Scaffold | Route and placeholder files | Entity, provider, five steps, persistence, completion flag |
+| Onboarding | ✅ Working | Five-step provider/UI, validation, username check, time picker, atomic RPC persistence, retry/loading behavior, tests | Production manual journey test; pixel-perfect design and real reminder scheduling are deferred |
 | Home / lesson map | 🟡 Partial | User and vocabulary Supabase access classes | Providers, UI, lesson flow, progress wiring |
 | AI photo scan | 🟡 Partial | Gemini HTTP service, image compression, storage wrapper | Secure backend proxy, entities, provider, scan UI, album flow |
 | Photo mini-games | ⬜ Scaffold | Routes/files and dependencies | Game state, questions, scoring, UI, persistence |
@@ -124,16 +185,17 @@ actually useful.”
 | Shared navigation | ⬜ Scaffold | File exists | Bottom navigation and feature entry points |
 | Shared UI/services | ⬜ Scaffold | Design tokens and package dependencies | Most reusable widgets, audio, TTS, confetti, local storage |
 
-Audit signal: there are currently **131 TODO/scaffold marker lines** under
-`lib/`. Except for Auth, every presentation provider remains a roughly
-20-line placeholder.
+The previous audit count of 131 TODO/scaffold markers is no longer current
+because onboarding placeholders were replaced on 2026-07-30. Recount before
+using TODO totals for planning. Most presentation layers beyond Auth and
+Onboarding remain placeholders.
 
 ## 5. Current runtime route map
 
 | Flutter route | Authentication | Current screen status |
 | --- | --- | --- |
-| `/auth` | Public; redirects to `/home` when a session exists | ✅ Functional |
-| `/onboarding` | Required | ⬜ Placeholder |
+| `/auth` | Public; authenticated users redirect according to profile completion | ✅ Functional |
+| `/onboarding` | Required; incomplete profiles remain here | ✅ Functional |
 | `/home` | Required | ⬜ Placeholder |
 | `/storage` | Required | ⬜ Placeholder |
 | `/solo-arena` | Required | ⬜ Placeholder |
@@ -253,16 +315,15 @@ receipts before updating coins, purchases, or subscriptions.
 1. Run the production email/password acceptance checklist.
 2. Audit and harden Production RLS, Storage policies, triggers, and grants.
 3. Remove Gemini secrets from the Flutter bundle; create a trusted AI proxy.
-4. Decide whether a new user goes to onboarding or directly to `/home`.
-5. Add an onboarding-completion source of truth and implement the first usable
-   learning vertical slice.
+4. Build the home lesson map and complete the remaining first usable learning
+   vertical slice.
 
 ### P1 — Medium
 
-1. Implement onboarding and home providers/screens.
+1. Implement home providers/screens.
 2. Wire lesson and vocabulary progress to the existing Supabase data layer.
-3. Add automated tests for auth errors, loading, route guards, and session
-   changes.
+3. Extend automated tests to auth errors, route guards, session changes, and
+   Production-safe integration coverage.
 4. Implement password recovery and email confirmation callback handling.
 5. Define web domains, deep links, privacy/terms/support URLs.
 6. Make `supabase/schema/supabase_schema_final_secure.sql` idempotent and place schema changes in `supabase/migrations/`.
@@ -284,15 +345,28 @@ Last local verification:
 
 ```text
 flutter test
-  -> all tests passed (1 startup smoke test)
+  -> all tests passed (8 tests)
+  -> startup smoke: 1
+  -> Auth registration: 2
+  -> Onboarding provider and wizard: 5
 
-flutter analyze
-  -> no errors
+dart analyze
+  -> exit code 0
+  -> no errors or warnings
   -> 2 info-level notices in gemini_vision_service.dart
+
+git diff --check
+  -> passed
+  -> line-ending warnings only (LF will be converted to CRLF)
+
+Production onboarding RPC transaction check
+  -> RPC completed inside a test transaction
+  -> rollback left 0 persisted test rows
 ```
 
-Manual production verification is still required. Automated tests do not call
-Production Auth or create test accounts.
+Manual Production verification of the complete registration-to-home journey is
+still required. Automated Flutter tests use fakes and do not create Production
+Auth accounts.
 
 ## 10. Rules for another AI or developer
 
@@ -314,6 +388,9 @@ Production Auth or create test accounts.
 - Auth repository: `lib/features/auth/data/repositories/auth_repository_impl.dart`
 - Auth state: `lib/features/auth/presentation/providers/auth_provider.dart`
 - Auth UI: `lib/features/auth/presentation/screens/auth_screen.dart`
+- Onboarding repository: `lib/features/onboarding/data/repositories/onboarding_repository.dart`
+- Onboarding state: `lib/features/onboarding/presentation/providers/onboarding_provider.dart`
+- Onboarding wizard: `lib/features/onboarding/presentation/screens/onboarding_wizard_screen.dart`
 - Database design snapshot: `supabase/schema/supabase_schema_final_secure.sql`
 - Database migrations: `supabase/migrations/`
 - Dependencies: `pubspec.yaml`
@@ -324,4 +401,16 @@ Production Auth or create test accounts.
 - [Supabase Flutter initialization](https://supabase.com/docs/reference/dart/initializing)
 - [Supabase Auth](https://supabase.com/docs/guides/auth)
 - [Supabase user sessions](https://supabase.com/docs/guides/auth/sessions)
+
+## 13. Nhật ký thay đổi ngày 30/07/2026 (Change Log)
+
+- **Router ba trạng thái:** Điều hướng 3 trạng thái (`/auth`, `/onboarding`, `/home`) dựa trên Auth session và `public.users.onboarding_completed`.
+- **Form đăng ký có họ tên:** Thêm trường `Họ tên` (`displayName`) trong form đăng ký auth và truyền vào metadata Supabase Auth.
+- **Onboarding 5 bước & RPC atomic:** Hoàn thiện luồng Onboarding 5 bước (tên/username, tuổi/SĐT, vai trò, thời gian học, mục tiêu từ vựng hàng ngày) và lưu dữ liệu atomic qua RPC `public.complete_onboarding(...)`.
+- **Supabase Migration / Schema mới:** Thêm các migration `20260730_complete_onboarding_rpc.sql`, `20260730_align_secure_schema.sql` cùng bản cập nhật snapshot schema an toàn.
+- **Tiến độ chuyển sang Phase 2:** Chuyển trọng tâm sang Phase 2 — Vòng lặp học tập đầu tiên (First usable learning loop).
+- **Cập nhật trạng thái Onboarding:** Onboarding chính thức chuyển từ `⬜ Scaffold` sang `✅ Working`.
+- **Kết quả Kiểm thử & Phân tích:** Đạt `8/8` tests (`flutter test`) và `dart analyze` sạch (exit code 0, không có lỗi hay cảnh báo).
+- **Backlog mới:** Ưu tiên xây dựng `HomeScreen` và luồng học bài (`Home/lesson learning loop`).
+- **Các hạng mục tiếp tục hoãn (Deferred):** Google/Facebook OAuth UI, thiết kế Pixel-perfect theo 8 bản mẫu UI, và thông báo đẩy (notification) thật.
 
