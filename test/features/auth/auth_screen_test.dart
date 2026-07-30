@@ -57,6 +57,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.receivedDisplayName, 'Nguyễn Văn An');
+    expect(
+      find.text('Đăng ký tài khoản thành công! Vui lòng nhập mật khẩu để đăng nhập.'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('sign-up-display-name-field')),
+      findsNothing,
+    );
   });
 }
 
@@ -107,9 +115,7 @@ class _RecordingAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signOut() {
-    throw UnimplementedError();
-  }
+  Future<void> signOut() async {}
 
   @override
   Future<void> sendPasswordResetEmail(String email) {
