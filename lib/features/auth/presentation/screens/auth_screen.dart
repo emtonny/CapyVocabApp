@@ -48,29 +48,40 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final notifier = ref.read(authProvider.notifier);
-    final session = _isSignUp
-        ? await notifier.signUp(
-            email: _emailController.text,
-            password: _passwordController.text,
-            displayName: _displayNameController.text,
-          )
-        : await notifier.signInWithPassword(
-            email: _emailController.text,
-            password: _passwordController.text,
-          );
+
+    if (_isSignUp) {
+      final session = await notifier.signUp(
+        email: _emailController.text,
+        password: _passwordController.text,
+        displayName: _displayNameController.text,
+      );
+
+      if (!mounted) return;
+
+      final authState = ref.read(authProvider);
+      if (!authState.hasError) {
+        if (session != null) {
+          await notifier.signOut();
+        }
+        _passwordController.clear();
+        setState(() {
+          _isSignUp = false;
+          _infoMessage =
+              'Đăng ký tài khoản thành công! Vui lòng nhập mật khẩu để đăng nhập.';
+        });
+      }
+      return;
+    }
+
+    final session = await notifier.signInWithPassword(
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
 
     if (!mounted) return;
 
     if (session != null) {
       return;
-    }
-
-    final authState = ref.read(authProvider);
-    if (_isSignUp && !authState.hasError) {
-      setState(() {
-        _infoMessage =
-            'Đăng ký thành công. Vui lòng xác nhận email trước khi đăng nhập.';
-      });
     }
   }
 
