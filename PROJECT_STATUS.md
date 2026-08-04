@@ -168,7 +168,7 @@ actually useful.”
 | Area | Status | Real implementation | Missing end-to-end work |
 | --- | --- | --- | --- |
 | Bootstrap / health | ✅ Working | Supabase init, connection test, retry screen | Reinitialize client if initialization itself fails |
-| Email/password Auth | ✅ Working | Repository, Riverpod notifier, form, validation, name metadata, errors, focused widget tests | Production manual acceptance |
+| Email/password Auth | ✅ Working | Repository, Riverpod notifier, form, validation, name metadata, errors, Web email-confirmation redirect via the current origin, focused tests | Dashboard redirect allowlist and manual email-confirmation acceptance |
 | Session routing | ✅ Working | Guarded routes, auth stream listener, profile completion lookup | Intended-route restoration; explicit expired-session UX |
 | Google OAuth | ⏸ Deferred | Repository method exists | Provider config, UI, deep links/callbacks |
 | Password recovery | ⏸ Deferred | Send-reset repository method exists | Callback/deep link and update-password UI |
@@ -286,18 +286,21 @@ Before an admin site is started, define:
 
 Do not use user-editable `user_metadata` to grant administrative privileges.
 
-### 7.4 Callback and deep-link pages
+### 7.4 Web auth callbacks
 
-These are not configured yet:
+The Flutter Web email-confirmation callback is wired on the application side:
 
-- Email confirmation callback
-- Password recovery callback
-- Google OAuth callback
-- Mobile universal/app links
-- Canonical production web domain
+- Email sign-up sends `Uri.base.origin` as `emailRedirectTo`, so local and
+  deployed Web domains are detected at runtime.
+- `supabase_flutter` keeps its default `detectSessionInUri = true` behavior and
+  restores the session from the confirmation URL.
+- The router listens to `onAuthStateChange`; a newly confirmed account with
+  incomplete onboarding is redirected to `/onboarding`.
 
-Before OAuth or password recovery work begins, decide the canonical URLs and
-add them to Supabase Auth redirect allowlists.
+Each demo or production origin must still be added to the Supabase Auth
+redirect allowlist, and the real email round trip requires manual acceptance.
+Password recovery and Google OAuth callbacks remain deferred. Mobile
+universal/app links are outside the scope of the Web demo.
 
 ### 7.5 AI and payment boundaries
 
@@ -324,8 +327,9 @@ receipts before updating coins, purchases, or subscriptions.
 2. Wire lesson and vocabulary progress to the existing Supabase data layer.
 3. Extend automated tests to auth errors, route guards, session changes, and
    Production-safe integration coverage.
-4. Implement password recovery and email confirmation callback handling.
-5. Define web domains, deep links, privacy/terms/support URLs.
+4. Implement password recovery; manually accept the Web email-confirmation
+   callback against each allowlisted deployment origin.
+5. Define the canonical production Web domain and privacy/terms/support URLs.
 6. Make `supabase/schema/supabase_schema_final_secure.sql` idempotent and place schema changes in `supabase/migrations/`.
 7. Make the health retry path handle a failed Supabase initialization.
 
@@ -345,15 +349,20 @@ Last local verification:
 
 ```text
 flutter test
-  -> all tests passed (8 tests)
+  -> all tests passed (9 tests)
   -> startup smoke: 1
-  -> Auth registration: 2
+  -> Auth registration and redirect: 3
   -> Onboarding provider and wizard: 5
 
-dart analyze
-  -> exit code 0
-  -> no errors or warnings
-  -> 2 info-level notices in gemini_vision_service.dart
+dart analyze <changed Auth files>
+  -> no issues
+
+flutter analyze
+  -> 2 pre-existing info-level notices in gemini_vision_service.dart
+
+flutter build web --debug
+  -> succeeded
+  -> existing flutter_tts WebAssembly dry-run compatibility notices only
 
 git diff --check
   -> passed
@@ -364,9 +373,9 @@ Production onboarding RPC transaction check
   -> rollback left 0 persisted test rows
 ```
 
-Manual Production verification of the complete registration-to-home journey is
-still required. Automated Flutter tests use fakes and do not create Production
-Auth accounts.
+Manual verification of the real email-confirmation round trip and the complete
+registration-to-home journey is still required. Automated Flutter tests do not
+create Production Auth accounts.
 
 ## 10. Rules for another AI or developer
 
@@ -413,4 +422,3 @@ Auth accounts.
 - **Kết quả Kiểm thử & Phân tích:** Đạt `8/8` tests (`flutter test`) và `dart analyze` sạch (exit code 0, không có lỗi hay cảnh báo).
 - **Backlog mới:** Ưu tiên xây dựng `HomeScreen` và luồng học bài (`Home/lesson learning loop`).
 - **Các hạng mục tiếp tục hoãn (Deferred):** Google/Facebook OAuth UI, thiết kế Pixel-perfect theo 8 bản mẫu UI, và thông báo đẩy (notification) thật.
-

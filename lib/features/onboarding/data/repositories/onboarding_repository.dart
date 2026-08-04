@@ -8,6 +8,8 @@ abstract class OnboardingRepository {
 
   Future<bool> isUsernameAvailable(String username);
 
+  Future<bool> isPhoneAvailable(String phone);
+
   Future<void> completeOnboarding(OnboardingData data);
 }
 
@@ -65,20 +67,42 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
   @override
   Future<bool> isUsernameAvailable(String username) async {
     try {
-      final user = _currentUser;
-      final response = await _client
-          .from('users')
-          .select('id')
-          .eq('username', username.trim().toLowerCase())
-          .neq('id', user.id)
-          .count(CountOption.exact);
+      final response = await _client.rpc(
+        'check_username_available',
+        params: {'p_username': username.trim().toLowerCase()},
+      );
+      if (response is bool) return response;
 
-      return response.count == 0;
+      throw const OnboardingRepositoryException(
+        'Không thể kiểm tra tên đăng nhập. Vui lòng thử lại.',
+      );
     } on OnboardingRepositoryException {
       rethrow;
     } catch (error) {
       throw OnboardingRepositoryException(
         'Không thể kiểm tra tên đăng nhập. Vui lòng thử lại.',
+        cause: error,
+      );
+    }
+  }
+
+  @override
+  Future<bool> isPhoneAvailable(String phone) async {
+    try {
+      final response = await _client.rpc(
+        'check_phone_available',
+        params: {'p_phone': phone.trim()},
+      );
+      if (response is bool) return response;
+
+      throw const OnboardingRepositoryException(
+        'Không thể kiểm tra số điện thoại. Vui lòng thử lại.',
+      );
+    } on OnboardingRepositoryException {
+      rethrow;
+    } catch (error) {
+      throw OnboardingRepositoryException(
+        'Không thể kiểm tra số điện thoại. Vui lòng thử lại.',
         cause: error,
       );
     }
@@ -111,10 +135,7 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
       rethrow;
     } on PostgrestException catch (error) {
       if (error.code == '23505') {
-        throw OnboardingRepositoryException(
-          'Tên đăng nhập đã được sử dụng. Vui lòng chọn tên khác.',
-          cause: error,
-        );
+        throw _mapUniqueViolation(error);
       }
       throw OnboardingRepositoryException(
         'Không thể lưu thông tin thiết lập. Vui lòng thử lại.',
@@ -127,13 +148,57 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
       );
     }
   }
+
+  OnboardingRepositoryException _mapUniqueViolation(
+    PostgrestException error,
+  ) {
+    final message = error.message.toLowerCase();
+    final details = error.details?.toString().toLowerCase() ?? '';
+
+    if (message.contains('users_username_key') ||
+        details.contains('key (username)')) {
+      return OnboardingRepositoryException(
+        'Tên đăng nhập đã được sử dụng. Vui lòng chọn tên khác.',
+        cause: error,
+        conflictingField: OnboardingConflictField.username,
+      );
+    }
+    if (message.contains('users_phone_key') ||
+        details.contains('key (phone)')) {
+      return OnboardingRepositoryException(
+        'Số điện thoại đã được sử dụng. Vui lòng dùng số khác.',
+        cause: error,
+        conflictingField: OnboardingConflictField.phone,
+      );
+    }
+    if (message.contains('users_email_key') ||
+        details.contains('key (email)')) {
+      return OnboardingRepositoryException(
+        'Email đã được sử dụng. Vui lòng dùng email khác.',
+        cause: error,
+        conflictingField: OnboardingConflictField.email,
+      );
+    }
+
+    return OnboardingRepositoryException(
+      'Thông tin tài khoản đã được sử dụng. Vui lòng kiểm tra lại.',
+      cause: error,
+    );
+  }
 }
 
+enum OnboardingConflictField { username, phone, email }
+
 class OnboardingRepositoryException implements Exception {
-  const OnboardingRepositoryException(this.message, {this.cause});
+  const OnboardingRepositoryException(
+    this.message, {
+    this.cause,
+    this.conflictingField,
+  });
 
   final String message;
   final Object? cause;
+  final OnboardingConflictField? conflictingField;
 
   @override
   String toString() => message;

@@ -4,9 +4,13 @@ import '../../domain/repositories/auth_repository.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final SupabaseClient _supabaseClient;
+  final String _emailRedirectTo;
 
-  AuthRepositoryImpl({SupabaseClient? supabaseClient})
-      : _supabaseClient = supabaseClient ?? SupabaseService.client;
+  AuthRepositoryImpl({
+    SupabaseClient? supabaseClient,
+    String? emailRedirectTo,
+  })  : _supabaseClient = supabaseClient ?? SupabaseService.client,
+        _emailRedirectTo = emailRedirectTo ?? Uri.base.origin;
 
   @override
   Stream<User?> get authStateChanges {
@@ -43,6 +47,7 @@ class AuthRepositoryImpl implements AuthRepository {
       final response = await _supabaseClient.auth.signUp(
         email: email,
         password: password,
+        emailRedirectTo: _emailRedirectTo,
         data: {'display_name': displayName},
       );
       return response;

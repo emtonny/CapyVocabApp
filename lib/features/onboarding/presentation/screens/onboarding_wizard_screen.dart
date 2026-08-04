@@ -106,7 +106,8 @@ class OnboardingWizardScreen extends ConsumerWidget {
                       _SaveErrorMessage(message: state.saveError!),
                     _NavigationBar(
                       currentStep: state.currentStep,
-                      isCheckingUsername: state.isCheckingUsername,
+                      isCheckingAvailability:
+                          state.isCheckingUsername || state.isCheckingPhone,
                       isSaving: state.isSaving,
                       hasSaveError: state.saveError != null,
                       onBack: notifier.previousStep,
@@ -231,7 +232,7 @@ class _SaveErrorMessage extends StatelessWidget {
 class _NavigationBar extends StatelessWidget {
   const _NavigationBar({
     required this.currentStep,
-    required this.isCheckingUsername,
+    required this.isCheckingAvailability,
     required this.isSaving,
     required this.hasSaveError,
     required this.onBack,
@@ -239,7 +240,7 @@ class _NavigationBar extends StatelessWidget {
   });
 
   final int currentStep;
-  final bool isCheckingUsername;
+  final bool isCheckingAvailability;
   final bool isSaving;
   final bool hasSaveError;
   final VoidCallback onBack;
@@ -247,7 +248,7 @@ class _NavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isBusy = isCheckingUsername || isSaving;
+    final isBusy = isCheckingAvailability || isSaving;
     final isLastStep = currentStep == 4;
 
     return Padding(

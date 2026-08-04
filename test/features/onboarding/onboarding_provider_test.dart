@@ -32,8 +32,16 @@ void main() {
 
     notifier.updateAge(20);
     notifier.updatePhone('0987654321');
+    repository.phoneAvailable = false;
+    expect(await notifier.nextStep(), isFalse);
+    expect(notifier.state.currentStep, 1);
+    expect(
+        notifier.state.fieldErrors['phone'], 'Số điện thoại đã được sử dụng.');
+
+    repository.phoneAvailable = true;
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 2);
+    expect(repository.checkedPhone, '0987654321');
 
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['accountRole'], isNotNull);
@@ -114,6 +122,53 @@ void main() {
     expect(notifier.state.isSaving, isFalse);
     expect(notifier.state.saveError, contains('thử lại'));
   });
+
+  for (final testCase in <({
+    OnboardingConflictField field,
+    String message,
+    int expectedStep,
+    String? expectedErrorKey,
+  })>[
+    (
+      field: OnboardingConflictField.username,
+      message: 'Tên đăng nhập đã được sử dụng. Vui lòng chọn tên khác.',
+      expectedStep: 0,
+      expectedErrorKey: 'username',
+    ),
+    (
+      field: OnboardingConflictField.phone,
+      message: 'Số điện thoại đã được sử dụng. Vui lòng dùng số khác.',
+      expectedStep: 1,
+      expectedErrorKey: 'phone',
+    ),
+    (
+      field: OnboardingConflictField.email,
+      message: 'Email đã được sử dụng. Vui lòng dùng email khác.',
+      expectedStep: 4,
+      expectedErrorKey: null,
+    ),
+  ]) {
+    test('đưa lỗi unique ${testCase.field.name} về đúng bước', () async {
+      final repository = _FakeOnboardingRepository()
+        ..completeError = OnboardingRepositoryException(
+          testCase.message,
+          conflictingField: testCase.field,
+        );
+      final notifier = OnboardingNotifier(repository: repository);
+      addTearDown(notifier.dispose);
+      await notifier.loadInitialData();
+      await _moveToFinalStep(notifier);
+
+      expect(await notifier.completeOnboarding(), isFalse);
+      expect(notifier.state.currentStep, testCase.expectedStep);
+      expect(notifier.state.saveError, testCase.message);
+      if (testCase.expectedErrorKey case final key?) {
+        expect(notifier.state.fieldErrors[key], testCase.message);
+      } else {
+        expect(notifier.state.fieldErrors, isEmpty);
+      }
+    });
+  }
 }
 
 Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
@@ -132,7 +187,9 @@ Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
 class _FakeOnboardingRepository implements OnboardingRepository {
   OnboardingData draft = const OnboardingData(displayName: 'Capy Mây');
   bool usernameAvailable = true;
+  bool phoneAvailable = true;
   String? checkedUsername;
+  String? checkedPhone;
   int completeCalls = 0;
   Completer<void>? completeCompleter;
   OnboardingRepositoryException? completeError;
@@ -144,6 +201,12 @@ class _FakeOnboardingRepository implements OnboardingRepository {
   Future<bool> isUsernameAvailable(String username) async {
     checkedUsername = username;
     return usernameAvailable;
+  }
+
+  @override
+  Future<bool> isPhoneAvailable(String phone) async {
+    checkedPhone = phone;
+    return phoneAvailable;
   }
 
   @override

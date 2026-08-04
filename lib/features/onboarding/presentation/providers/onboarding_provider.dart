@@ -19,6 +19,7 @@ class OnboardingState {
     this.data = const OnboardingData(),
     this.isInitializing = true,
     this.isCheckingUsername = false,
+    this.isCheckingPhone = false,
     this.isSaving = false,
     this.fieldErrors = const {},
     this.initializationError,
@@ -31,18 +32,20 @@ class OnboardingState {
   final OnboardingData data;
   final bool isInitializing;
   final bool isCheckingUsername;
+  final bool isCheckingPhone;
   final bool isSaving;
   final Map<String, String> fieldErrors;
   final String? initializationError;
   final String? saveError;
 
-  bool get isBusy => isCheckingUsername || isSaving;
+  bool get isBusy => isCheckingUsername || isCheckingPhone || isSaving;
 
   OnboardingState copyWith({
     int? currentStep,
     OnboardingData? data,
     bool? isInitializing,
     bool? isCheckingUsername,
+    bool? isCheckingPhone,
     bool? isSaving,
     Map<String, String>? fieldErrors,
     Object? initializationError = _notProvided,
@@ -53,6 +56,7 @@ class OnboardingState {
       data: data ?? this.data,
       isInitializing: isInitializing ?? this.isInitializing,
       isCheckingUsername: isCheckingUsername ?? this.isCheckingUsername,
+      isCheckingPhone: isCheckingPhone ?? this.isCheckingPhone,
       isSaving: isSaving ?? this.isSaving,
       fieldErrors: fieldErrors ?? this.fieldErrors,
       initializationError: identical(initializationError, _notProvided)
@@ -160,7 +164,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Future<bool> validateCurrentStep() {
     return switch (state.currentStep) {
       0 => _validateIdentityStep(),
-      1 => Future.value(_validateAgePhoneStep()),
+      1 => _validateAgePhoneStep(),
       2 => Future.value(_validateRoleStep()),
       3 => Future.value(_validateStudyTimeStep()),
       4 => Future.value(_validateDailyTargetStep()),
@@ -206,12 +210,22 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       return true;
     } on OnboardingRepositoryException catch (error) {
       final errors = Map<String, String>.from(state.fieldErrors);
-      final isUsernameConflict = error.message.contains('Tên đăng nhập');
-      if (isUsernameConflict) {
-        errors['username'] = error.message;
+      var conflictStep = state.currentStep;
+      switch (error.conflictingField) {
+        case OnboardingConflictField.username:
+          errors['username'] = error.message;
+          conflictStep = 0;
+          break;
+        case OnboardingConflictField.phone:
+          errors['phone'] = error.message;
+          conflictStep = 1;
+          break;
+        case OnboardingConflictField.email:
+        case null:
+          break;
       }
       state = state.copyWith(
-        currentStep: isUsernameConflict ? 0 : state.currentStep,
+        currentStep: conflictStep,
         isSaving: false,
         fieldErrors: errors,
         saveError: error.message,
@@ -302,7 +316,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     }
   }
 
-  bool _validateAgePhoneStep() {
+  Future<bool> _validateAgePhoneStep() async {
     final errors = <String, String>{};
     final age = state.data.age;
     final phone = state.data.phone.trim();
@@ -323,7 +337,57 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       data: state.data.copyWith(phone: phone),
       fieldErrors: errors,
     );
-    return errors.isEmpty;
+    if (errors.isNotEmpty) return false;
+
+    final checkedPhone = phone;
+    state = state.copyWith(
+      isCheckingPhone: true,
+      fieldErrors: const {},
+    );
+
+    try {
+      final isAvailable = await _repository.isPhoneAvailable(checkedPhone);
+
+      if (state.data.phone.trim() != checkedPhone) {
+        state = state.copyWith(
+          isCheckingPhone: false,
+          fieldErrors: const {
+            'phone': 'Số điện thoại đã thay đổi. Vui lòng kiểm tra lại.',
+          },
+        );
+        return false;
+      }
+
+      if (!isAvailable) {
+        state = state.copyWith(
+          isCheckingPhone: false,
+          fieldErrors: const {
+            'phone': 'Số điện thoại đã được sử dụng.',
+          },
+        );
+        return false;
+      }
+
+      state = state.copyWith(
+        isCheckingPhone: false,
+        fieldErrors: const {},
+      );
+      return true;
+    } on OnboardingRepositoryException catch (error) {
+      state = state.copyWith(
+        isCheckingPhone: false,
+        fieldErrors: {'phone': error.message},
+      );
+      return false;
+    } catch (_) {
+      state = state.copyWith(
+        isCheckingPhone: false,
+        fieldErrors: const {
+          'phone': 'Không thể kiểm tra số điện thoại. Vui lòng thử lại.',
+        },
+      );
+      return false;
+    }
   }
 
   bool _validateRoleStep() {

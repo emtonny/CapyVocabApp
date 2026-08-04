@@ -190,6 +190,8 @@ ALTER TABLE public.users
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_key
     ON public.users (username);
+CREATE UNIQUE INDEX IF NOT EXISTS users_phone_key
+    ON public.users (phone);
 CREATE INDEX IF NOT EXISTS idx_users_leaderboard
     ON public.users (study_points DESC, streak_days DESC);
 CREATE INDEX IF NOT EXISTS idx_vocab_srs_due

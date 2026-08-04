@@ -33,7 +33,9 @@ void main() {
     );
   });
 
-  testWidgets('Đăng ký truyền họ tên đã trim xuống repository', (tester) async {
+  testWidgets(
+      'Đăng ký chờ xác nhận email là thành công và truyền họ tên đã trim',
+      (tester) async {
     final repository = _RecordingAuthRepository();
     await _pumpAuthScreen(tester, repository);
 
@@ -98,7 +100,16 @@ class _RecordingAuthRepository implements AuthRepository {
     required String displayName,
   }) async {
     receivedDisplayName = displayName;
-    return AuthResponse();
+    return AuthResponse(
+      user: const User(
+        id: 'pending-confirmation-user',
+        appMetadata: {},
+        userMetadata: {},
+        aud: 'authenticated',
+        email: 'an@example.com',
+        createdAt: '2026-07-31T00:00:00.000Z',
+      ),
+    );
   }
 
   @override

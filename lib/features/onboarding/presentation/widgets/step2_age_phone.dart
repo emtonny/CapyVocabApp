@@ -64,6 +64,15 @@ class Step2AgePhone extends ConsumerWidget {
             border: const OutlineInputBorder(),
             helperText: 'Đúng 10 chữ số và bắt đầu bằng 0',
             errorText: state.fieldErrors['phone'],
+            suffixIcon: state.isCheckingPhone
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
           ),
           onChanged: notifier.updatePhone,
         ),
