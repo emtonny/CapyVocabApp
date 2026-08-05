@@ -43,6 +43,9 @@ dependencies:
   # Pháo hoa Confetti
   confetti: ^0.7.0
 
+  # Video player cho animation CapyLogin
+  video_player: ^2.8.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -52,5 +55,7 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    - assets/CapyLogin.mp4
+    - assets/CapyOnboarding.mp4
 
   # TODO: khai báo fonts/assets (mascot svg, icon linh vật, âm thanh) tại đây

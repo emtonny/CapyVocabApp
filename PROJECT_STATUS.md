@@ -422,3 +422,49 @@ create Production Auth accounts.
 - **Kết quả Kiểm thử & Phân tích:** Đạt `8/8` tests (`flutter test`) và `dart analyze` sạch (exit code 0, không có lỗi hay cảnh báo).
 - **Backlog mới:** Ưu tiên xây dựng `HomeScreen` và luồng học bài (`Home/lesson learning loop`).
 - **Các hạng mục tiếp tục hoãn (Deferred):** Google/Facebook OAuth UI, thiết kế Pixel-perfect theo 8 bản mẫu UI, và thông báo đẩy (notification) thật.
+
+## 14. Nhật ký thay đổi ngày 04/08/2026 (Change Log)
+
+### A. Tùy chỉnh khung giờ học (Onboarding Step 4)
+- **Thêm tùy chọn Tùy chỉnh:** Thêm ô thẻ thứ 5 `⏱️ Tùy chỉnh khung giờ` (`_CustomTimeSlotCard`) bên dưới 4 khung giờ cố định.
+- **Bánh xe cuộn kiểu Cupertino (Scroll Wheel Picker):** Mở Bottom Sheet tích hợp `CupertinoDatePicker` cho phép người dùng cuộn chọn **Giờ bắt đầu** và **Giờ kết thúc** linh hoạt.
+- **Tương thích Backend 100%:** Trích xuất giờ bắt đầu dạng chuỗi `HH:mm` đồng bộ vào `reminderTime` đẩy lên Supabase RPC `complete_onboarding(...)` mà không làm thay đổi hay ảnh hưởng logic Backend (0% impact).
+
+### B. Đồng bộ Nút Đăng nhập Mạng xã hội & Sửa Logo Google (Auth Screen)
+- **Vẽ lại Logo Google G 4 màu chuẩn:** Thay thế chữ `G` văn bản cũ bằng Logo Google 4 màu (Đỏ, Vàng, Xanh lá, Xanh dương) chuẩn tỷ lệ gốc bằng `CustomPainter` (`_GoogleGLogoPainter`), khắc phục lỗi nét vẽ méo cũ.
+- **Căn lề thẳng hàng tuyệt đối (Stack Layout):** Căn lề icon cố định `Positioned(left: 20)` trên cả 2 nút Google và Facebook, giúp 2 icon luôn nằm trên cùng một hàng dọc thẳng đứng.
+- **Đồng bộ Typography:** Đồng bộ phông chữ Fredoka `fontSize: 15`, `fontWeight: w700`, `height: 1.2` giúp chữ căn giữa chính xác theo chiều dọc với icon.
+
+### C. Thêm mới Video Header Widgets & Media Assets
+- **Video Header Animation:** Tạo widget `capy_video_header.dart` và `capy_onboarding_header.dart` hiển thị video hoạt hình chú chuột lang Capybara sống động tại màn Auth và Onboarding.
+- **Assets:** Thêm video assets `assets/CapyLogin.mp4` & `assets/CapyOnboarding.mp4`.
+
+### D. Kiểm thử & Đánh giá (Testing)
+- **Widget Test:** Thêm test case kiểm tra sự xuất hiện và tương tác ô Tùy chỉnh khung giờ tại `onboarding_wizard_screen_test.dart`.
+- **Kết quả Kiểm thử:** Chạy `flutter test` đạt **`22/22` tests passed!**
+
+---
+
+### E. Danh sách các File đã Thay đổi & Thêm mới (Files Summary)
+
+#### 1. Các File đã thay đổi (Modified - `M`):
+- `lib/features/auth/presentation/widgets/social_auth_button.dart` *(Vẽ logo Google 4 màu, căn lề Stack 20px)*
+- `lib/features/auth/presentation/screens/auth_screen.dart` *(Cập nhật giao diện Đăng nhập)*
+- `lib/features/onboarding/presentation/widgets/step4_study_time.dart` *(Thêm ô Tùy chỉnh & Cupertino Scroll Wheel Picker)*
+- `lib/features/onboarding/presentation/screens/onboarding_wizard_screen.dart` *(Cập nhật luồng Onboarding)*
+- `lib/features/onboarding/presentation/widgets/step1_name_username.dart`
+- `lib/features/onboarding/presentation/widgets/step2_age_phone.dart`
+- `lib/features/onboarding/presentation/widgets/step3_role_selector.dart`
+- `lib/features/onboarding/presentation/widgets/step5_daily_target.dart`
+- `test/features/auth/auth_screen_test.dart`
+- `test/features/onboarding/onboarding_wizard_screen_test.dart` *(Bổ sung test case Step 4)*
+- `pubspec.yaml`, `pubspec.lock`, `.env.example`, `.flutter-plugins-dependencies`, `AGENTS.md`
+
+#### 2. Các File mới được tạo / thêm mới (Untracked - `U`):
+- `lib/features/auth/presentation/widgets/capy_video_header.dart`
+- `lib/features/onboarding/presentation/widgets/capy_onboarding_header.dart`
+- `assets/CapyLogin.mp4`
+- `assets/CapyOnboarding.mp4`
+- `implementation_plan.md`
+- `android/`, `ios/`, `macos/` *(Thư mục cấu hình build platform)*
+
