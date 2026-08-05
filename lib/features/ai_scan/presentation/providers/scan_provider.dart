@@ -1,20 +1,76 @@
-// FR-SCAN-01, FR-SCAN-02 (quét vô hạn), UC-SCAN-01
-// TODO: Sinh bởi scaffold tự động từ FRD/Use Case. Cần hiện thực hoá chi tiết.
-
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// State + logic cho FR-SCAN-01, FR-SCAN-02 (quét vô hạn), UC-SCAN-01
-class ScanState {
-  const ScanState();
-}
+import '../../../../core/services/gemini_vision_service.dart';
+import '../../data/datasources/scan_result_local_datasource.dart';
+import '../../data/services/scan_image_compressor.dart';
+import '../../data/services/scan_image_picker.dart';
+import '../../data/services/scan_image_storage.dart';
+import '../../data/services/scan_image_storage_factory.dart';
 
-class ScanNotifier extends StateNotifier<ScanState> {
-  ScanNotifier() : super(const ScanState());
+final scanImagePickerProvider = Provider<ScanImagePicker>(
+  (ref) => DeviceScanImagePicker(),
+);
 
-  // TODO: các action nghiệp vụ theo luồng chính trong FR-SCAN-01, FR-SCAN-02 (quét vô hạn), UC-SCAN-01
+final scanImageCompressorProvider = Provider<ScanImageCompressor>(
+  (ref) => FlutterScanImageCompressor(),
+);
+
+final scanImageStorageProvider = Provider<ScanImageStorage>(
+  (ref) => createScanImageStorage(),
+);
+
+final visionScanClientProvider = Provider<VisionScanClient>(
+  (ref) => GeminiVisionService(),
+);
+
+final scanResultStoreProvider = Provider<ScanResultStore>(
+  (ref) => kIsWeb ? MemoryScanResultStore() : ScanResultLocalDataSource(),
+);
+
+class ScanNotifier extends StateNotifier<AsyncValue<ScanResultRecord?>> {
+  ScanNotifier({
+    required VisionScanClient visionClient,
+    required ScanResultStore resultStore,
+    required ScanImageStorage imageStorage,
+  })  : _visionClient = visionClient,
+        _resultStore = resultStore,
+        _imageStorage = imageStorage,
+        super(const AsyncData(null));
+
+  final VisionScanClient _visionClient;
+  final ScanResultStore _resultStore;
+  final ScanImageStorage _imageStorage;
+
+  Future<ScanResultRecord> scanImage(String localPath) async {
+    if (state.isLoading) {
+      throw StateError('A scan is already in progress.');
+    }
+
+    state = const AsyncLoading();
+    try {
+      final imageBytes = await _imageStorage.readBytes(localPath);
+      final result = await _visionClient.analyzeImageBytes(imageBytes);
+      final record = await _resultStore.save(
+        localPath: localPath,
+        result: result,
+      );
+      state = AsyncData(record);
+      return record;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  void clear() => state = const AsyncData(null);
 }
 
 final scanProvider =
-    StateNotifierProvider<ScanNotifier, ScanState>(
-  (ref) => ScanNotifier(),
-);
+    StateNotifierProvider<ScanNotifier, AsyncValue<ScanResultRecord?>>((ref) {
+  return ScanNotifier(
+    visionClient: ref.watch(visionScanClientProvider),
+    resultStore: ref.watch(scanResultStoreProvider),
+    imageStorage: ref.watch(scanImageStorageProvider),
+  );
+});

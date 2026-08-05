@@ -1,17 +1,159 @@
-// UC-SCAN-01: chọn nguồn ảnh + Note Template
-// TODO: Sinh bởi scaffold tự động từ FRD/Use Case. Cần hiện thực hoá chi tiết.
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// UI screen tương ứng UC-SCAN-01: chọn nguồn ảnh + Note Template
-class PhotoScanBottomSheet extends StatelessWidget {
+import '../../data/services/scan_image_compressor.dart';
+import '../../data/services/scan_image_picker.dart';
+import '../controllers/scan_flow_controller.dart';
+import '../providers/scan_provider.dart';
+import '../widgets/scan_loading_overlay.dart';
+
+class PhotoScanBottomSheet extends ConsumerStatefulWidget {
   const PhotoScanBottomSheet({super.key});
 
   @override
+  ConsumerState<PhotoScanBottomSheet> createState() =>
+      _PhotoScanBottomSheetState();
+}
+
+class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
+  Uint8List? _previewBytes;
+  bool _isProcessing = false;
+  String _processingStatus = 'Đang chuẩn bị ảnh...';
+
+  Future<void> _pickAndScan(ScanImageSource source) async {
+    if (_isProcessing) return;
+
+    try {
+      final pickedImage = await ref.read(scanImagePickerProvider).pick(source);
+      if (pickedImage == null || !mounted) return;
+
+      setState(() {
+        _previewBytes = pickedImage.bytes;
+        _isProcessing = true;
+        _processingStatus = 'Đang nén ảnh...';
+      });
+
+      final compressedBytes = await ref
+          .read(scanImageCompressorProvider)
+          .compress(pickedImage.bytes);
+      if (!mounted) return;
+
+      setState(() {
+        _previewBytes = compressedBytes;
+        _processingStatus = 'Đang nhận diện từ vựng...';
+      });
+
+      final localPath =
+          await ref.read(scanImageStorageProvider).saveJpeg(compressedBytes);
+      if (!mounted) return;
+
+      await ScanFlowController.scanAndNavigate(
+        context,
+        ref,
+        localPath: localPath,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      final message = error is ScanImagePreparationException
+          ? error.message
+          : source == ScanImageSource.camera
+              ? 'Không thể mở camera. Vui lòng kiểm tra quyền truy cập.'
+              : 'Không thể chọn ảnh. Vui lòng thử lại.';
+      await _showPreparationError(message);
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
+    }
+  }
+
+  Future<void> _showPreparationError(String message) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Không thể chuẩn bị ảnh'),
+        content: Text(message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('PhotoScanBottomSheet'),
+    final previewBytes = _previewBytes;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Quét ảnh từ vựng')),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 4 / 3,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: previewBytes == null
+                            ? const Center(
+                                child: Icon(
+                                  Icons.image_search_rounded,
+                                  size: 64,
+                                ),
+                              )
+                            : Image.memory(
+                                previewBytes,
+                                key: const Key('scan-image-preview'),
+                                fit: BoxFit.contain,
+                                gaplessPlayback: true,
+                              ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    key: const Key('pick-gallery-button'),
+                    onPressed: _isProcessing
+                        ? null
+                        : () => _pickAndScan(ScanImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Chọn từ thư viện'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: const Key('pick-camera-button'),
+                    onPressed: _isProcessing
+                        ? null
+                        : () => _pickAndScan(ScanImageSource.camera),
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Chụp ảnh'),
+                  ),
+                ],
+              ),
+            ),
+            if (_isProcessing)
+              Positioned.fill(
+                child: ScanLoadingOverlay(status: _processingStatus),
+              ),
+          ],
+        ),
       ),
     );
   }

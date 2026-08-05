@@ -1,14 +1,44 @@
-// UC-SCAN-01: Modal Loading 5s + status text
-// TODO: Sinh bởi scaffold tự động từ FRD/Use Case. Cần hiện thực hoá chi tiết.
-
 import 'package:flutter/material.dart';
 
-/// Widget dùng lại cho UC-SCAN-01: Modal Loading 5s + status text
 class ScanLoadingOverlay extends StatelessWidget {
-  const ScanLoadingOverlay({super.key});
+  const ScanLoadingOverlay({
+    required this.status,
+    super.key,
+  });
+
+  final String status;
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox.shrink(); // TODO: implement UI
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.62),
+      child: Center(
+        child: Semantics(
+          liveRegion: true,
+          label: status,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox.square(
+                dimension: 42,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                status,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

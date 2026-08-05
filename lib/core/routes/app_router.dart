@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,6 +8,9 @@ import '../../features/auth/presentation/screens/auth_screen.dart';
 import '../../features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/ai_scan/presentation/screens/storage_album_screen.dart';
+import '../../features/ai_scan/data/datasources/scan_result_local_datasource.dart';
+import '../../features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart';
+import '../../features/ai_scan/presentation/screens/scan_result_overlay_screen.dart';
 import '../../features/solo_arena/presentation/screens/solo_lobby_screen.dart';
 import '../../features/pet_shop/presentation/screens/pet_shop_screen.dart';
 import '../../features/friends/presentation/screens/friends_leaderboard_screen.dart';
@@ -69,6 +72,22 @@ class AppRouter {
       GoRoute(
         path: '/storage',
         builder: (context, state) => const StorageAlbumScreen(),
+      ),
+      GoRoute(
+        path: '/scan',
+        builder: (context, state) => const PhotoScanBottomSheet(),
+      ),
+      GoRoute(
+        path: '/scan-overlay',
+        builder: (context, state) {
+          final record = state.extra;
+          if (record is! ScanResultRecord) {
+            return const Scaffold(
+              body: Center(child: Text('Không tìm thấy kết quả quét.')),
+            );
+          }
+          return ScanResultOverlayScreen(record: record);
+        },
       ),
       GoRoute(
         path: '/solo-arena',
