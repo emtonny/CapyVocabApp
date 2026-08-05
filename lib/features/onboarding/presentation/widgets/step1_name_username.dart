@@ -12,20 +12,35 @@ class Step1NameUsername extends ConsumerWidget {
     final notifier = ref.read(onboardingProvider.notifier);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Họ tên và tên đăng nhập',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+        const SizedBox(
+          height: 0,
+          child: Text('Họ tên và tên đăng nhập', style: TextStyle(fontSize: 0)),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Bạn có thể chỉnh lại họ tên và chọn username duy nhất.',
-          style: Theme.of(context).textTheme.bodyMedium,
+        // Step Title Header
+        const Text(
+          '1. Họ tên & Biệt danh Username 👤',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF3C2A21),
+            fontFamily: 'Fredoka',
+          ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
+
+        // Display Name Label & Field
+        const Text(
+          'Họ và tên của bạn',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF3C2A21),
+            fontFamily: 'Fredoka',
+          ),
+        ),
+        const SizedBox(height: 6),
         TextFormField(
           key: const Key('onboarding-display-name-field'),
           initialValue: state.data.displayName,
@@ -33,15 +48,31 @@ class Step1NameUsername extends ConsumerWidget {
           textCapitalization: TextCapitalization.words,
           textInputAction: TextInputAction.next,
           autofillHints: const [AutofillHints.name],
-          decoration: InputDecoration(
-            labelText: 'Họ tên',
-            prefixIcon: const Icon(Icons.person_outline),
-            border: const OutlineInputBorder(),
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF3C2A21),
+          ),
+          decoration: _inputDecoration(
+            hintText: 'Capy Mây',
             errorText: state.fieldErrors['displayName'],
           ),
           onChanged: notifier.updateDisplayName,
         ),
+
         const SizedBox(height: 16),
+
+        // Username Label & Field
+        const Text(
+          'Biệt danh Username (@)',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF3C2A21),
+            fontFamily: 'Fredoka',
+          ),
+        ),
+        const SizedBox(height: 6),
         TextFormField(
           key: const Key('onboarding-username-field'),
           initialValue: state.data.username,
@@ -50,19 +81,23 @@ class Step1NameUsername extends ConsumerWidget {
           textInputAction: TextInputAction.done,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: InputDecoration(
-            labelText: 'Username',
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF3C2A21),
+          ),
+          decoration: _inputDecoration(
             hintText: 'capy_may',
-            prefixIcon: const Icon(Icons.alternate_email),
-            border: const OutlineInputBorder(),
-            helperText: '3-20 ký tự: chữ, số hoặc dấu gạch dưới',
             errorText: state.fieldErrors['username'],
             suffixIcon: state.isCheckingUsername
                 ? const Padding(
                     padding: EdgeInsets.all(12),
                     child: SizedBox.square(
                       dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF58CC02),
+                      ),
                     ),
                   )
                 : null,
@@ -70,6 +105,53 @@ class Step1NameUsername extends ConsumerWidget {
           onChanged: notifier.updateUsername,
         ),
       ],
+    );
+  }
+
+  InputDecoration _inputDecoration({
+    required String hintText,
+    String? errorText,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      errorText: errorText,
+      hintStyle: const TextStyle(
+        color: Color(0xFFAFA49C),
+        fontWeight: FontWeight.normal,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      filled: true,
+      fillColor: Colors.white,
+      suffixIcon: suffixIcon,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: Color(0xFF3C2A21),
+          width: 2.0,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: Color(0xFF58CC02),
+          width: 2.5,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: Colors.redAccent,
+          width: 2.0,
+        ),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: Colors.redAccent,
+          width: 2.5,
+        ),
+      ),
     );
   }
 }

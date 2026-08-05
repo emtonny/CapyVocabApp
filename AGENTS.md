@@ -738,6 +738,7 @@ The agent MUST NOT:
 - Hardcode values that belong in constants, configuration, localization,
   parameters, or secure secret storage.
 - Commit, push, publish, deploy, migrate, or release unverified code.
+- Automatically commit or push code to the `nam` branch (or any branch) without explicit user permission.
 - Claim a build, test, lint, format, benchmark, or security check passed when it
   was not run.
 - Hide failures, warnings, uncertainty, or incomplete work.

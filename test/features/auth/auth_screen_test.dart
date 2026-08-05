@@ -55,6 +55,7 @@ void main() {
       'secret123',
     );
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Đăng ký'));
     await tester.tap(find.widgetWithText(FilledButton, 'Đăng ký'));
     await tester.pumpAndSettle();
 

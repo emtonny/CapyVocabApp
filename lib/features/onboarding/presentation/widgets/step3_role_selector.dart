@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/constants/app_colors.dart';
 import '../providers/onboarding_provider.dart';
 
 class Step3RoleSelector extends ConsumerWidget {
@@ -13,39 +12,50 @@ class Step3RoleSelector extends ConsumerWidget {
     final notifier = ref.read(onboardingProvider.notifier);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Bạn sử dụng ứng dụng với vai trò nào?',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+        const SizedBox(
+          height: 0,
+          child: Text('Bạn sử dụng ứng dụng với vai trò nào?', style: TextStyle(fontSize: 0)),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Chọn một vai trò phù hợp nhất với bạn.',
-          style: Theme.of(context).textTheme.bodyMedium,
+        // Step Title Header
+        const Text(
+          '3. Bạn sử dụng app với vai trò nào? 👥',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF3C2A21),
+            fontFamily: 'Fredoka',
+          ),
         ),
-        const SizedBox(height: 24),
-        _RoleCard(
+        const SizedBox(height: 18),
+
+        // Role Option 1: Personal
+        _RoleOptionCard(
           key: const Key('role-personal-card'),
           title: 'Cá nhân học tập',
-          subtitle: 'Tự luyện từ vựng, chơi game và kết bạn.',
-          icon: Icons.school_outlined,
+          subtitle: 'Tự luyện từ vựng, chơi game & kết bạn',
+          icon: Icons.person_rounded,
+          iconColor: const Color(0xFF6B429C),
           selected: state.data.accountRole == 'personal',
           enabled: !state.isBusy,
           onTap: () => notifier.updateAccountRole('personal'),
         ),
-        const SizedBox(height: 16),
-        _RoleCard(
+
+        const SizedBox(height: 14),
+
+        // Role Option 2: Parent
+        _RoleOptionCard(
           key: const Key('role-parent-card'),
-          title: 'Phụ huynh giám sát',
-          subtitle: 'Theo dõi tiến độ và đồng hành cùng người học.',
-          icon: Icons.family_restroom_outlined,
+          title: 'Phụ huynh / Giám sát',
+          subtitle: 'Theo dõi tiến độ học & nhận báo cáo',
+          icon: Icons.groups_rounded,
+          iconColor: const Color(0xFFD97706),
           selected: state.data.accountRole == 'parent',
           enabled: !state.isBusy,
           onTap: () => notifier.updateAccountRole('parent'),
         ),
+
         if (state.fieldErrors['accountRole'] case final error?) ...[
           const SizedBox(height: 12),
           Text(
@@ -58,11 +68,12 @@ class Step3RoleSelector extends ConsumerWidget {
   }
 }
 
-class _RoleCard extends StatelessWidget {
-  const _RoleCard({
+class _RoleOptionCard extends StatelessWidget {
+  const _RoleOptionCard({
     required this.title,
     required this.subtitle,
     required this.icon,
+    required this.iconColor,
     required this.selected,
     required this.enabled,
     required this.onTap,
@@ -72,72 +83,95 @@ class _RoleCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
+  final Color iconColor;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = selected
-        ? AppColors.duoGreen
-        : Theme.of(context).colorScheme.outlineVariant;
-    final backgroundColor =
-        selected ? AppColors.creamyYuzu : Theme.of(context).colorScheme.surface;
-
     return Semantics(
       button: true,
       selected: selected,
       label: '$title. $subtitle',
-      child: Material(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            constraints: const BoxConstraints(minHeight: 104),
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: borderColor,
-                width: selected ? 2.5 : 1.5,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFFFF6DC) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? const Color(0xFF58CC02) : const Color(0xFFEADECF),
+            width: selected ? 2.5 : 2.0,
+          ),
+          boxShadow: selected
+              ? const [
+                  BoxShadow(
+                    color: Color(0xFF58CC02),
+                    offset: Offset(0, 3),
+                    blurRadius: 0,
+                  ),
+                ]
+              : const [
+                  BoxShadow(
+                    color: Color(0xFFEADECF),
+                    offset: Offset(0, 2),
+                    blurRadius: 0,
+                  ),
+                ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Row(
+                children: [
+                  // Icon Avatar
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: iconColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 28,
+                      color: iconColor,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+
+                  // Title & Subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3C2A21),
+                            fontFamily: 'Fredoka',
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF786C65),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 36,
-                  color: selected
-                      ? AppColors.duoGreen
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(subtitle),
-                    ],
-                  ),
-                ),
-                if (selected)
-                  const Icon(
-                    Icons.check_circle,
-                    color: AppColors.duoGreen,
-                    size: 28,
-                  ),
-              ],
             ),
           ),
         ),

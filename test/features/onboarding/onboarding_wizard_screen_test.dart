@@ -25,6 +25,7 @@ void main() {
       find.byKey(const Key('onboarding-username-field')),
       'capy_may',
     );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
     expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
@@ -37,6 +38,7 @@ void main() {
       find.byKey(const Key('onboarding-phone-field')),
       '0987654321',
     );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
     expect(
@@ -46,20 +48,25 @@ void main() {
     expect(find.byType(Radio<String>), findsNothing);
     expect(find.byType(DropdownButton<String>), findsNothing);
 
+    await tester.ensureVisible(find.byKey(const Key('role-personal-card')));
     await tester.tap(find.byKey(const Key('role-personal-card')));
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
     expect(find.text('Chọn giờ học hằng ngày'), findsOneWidget);
     expect(find.text('20:00'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
     expect(find.text('Mục tiêu từ vựng mỗi ngày'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
     await tester.tap(find.byKey(const Key('onboarding-back-button')));
     await tester.pumpAndSettle();
     expect(find.text('Chọn giờ học hằng ngày'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
     await tester.tap(find.byKey(const Key('onboarding-back-button')));
     await tester.pumpAndSettle();
     expect(
@@ -85,6 +92,7 @@ void main() {
       find.byKey(const Key('onboarding-username-field')),
       'capy_may',
     );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -95,11 +103,54 @@ void main() {
       find.byKey(const Key('onboarding-phone-field')),
       '0987654321',
     );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
 
     expect(find.text('Số điện thoại đã được sử dụng.'), findsOneWidget);
     expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
+  });
+
+  testWidgets('hiển thị tùy chọn Tùy chỉnh khung giờ tại Bước 4 Onboarding',
+      (tester) async {
+    final repository = _WidgetTestRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          onboardingRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: OnboardingWizardScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Đi qua bước 1, 2, 3
+    await tester.enterText(
+      find.byKey(const Key('onboarding-username-field')),
+      'capy_may',
+    );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('onboarding-age-field')), '20');
+    await tester.enterText(
+      find.byKey(const Key('onboarding-phone-field')),
+      '0987654321',
+    );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('role-personal-card')));
+    await tester.tap(find.byKey(const Key('role-personal-card')));
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
+
+    // Bước 4: Kiểm tra sự tồn tại của ô Tùy chỉnh khung giờ
+    expect(find.text('Tùy chỉnh khung giờ'), findsOneWidget);
+    expect(find.byKey(const Key('custom-study-time-card')), findsOneWidget);
   });
 }
 
