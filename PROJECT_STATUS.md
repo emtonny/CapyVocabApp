@@ -468,3 +468,35 @@ create Production Auth accounts.
 - `implementation_plan.md`
 - `android/`, `ios/`, `macos/` *(Thư mục cấu hình build platform)*
 
+## 15. Nhật ký thay đổi ngày 06/08/2026 (Change Log)
+
+### A. Responsive Layout & Giao diện đa nền tảng
+- **Hệ thống Responsive Layout:** Tạo widget `responsive_layout.dart` (`ResponsiveLayout`) tự động thích ứng giao diện giữa các kích thước màn hình Mobile, Tablet và Desktop.
+- **Tối ưu hóa Onboarding & Auth Screen:** Cập nhật `auth_screen.dart`, `capy_video_header.dart`, `onboarding_wizard_screen.dart`, `step4_study_time.dart` cho trải nghiệm mượt mà trên đa màn hình.
+
+### B. Bổ sung Assets & Cấu hình Môi trường
+- **Assets hình nền mới:** Thêm `assets/capy_background.png` và `assets/capy_background_mobile.png`.
+- **Cấu hình môi trường `.env`:** Tạo file `.env` từ `.env.example` phục vụ việc nạp asset bundle và cấu hình kết nối Supabase/Gemini.
+
+### C. Quản lý Mã nguồn (Git Workflow)
+- **Commit & Push an toàn:** Commit và đẩy code thành công vào nhánh `nam-30-7` trên các remote (`vocab1` và `origin`), giữ nguyên an toàn cho nhánh `main`.
+
+---
+
+### D. Danh sách các File đã Thay đổi & Thêm mới (Files Summary)
+
+#### 1. Các File đã thay đổi (Modified - `M`):
+- `lib/features/auth/presentation/screens/auth_screen.dart` *(Cập nhật giao diện Đăng nhập)*
+- `lib/features/auth/presentation/widgets/capy_video_header.dart` *(Tối ưu hiển thị video header)*
+- `lib/features/onboarding/presentation/screens/onboarding_wizard_screen.dart` *(Cập nhật giao diện wizard onboarding)*
+- `lib/features/onboarding/presentation/widgets/step4_study_time.dart` *(Tối ưu ô tùy chỉnh thời gian học)*
+- `assets/CapyLogin.mp4`, `assets/CapyOnboarding.mp4` *(Cập nhật video asset)*
+- `pubspec.yaml` *(Cập nhật asset declaration)*
+
+#### 2. Các File mới được tạo / thêm mới (New Files):
+- `lib/core/widgets/responsive_layout.dart` *(Widget hỗ trợ giao diện responsive)*
+- `assets/capy_background.png`, `assets/capy_background_mobile.png` *(Hình nền mới)*
+- `.claude/skills/flutter-build-responsive-layout/SKILL.md` *(Skill hướng dẫn xây dựng responsive layout)*
+- `skills-lock.json`
+- `.env` *(File cấu hình biến môi trường cục bộ)*
+
