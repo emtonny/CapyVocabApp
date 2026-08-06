@@ -3,9 +3,16 @@ import 'package:video_player/video_player.dart';
 
 class CapyVideoHeader extends StatefulWidget {
   final String videoPath;
+  final bool showText;
+  final bool showContainerBorder;
+  final double videoHeight;
+
   const CapyVideoHeader({
     super.key,
     this.videoPath = 'assets/CapyLogin.mp4',
+    this.showText = true,
+    this.showContainerBorder = true,
+    this.videoHeight = 180.0,
   });
 
   @override
@@ -47,64 +54,53 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFF3C2A21),
-          width: 2.5,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 4),
-            blurRadius: 0,
+    final vHeight = widget.videoHeight;
+    final vWidth = vHeight * (9 / 16);
+
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 9:16 Video Animation Box
+        Container(
+          height: vHeight,
+          width: vWidth,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: Colors.transparent,
           ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 9:16 Video Animation Box
-          Container(
-            height: 180,
-            width: 180 * (9 / 16), // 101.25px width for 9:16 vertical ratio
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: Colors.transparent,
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: _isInitialized
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _controller.value.size.width,
-                      height: _controller.value.size.height,
-                      child: VideoPlayer(_controller),
-                    ),
-                  )
-                : const Center(
-                    child: Text(
-                      '🦫',
-                      style: TextStyle(fontSize: 48),
-                    ),
+          clipBehavior: Clip.antiAlias,
+          child: _isInitialized
+              ? FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _controller.value.size.width,
+                    height: _controller.value.size.height,
+                    child: VideoPlayer(_controller),
                   ),
-          ),
+                )
+              : const Center(
+                  child: Text(
+                    '🦫',
+                    style: TextStyle(fontSize: 48),
+                  ),
+                ),
+        ),
+        if (widget.showText) ...[
           const SizedBox(height: 12),
           // Title
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: const [
-              Text(
-                'Capy Vocab',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3C2A21),
-                  fontFamily: 'Fredoka',
+              Flexible(
+                child: Text(
+                  'Capy Vocab',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF3C2A21),
+                    fontFamily: 'Fredoka',
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               SizedBox(width: 6),
@@ -126,7 +122,32 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
             ),
           ),
         ],
+      ],
+    );
+
+    if (!widget.showContainerBorder) {
+      return content;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF3C2A21),
+          width: 2.5,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0xFF3C2A21),
+            offset: Offset(0, 4),
+            blurRadius: 0,
+          ),
+        ],
       ),
+      child: content,
     );
   }
 }

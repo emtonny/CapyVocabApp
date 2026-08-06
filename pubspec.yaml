@@ -55,7 +55,6 @@ flutter:
   uses-material-design: true
   assets:
     - .env
-    - assets/CapyLogin.mp4
-    - assets/CapyOnboarding.mp4
+    - assets/
 
   # TODO: khai báo fonts/assets (mascot svg, icon linh vật, âm thanh) tại đây
