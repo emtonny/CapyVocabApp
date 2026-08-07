@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'supabase_service.dart';
 
 typedef AccessTokenProvider = String? Function();
+typedef SupabaseRestUrlProvider = String Function();
 
 abstract interface class VisionScanClient {
   Future<GeminiVisionResult> analyzeImageBytes(Uint8List compressedImageBytes);
@@ -18,18 +20,27 @@ class GeminiVisionService implements VisionScanClient {
   GeminiVisionService({
     http.Client? httpClient,
     AccessTokenProvider? accessTokenProvider,
+    SupabaseRestUrlProvider? supabaseRestUrlProvider,
+    Uri? endpoint,
   })  : _httpClient = httpClient ?? http.Client(),
+        _endpointOverride = endpoint,
+        _supabaseRestUrlProvider = supabaseRestUrlProvider ??
+            (() => Supabase.instance.client.rest.url),
         _accessTokenProvider = accessTokenProvider ??
             (() => SupabaseService.auth.currentSession?.accessToken);
 
-  static final Uri endpoint = Uri.parse(
-    'https://vmxonxqxrlkssdzsucrg.supabase.co/functions/v1/'
-    'gemini-vision-scan',
-  );
   static const Duration requestTimeout = Duration(seconds: 30);
 
   final http.Client _httpClient;
+  final Uri? _endpointOverride;
+  final SupabaseRestUrlProvider _supabaseRestUrlProvider;
   final AccessTokenProvider _accessTokenProvider;
+
+  Uri get _endpoint =>
+      _endpointOverride ??
+      Uri.parse('${_supabaseRestUrlProvider()}/').resolve(
+        '../../functions/v1/gemini-vision-scan',
+      );
 
   @override
   Future<GeminiVisionResult> analyzeImageBytes(
@@ -50,7 +61,7 @@ class GeminiVisionService implements VisionScanClient {
     try {
       response = await _httpClient
           .post(
-            endpoint,
+            _endpoint,
             headers: {
               'Authorization': 'Bearer $accessToken',
               'Content-Type': 'application/json; charset=utf-8',
@@ -218,14 +229,24 @@ class VocabDetection {
       );
     }
 
+    final x = _readCoordinate(rawBox, 'x');
+    final y = _readCoordinate(rawBox, 'y');
+    final width = _readCoordinate(rawBox, 'w');
+    final height = _readCoordinate(rawBox, 'h');
+    if (x + width > 1000 || y + height > 1000) {
+      throw const FormatException(
+        'Word box must stay within the 0-1000 image bounds.',
+      );
+    }
+
     return VocabDetection(
       word: word,
       phonetic: phonetic,
       meaning: meaning,
-      x: _normalizeCoordinate(rawBox, 'x'),
-      y: _normalizeCoordinate(rawBox, 'y'),
-      w: _normalizeCoordinate(rawBox, 'w'),
-      h: _normalizeCoordinate(rawBox, 'h'),
+      x: x / 1000.0,
+      y: y / 1000.0,
+      w: width / 1000.0,
+      h: height / 1000.0,
     );
   }
 
@@ -252,15 +273,12 @@ class VocabDetection {
         },
       };
 
-  static double _normalizeCoordinate(
-    Map<String, dynamic> box,
-    String key,
-  ) {
+  static int _readCoordinate(Map<String, dynamic> box, String key) {
     final value = box[key];
     if (value is! int || value < 0 || value > 1000) {
       throw FormatException('box.$key must be an integer from 0 to 1000.');
     }
-    return value / 1000.0;
+    return value;
   }
 }
 
