@@ -47,6 +47,7 @@ dependencies:
 
   # Video player cho animation CapyLogin
   video_player: ^2.8.6
+  camera: ^0.12.0+2
 
 dev_dependencies:
   flutter_test:
