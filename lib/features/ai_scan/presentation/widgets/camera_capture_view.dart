@@ -1,65 +1,19 @@
 import 'dart:async';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-typedef CameraListLoader = Future<List<CameraDescription>> Function();
-typedef CameraCaptureSessionFactory = CameraCaptureSession Function(
-  CameraDescription description,
-);
+import 'camera_capture_session.dart';
+import 'camera_capture_session_stub.dart'
+    if (dart.library.js_interop) 'camera_capture_session_web.dart';
 
-abstract interface class CameraCaptureSession {
-  double get aspectRatio;
-
-  Future<void> initialize();
-
-  Widget buildPreview();
-
-  Future<XFile> takePicture();
-
-  Future<void> dispose();
-}
-
-class PluginCameraCaptureSession implements CameraCaptureSession {
-  PluginCameraCaptureSession(CameraDescription description)
-      : _controller = CameraController(
-          description,
-          ResolutionPreset.medium,
-          enableAudio: false,
-        );
-
-  final CameraController _controller;
-
-  @override
-  double get aspectRatio => _controller.value.aspectRatio;
-
-  @override
-  Future<void> initialize() => _controller.initialize();
-
-  @override
-  Widget buildPreview() => CameraPreview(_controller);
-
-  @override
-  Future<XFile> takePicture() => _controller.takePicture();
-
-  @override
-  Future<void> dispose() => _controller.dispose();
-}
-
-CameraCaptureSession createPluginCameraCaptureSession(
-  CameraDescription description,
-) {
-  return PluginCameraCaptureSession(description);
-}
+export 'camera_capture_session.dart';
 
 class CameraCaptureView extends StatefulWidget {
   const CameraCaptureView({
     super.key,
-    this.loadCameras = availableCameras,
-    this.createSession = createPluginCameraCaptureSession,
+    this.createSession = createWebCameraCaptureSession,
   });
 
-  final CameraListLoader loadCameras;
   final CameraCaptureSessionFactory createSession;
 
   @override
@@ -68,15 +22,10 @@ class CameraCaptureView extends StatefulWidget {
 
 enum _CameraErrorKind { permissionDenied, noCamera, unavailable }
 
-final _infraredCameraNamePattern = RegExp(
-  r'(^|[^a-z0-9])ir([^a-z0-9]|$)|infrared|windows\s*hello',
-  caseSensitive: false,
-);
-
 class _CameraCaptureViewState extends State<CameraCaptureView> {
   CameraCaptureSession? _session;
-  List<CameraDescription> _cameras = const [];
-  CameraDescription? _selectedCamera;
+  List<WebCameraDevice> _cameras = const [];
+  WebCameraDevice? _selectedCamera;
   _CameraErrorKind? _errorKind;
   String? _errorMessage;
   bool _isInitializing = true;
@@ -89,7 +38,7 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
     unawaited(_initializeCamera());
   }
 
-  Future<void> _initializeCamera([CameraDescription? requestedCamera]) async {
+  Future<void> _initializeCamera([WebCameraDevice? requestedCamera]) async {
     final attempt = ++_initializationAttempt;
     await _disposeSession();
     if (!mounted || attempt != _initializationAttempt) return;
@@ -104,38 +53,9 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
       // Web camera access requires a secure context. Browsers allow localhost
       // during development, but a deployed domain MUST use HTTPS or camera
       // permission/getUserMedia will fail.
-      final cameras =
-          requestedCamera == null ? await widget.loadCameras() : _cameras;
-      if (!mounted || attempt != _initializationAttempt) return;
-
-      if (requestedCamera == null) {
-        for (var index = 0; index < cameras.length; index++) {
-          debugPrint('Available camera [$index]: ${cameras[index].name}');
-        }
-      }
-
-      if (cameras.isEmpty) {
-        setState(() {
-          _cameras = const [];
-          _selectedCamera = null;
-        });
-        _showError(
-          _CameraErrorKind.noCamera,
-          'Không tìm thấy camera trên thiết bị này. '
-          'Vui lòng đóng màn hình và dùng "Chọn từ thư viện" thay thế.',
-        );
-        return;
-      }
-
-      final selectedCamera = requestedCamera ?? _chooseDefaultCamera(cameras);
-      setState(() {
-        _cameras = cameras;
-        _selectedCamera = selectedCamera;
-      });
-
-      final session = widget.createSession(selectedCamera);
+      final session = widget.createSession();
       _session = session;
-      await session.initialize();
+      await session.initialize(deviceId: requestedCamera?.deviceId);
 
       if (!mounted || attempt != _initializationAttempt) {
         if (identical(_session, session)) {
@@ -145,8 +65,19 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
         return;
       }
 
-      setState(() => _isInitializing = false);
-    } on CameraException catch (error) {
+      if (requestedCamera == null) {
+        for (var index = 0; index < session.devices.length; index++) {
+          debugPrint(
+              'Available camera [$index]: ${session.devices[index].label}');
+        }
+      }
+
+      setState(() {
+        _cameras = session.devices;
+        _selectedCamera = session.selectedDevice;
+        _isInitializing = false;
+      });
+    } on CameraCaptureException catch (error) {
       _logCameraException('initialize', error);
       if (!mounted || attempt != _initializationAttempt) return;
       await _disposeSession();
@@ -156,6 +87,12 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
         _showError(
           _CameraErrorKind.permissionDenied,
           'Cần cấp quyền camera để chụp ảnh.',
+        );
+      } else if (_isNoCameraError(error.code)) {
+        _showError(
+          _CameraErrorKind.noCamera,
+          'Không tìm thấy camera trên thiết bị này. '
+          'Vui lòng đóng màn hình và dùng "Chọn từ thư viện" thay thế.',
         );
       } else {
         _showError(
@@ -176,14 +113,7 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
     }
   }
 
-  CameraDescription _chooseDefaultCamera(List<CameraDescription> cameras) {
-    final regularCameras = cameras
-        .where((camera) => !_infraredCameraNamePattern.hasMatch(camera.name))
-        .toList();
-    return regularCameras.isNotEmpty ? regularCameras.first : cameras.last;
-  }
-
-  void _selectCamera(CameraDescription? camera) {
+  void _selectCamera(WebCameraDevice? camera) {
     if (camera == null || camera == _selectedCamera || _isInitializing) return;
     unawaited(_initializeCamera(camera));
   }
@@ -196,14 +126,26 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
         normalized.contains('notallowed');
   }
 
-  void _logCameraException(String operation, CameraException error) {
+  bool _isNoCameraError(String code) {
+    final normalized = code.toLowerCase();
+    return normalized.contains('notfound') ||
+        normalized.contains('devicesnotfound');
+  }
+
+  void _logCameraException(
+    String operation,
+    CameraCaptureException error,
+  ) {
     debugPrint(
       'Camera $operation failed: '
       'code=${error.code}, description=${error.description ?? '(none)'}',
     );
   }
 
-  String _cameraErrorMessage(String prefix, CameraException error) {
+  String _cameraErrorMessage(
+    String prefix,
+    CameraCaptureException error,
+  ) {
     final description = error.description?.trim();
     final detail = description == null || description.isEmpty
         ? error.code
@@ -233,7 +175,7 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
       final image = await session.takePicture();
       if (!mounted) return;
       Navigator.of(context).pop(image);
-    } on CameraException catch (error) {
+    } on CameraCaptureException catch (error) {
       _logCameraException('capture', error);
       if (!mounted) return;
       setState(() {
@@ -390,7 +332,7 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: DropdownButtonHideUnderline(
-                      child: DropdownButton<CameraDescription>(
+                      child: DropdownButton<WebCameraDevice>(
                         key: const Key('camera-device-dropdown'),
                         value: _selectedCamera,
                         isExpanded: true,
@@ -403,7 +345,7 @@ class _CameraCaptureViewState extends State<CameraCaptureView> {
                             DropdownMenuItem(
                               value: camera,
                               child: Text(
-                                camera.name,
+                                camera.label,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),

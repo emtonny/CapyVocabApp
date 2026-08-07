@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:camera/camera.dart' show XFile;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../data/services/scan_image_compressor.dart';
 import '../../data/services/scan_image_picker.dart';

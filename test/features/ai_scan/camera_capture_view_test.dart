@@ -1,46 +1,35 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:camera/camera.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/camera_capture_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 
-const _cameraDescription = CameraDescription(
-  name: 'webcam-1',
-  lensDirection: CameraLensDirection.front,
-  sensorOrientation: 0,
+const _cameraDevice = WebCameraDevice(
+  deviceId: 'webcam-1',
+  label: 'Integrated RGB Camera',
 );
 
-const _infraredCameraDescription = CameraDescription(
-  name: 'Integrated IR Camera',
-  lensDirection: CameraLensDirection.front,
-  sensorOrientation: 0,
-);
-
-const _rgbCameraDescription = CameraDescription(
-  name: 'Integrated RGB Camera',
-  lensDirection: CameraLensDirection.front,
-  sensorOrientation: 0,
+const _infraredCameraDevice = WebCameraDevice(
+  deviceId: 'webcam-ir',
+  label: 'Integrated IR Camera',
 );
 
 void main() {
   testWidgets('hiển thị preview, chụp XFile và dispose khi đóng route',
       (tester) async {
-    final session = _FakeCameraCaptureSession();
+    final session = _FakeCameraCaptureSession(
+      devices: const [_cameraDevice],
+      selectedDevice: _cameraDevice,
+    );
     XFile? capturedImage;
 
     await tester.pumpWidget(
       MaterialApp(
         home: _CameraTestHost(
           onCaptured: (image) => capturedImage = image,
-          cameraView: CameraCaptureView(
-            loadCameras: () async => const [_cameraDescription],
-            createSession: (description) {
-              expect(description, _cameraDescription);
-              return session;
-            },
-          ),
+          cameraView: CameraCaptureView(createSession: () => session),
         ),
       ),
     );
@@ -62,20 +51,28 @@ void main() {
 
   testWidgets('từ chối quyền hiển thị thông báo rõ và thử lại được',
       (tester) async {
-    var loadCalls = 0;
-    final session = _FakeCameraCaptureSession();
+    var createCalls = 0;
+    final successfulSession = _FakeCameraCaptureSession(
+      devices: const [_cameraDevice],
+      selectedDevice: _cameraDevice,
+    );
 
     await tester.pumpWidget(
       MaterialApp(
         home: CameraCaptureView(
-          loadCameras: () async {
-            loadCalls++;
-            if (loadCalls == 1) {
-              throw CameraException('NotAllowedError', 'Permission denied');
+          createSession: () {
+            createCalls++;
+            if (createCalls == 1) {
+              return _FakeCameraCaptureSession(
+                onInitialize: (deviceId) async =>
+                    throw const CameraCaptureException(
+                  'NotAllowedError',
+                  'Permission denied',
+                ),
+              );
             }
-            return const [_cameraDescription];
+            return successfulSession;
           },
-          createSession: (description) => session,
         ),
       ),
     );
@@ -87,7 +84,7 @@ void main() {
     await tester.tap(find.byKey(const Key('web-camera-retry-button')));
     await tester.pumpAndSettle();
 
-    expect(loadCalls, 2);
+    expect(createCalls, 2);
     expect(find.byKey(const Key('fake-live-preview')), findsOneWidget);
   });
 
@@ -96,8 +93,13 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: CameraCaptureView(
-          loadCameras: () async => const [],
-          createSession: (description) => _FakeCameraCaptureSession(),
+          createSession: () => _FakeCameraCaptureSession(
+            onInitialize: (deviceId) async =>
+                throw const CameraCaptureException(
+              'NotFoundError',
+              'No camera found',
+            ),
+          ),
         ),
       ),
     );
@@ -111,16 +113,18 @@ void main() {
     expect(find.text('Đóng để chọn từ thư viện'), findsOneWidget);
   });
 
-  testWidgets('lỗi kỹ thuật hiển thị mã và mô tả CameraException thật',
+  testWidgets('lỗi kỹ thuật hiển thị mã và mô tả lỗi browser thật',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: CameraCaptureView(
-          loadCameras: () async => throw CameraException(
-            'OverconstrainedError',
-            'Requested resolution is not supported',
+          createSession: () => _FakeCameraCaptureSession(
+            onInitialize: (deviceId) async =>
+                throw const CameraCaptureException(
+              'OverconstrainedError',
+              'Requested resolution is not supported',
+            ),
           ),
-          createSession: (description) => _FakeCameraCaptureSession(),
         ),
       ),
     );
@@ -138,16 +142,13 @@ void main() {
       (tester) async {
     final initialization = Completer<void>();
     final session = _FakeCameraCaptureSession(
-      onInitialize: () => initialization.future,
+      onInitialize: (deviceId) => initialization.future,
     );
 
     await tester.pumpWidget(
       MaterialApp(
         home: _CameraTestHost(
-          cameraView: CameraCaptureView(
-            loadCameras: () async => const [_cameraDescription],
-            createSession: (description) => session,
-          ),
+          cameraView: CameraCaptureView(createSession: () => session),
         ),
       ),
     );
@@ -164,11 +165,10 @@ void main() {
     expect(session.disposeCalls, 1);
   });
 
-  testWidgets('log camera, bỏ qua IR và cho phép chọn camera khác',
-      (tester) async {
+  testWidgets('log thiết bị và cho phép đổi camera', (tester) async {
     final debugMessages = <String>[];
     final originalDebugPrint = debugPrint;
-    final sessions = <CameraDescription, _FakeCameraCaptureSession>{};
+    final sessions = <_FakeCameraCaptureSession>[];
     debugPrint = (message, {wrapWidth}) {
       if (message != null) debugMessages.add(message);
     };
@@ -177,14 +177,14 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: CameraCaptureView(
-            loadCameras: () async => const [
-              _infraredCameraDescription,
-              _rgbCameraDescription,
-            ],
-            createSession: (description) => sessions.putIfAbsent(
-              description,
-              _FakeCameraCaptureSession.new,
-            ),
+            createSession: () {
+              final session = _FakeCameraCaptureSession(
+                devices: const [_infraredCameraDevice, _cameraDevice],
+                selectedDevice: _cameraDevice,
+              );
+              sessions.add(session);
+              return session;
+            },
           ),
         ),
       );
@@ -200,8 +200,6 @@ void main() {
         'Available camera [1]: Integrated RGB Camera',
       ]),
     );
-    expect(sessions[_infraredCameraDescription], isNull);
-    expect(sessions[_rgbCameraDescription]?.initializeCalls, 1);
     expect(find.byKey(const Key('camera-device-dropdown')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('camera-device-dropdown')));
@@ -209,36 +207,10 @@ void main() {
     await tester.tap(find.text('Integrated IR Camera').last);
     await tester.pumpAndSettle();
 
-    expect(sessions[_rgbCameraDescription]?.disposeCalls, 1);
-    expect(sessions[_infraredCameraDescription]?.initializeCalls, 1);
-  });
-
-  testWidgets('fallback camera cuối khi mọi tên đều giống camera IR',
-      (tester) async {
-    const windowsHelloCamera = CameraDescription(
-      name: 'Windows Hello Camera',
-      lensDirection: CameraLensDirection.front,
-      sensorOrientation: 0,
-    );
-    CameraDescription? initializedCamera;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CameraCaptureView(
-          loadCameras: () async => const [
-            _infraredCameraDescription,
-            windowsHelloCamera,
-          ],
-          createSession: (description) {
-            initializedCamera = description;
-            return _FakeCameraCaptureSession();
-          },
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(initializedCamera, windowsHelloCamera);
+    expect(sessions, hasLength(2));
+    expect(sessions.first.disposeCalls, 1);
+    expect(sessions.last.requestedDeviceId, _infraredCameraDevice.deviceId);
+    expect(sessions.last.initializeCalls, 1);
   });
 }
 
@@ -282,9 +254,17 @@ class _CameraTestHostState extends State<_CameraTestHost> {
 }
 
 class _FakeCameraCaptureSession implements CameraCaptureSession {
-  _FakeCameraCaptureSession({this.onInitialize});
+  _FakeCameraCaptureSession({
+    this.onInitialize,
+    this.devices = const [],
+    WebCameraDevice? selectedDevice,
+  }) : _selectedDevice = selectedDevice;
 
-  final Future<void> Function()? onInitialize;
+  final Future<void> Function(String? deviceId)? onInitialize;
+  @override
+  final List<WebCameraDevice> devices;
+  WebCameraDevice? _selectedDevice;
+  String? requestedDeviceId;
   int initializeCalls = 0;
   int takePictureCalls = 0;
   int disposeCalls = 0;
@@ -293,9 +273,22 @@ class _FakeCameraCaptureSession implements CameraCaptureSession {
   double get aspectRatio => 4 / 3;
 
   @override
-  Future<void> initialize() async {
+  WebCameraDevice? get selectedDevice => _selectedDevice;
+
+  @override
+  Future<void> initialize({String? deviceId}) async {
     initializeCalls++;
-    await onInitialize?.call();
+    requestedDeviceId = deviceId;
+    await onInitialize?.call(deviceId);
+    if (deviceId != null) {
+      _selectedDevice = null;
+      for (final device in devices) {
+        if (device.deviceId == deviceId) {
+          _selectedDevice = device;
+          break;
+        }
+      }
+    }
   }
 
   @override
