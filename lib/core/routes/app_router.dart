@@ -63,47 +63,90 @@ class AppRouter {
       return null;
     },
     routes: [
-      GoRoute(path: '/auth', builder: (context, state) => const AuthScreen()),
+      GoRoute(
+        path: '/auth',
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const AuthScreen(),
+        ),
+      ),
       GoRoute(
         path: '/onboarding',
-        builder: (context, state) => const OnboardingWizardScreen(),
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const OnboardingWizardScreen(),
+        ),
       ),
-      GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
+      GoRoute(
+        path: '/home',
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const HomeScreen(),
+        ),
+      ),
       GoRoute(
         path: '/storage',
-        builder: (context, state) => const StorageAlbumScreen(),
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const StorageAlbumScreen(),
+        ),
       ),
       GoRoute(
         path: '/scan',
-        builder: (context, state) => const PhotoScanBottomSheet(),
+        pageBuilder: (context, state) => CustomTransitionPage<void>(
+          key: state.pageKey,
+          opaque: false,
+          barrierColor: const Color(0x66000000), // ~40% instant dark dimming backdrop
+          barrierDismissible: true,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) => child,
+          child: const PhotoScanBottomSheet(),
+        ),
       ),
       GoRoute(
         path: '/scan-overlay',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final record = state.extra;
           if (record is! ScanResultRecord) {
-            return const Scaffold(
-              body: Center(child: Text('Không tìm thấy kết quả quét.')),
+            return NoTransitionPage(
+              key: state.pageKey,
+              child: const Scaffold(
+                body: Center(child: Text('Không tìm thấy kết quả quét.')),
+              ),
             );
           }
-          return ScanResultOverlayScreen(record: record);
+          return NoTransitionPage(
+            key: state.pageKey,
+            child: ScanResultOverlayScreen(record: record),
+          );
         },
       ),
       GoRoute(
         path: '/solo-arena',
-        builder: (context, state) => const SoloLobbyScreen(),
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const SoloLobbyScreen(),
+        ),
       ),
       GoRoute(
         path: '/pet-shop',
-        builder: (context, state) => const PetShopScreen(),
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const PetShopScreen(),
+        ),
       ),
       GoRoute(
         path: '/friends',
-        builder: (context, state) => const FriendsLeaderboardScreen(),
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const FriendsLeaderboardScreen(),
+        ),
       ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const SettingsScreen(),
+        ),
       ),
     ],
   );
