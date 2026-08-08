@@ -88,9 +88,9 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
         if (widget.showText) ...[
           const SizedBox(height: 12),
           // Title
-          Row(
+          const Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
+            children: [
               Flexible(
                 child: Text(
                   'Capy Vocab',

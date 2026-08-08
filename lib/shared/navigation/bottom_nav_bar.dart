@@ -3,13 +3,19 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_colors.dart';
 
+/// Map từ route path → chỉ số tab tương ứng
+const _tabRoutes = ['/home', '/storage', '/pet-shop', '/friends'];
+
 /// Thanh điều hướng chính với nút quét ảnh nổi ở giữa.
+/// Active tab được xác định từ current location của GoRouter.
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final location = GoRouterState.of(context).matchedLocation;
+    // Determine active tab index; default to 0 (home) for unknown routes.
+    final activeIndex = _tabRoutes.indexOf(location).clamp(0, 3);
 
     return SafeArea(
       top: false,
@@ -24,34 +30,42 @@ class BottomNavBar extends StatelessWidget {
               left: 0,
               child: Material(
                 elevation: 8,
-                color: colorScheme.surface,
-                child: const SizedBox(
+                color: Theme.of(context).colorScheme.surface,
+                child: SizedBox(
                   height: 64,
                   child: Row(
                     children: [
                       Expanded(
-                        child: _NavigationItem(
+                        child: _NavItem(
                           icon: Icons.home_rounded,
                           label: 'Trang chủ',
+                          isActive: activeIndex == 0,
+                          onTap: () => context.go('/home'),
                         ),
                       ),
                       Expanded(
-                        child: _NavigationItem(
+                        child: _NavItem(
                           icon: Icons.photo_library_rounded,
                           label: 'Thư viện',
+                          isActive: activeIndex == 1,
+                          onTap: () => context.go('/storage'),
                         ),
                       ),
-                      SizedBox(width: 80),
+                      const SizedBox(width: 80),
                       Expanded(
-                        child: _NavigationItem(
+                        child: _NavItem(
                           icon: Icons.storefront_rounded,
                           label: 'Cửa hàng',
+                          isActive: activeIndex == 2,
+                          onTap: () => context.go('/pet-shop'),
                         ),
                       ),
                       Expanded(
-                        child: _NavigationItem(
+                        child: _NavItem(
                           icon: Icons.people_alt_rounded,
                           label: 'Bạn bè',
+                          isActive: activeIndex == 3,
+                          onTap: () => context.go('/friends'),
                         ),
                       ),
                     ],
@@ -79,25 +93,46 @@ class BottomNavBar extends StatelessWidget {
   }
 }
 
-class _NavigationItem extends StatelessWidget {
-  const _NavigationItem({required this.icon, required this.label});
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
+  final bool isActive;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    const activeColor = AppColors.duoBlue;
+    final inactiveColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    final color = isActive ? activeColor : inactiveColor;
 
-    return Semantics(
-      button: true,
-      enabled: false,
-      label: label,
-      child: ExcludeSemantics(
+    return InkWell(
+      onTap: onTap,
+      splashColor: AppColors.duoBlue.withValues(alpha: 0.1),
+      child: Semantics(
+        button: true,
+        label: label,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 24),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding:
+                  isActive ? const EdgeInsets.symmetric(horizontal: 12, vertical: 4) : EdgeInsets.zero,
+              decoration: isActive
+                  ? BoxDecoration(
+                      color: AppColors.duoBlue.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    )
+                  : null,
+              child: Icon(icon, color: color, size: 24),
+            ),
             const SizedBox(height: 2),
             Text(
               label,
@@ -105,7 +140,7 @@ class _NavigationItem extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: color,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
                   ),
             ),
           ],

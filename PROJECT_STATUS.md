@@ -1,6 +1,6 @@
 # Capy Vocab — Project Status & AI Handoff
 
-> Last audited: 2026-07-30
+> Last audited: 2026-08-08
 > Source of truth for current implementation status, integration boundaries, and next work.
 > Do not copy secrets, production URLs, access tokens, or service-role keys into this file.
 
@@ -12,18 +12,18 @@ project:
   current_milestone: "Phase 2 — First usable learning loop"
   phase_1_code_status: "implemented"
   phase_1_acceptance_status: "pending production manual test and security audit"
-  product_status: "authentication and onboarding implemented; core learning features are not implemented"
+  product_status: "authentication, onboarding, photo scan bottom sheet, and tab navigation routing implemented"
   release_ready: false
 backend:
   provider: Supabase
   production_connection: "reachable from the configured Flutter environment"
   public_tables_detected: 15
 frontend:
-  working_user_flow: "startup -> health check -> email/password auth -> five-step onboarding -> guarded /home"
+  working_user_flow: "startup -> health check -> email/password auth -> five-step onboarding -> guarded /home -> bottom tab routing & photo scan"
   first_blocking_placeholder: "/home"
 tests:
-  automated: "8 Flutter tests: startup, auth registration, onboarding state and wizard"
-  last_result: "8/8 passing on 2026-07-30"
+  automated: "56 Flutter unit & widget tests"
+  last_result: "56/56 passing on 2026-08-08"
 ```
 
 ## 1. Executive summary
@@ -49,12 +49,39 @@ The application can currently:
     complete.
 
 After authentication, incomplete profiles enter onboarding and completed
-profiles open `/home`. `HomeScreen` is still a placeholder. Learning,
+profiles open `/home`. Learning,
 scanning, games, arena, shop, friends, chat, notifications, and settings are
-not yet complete user flows.
+in progress.
 
-**Practical description:** the app now has a working front door and profile
-setup flow, but the learning experience behind `/home` has not been built.
+### Update log — 2026-08-08
+
+The following work was completed or added to the repository today:
+
+1. **Photo Scan Bottom Sheet & Control Layout**
+   - Translucent sheet backdrop (`barrierColor: 0x66000000`) over live `HomeScreen`.
+   - Single-row horizontal note template cards with green selection border (`#7CB342`).
+   - Removed vertical scrollbar and expanded sheet container height to fit control layout perfectly.
+   - Simplified image preview widget by removing text, leaving clean zoom icon.
+
+2. **Notebook Capybara Vocab Canvas Overlay**
+   - Redesigned `VocabCanvasOverlay` and `VocabOverlayPainter` using a warm notebook aesthetic.
+   - Hand-drawn wobbly brown sketch outlines (`#B07748`) around detected objects.
+   - Curved hand-drawn arrows with 3-stroke arrowheads pointing from note cards to object centers.
+   - Rounded note cards (`#FDF6EC`) containing 2-digit index badge (`01`, `02`), English word, IPA, Vietnamese meaning, drop shadow, and orange doodle accents (`✦ ♡ ✶ ☁ ★`).
+
+3. **Bottom Navigation Tab Routing**
+   - Wired `BottomNavBar` tabs to GoRouter locations: `/home`, `/storage`, `/pet-shop`, `/friends`.
+   - Created styled coming-soon screens for `StorageAlbumScreen`, `PetShopScreen`, and `FriendsLeaderboardScreen`.
+   - Updated navigation tests to verify all 4 tabs switch locations properly.
+
+4. **Global Instant Page Transitions (No Animations)**
+   - Wrapped all `GoRoute`s in `AppRouter` with `NoTransitionPage`.
+   - Configured `_NoTransitionsBuilder` in `AppTheme` for both light and dark themes to disable transitions globally.
+   - Made `/scan` bottom sheet open instantly without slide transition.
+
+5. **Automated Verification**
+   - `flutter analyze`: 0 issues found.
+   - `flutter test`: 56/56 passing tests.
 
 ### Update log — 2026-07-30
 

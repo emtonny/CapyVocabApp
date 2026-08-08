@@ -193,11 +193,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     ),
                   ],
                 ),
-                child: Column(
+                child: const Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
+                      children: [
                         Text(
                           'CapyVocab',
                           style: TextStyle(
@@ -215,8 +215,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
+                    SizedBox(height: 4),
+                    Text(
                       'Học từ vựng Tiếng Anh mỗi ngày cùng chú Chuột lang Capybara siêu đáng yêu!',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -478,8 +478,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          children: const [
+        const Row(
+          children: [
             Expanded(
               child: Divider(
                 color: Color(0xFFE2D6C5),

@@ -87,7 +87,7 @@ void main() {
     vision.complete(result);
     await tester.pumpAndSettle();
 
-    expect(find.text('Overlay: memory://scan.jpg'), findsOneWidget);
+    expect(find.byKey(const Key('zoom-image-button')), findsOneWidget);
   });
 
   testWidgets('nút Chụp ảnh dùng camera source', (tester) async {
@@ -169,7 +169,7 @@ void main() {
 
     expect(picker.lastSource, isNull);
     expect(storage.savedBytes, same(compressedBytes));
-    expect(find.text('Overlay: memory://scan.jpg'), findsOneWidget);
+    expect(find.byKey(const Key('zoom-image-button')), findsOneWidget);
   });
 
   testWidgets('lỗi nén hiển thị dialog và không gọi scan', (tester) async {

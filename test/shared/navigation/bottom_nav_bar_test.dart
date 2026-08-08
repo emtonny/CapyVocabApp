@@ -19,12 +19,24 @@ void main() {
   testWidgets('chỉ Camera mở Scan và Back quay lại Home', (tester) async {
     await tester.pumpWidget(_testApp());
 
-    for (final label in ['Trang chủ', 'Thư viện', 'Cửa hàng', 'Bạn bè']) {
-      await tester.tap(find.text(label));
-      await tester.pumpAndSettle();
-      expect(find.text('HomeScreen'), findsOneWidget);
-      expect(find.text('ScanScreen'), findsNothing);
-    }
+    // Tapping other tabs navigates to their respective screens, not HomeScreen
+    await tester.tap(find.text('Thư viện'));
+    await tester.pumpAndSettle();
+    expect(find.text('StorageScreen'), findsOneWidget);
+
+    await tester.tap(find.text('Cửa hàng'));
+    await tester.pumpAndSettle();
+    expect(find.text('ShopScreen'), findsOneWidget);
+
+    await tester.tap(find.text('Bạn bè'));
+    await tester.pumpAndSettle();
+    expect(find.text('FriendsScreen'), findsOneWidget);
+
+    // Tap Home returns to HomeScreen
+    await tester.tap(find.text('Trang chủ'));
+    await tester.pumpAndSettle();
+    expect(find.text('HomeScreen'), findsOneWidget);
+    expect(find.text('ScanScreen'), findsNothing);
 
     await tester.tap(find.byKey(const Key('bottom-nav-camera-button')));
     await tester.pumpAndSettle();
@@ -44,6 +56,27 @@ Widget _testApp() {
     initialLocation: '/home',
     routes: [
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+      GoRoute(
+        path: '/storage',
+        builder: (_, __) => const Scaffold(
+          body: Center(child: Text('StorageScreen')),
+          bottomNavigationBar: BottomNavBar(),
+        ),
+      ),
+      GoRoute(
+        path: '/pet-shop',
+        builder: (_, __) => const Scaffold(
+          body: Center(child: Text('ShopScreen')),
+          bottomNavigationBar: BottomNavBar(),
+        ),
+      ),
+      GoRoute(
+        path: '/friends',
+        builder: (_, __) => const Scaffold(
+          body: Center(child: Text('FriendsScreen')),
+          bottomNavigationBar: BottomNavBar(),
+        ),
+      ),
       GoRoute(
         path: '/scan',
         builder: (_, __) => Scaffold(
