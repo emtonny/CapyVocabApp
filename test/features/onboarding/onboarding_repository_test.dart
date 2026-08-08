@@ -51,6 +51,39 @@ void main() {
     });
   }
 
+  test('gửi đủ giờ bắt đầu và kết thúc cho complete_onboarding', () async {
+    final harness = await _RepositoryHarness.create();
+    addTearDown(harness.close);
+
+    final resultFuture = harness.repository.completeOnboarding(
+      const OnboardingData(
+        displayName: ' Capy Mây ',
+        username: 'Capy_May',
+        age: 20,
+        phone: ' 0987654321 ',
+        accountRole: 'personal',
+        reminderTime: '20:00',
+        studyEndTime: '21:00',
+        dailyTargetWords: 10,
+      ),
+    );
+    final request = await harness.server.first;
+    final body = jsonDecode(await utf8.decoder.bind(request).join())
+        as Map<String, dynamic>;
+
+    expect(request.uri.path, '/rest/v1/rpc/complete_onboarding');
+    expect(body['p_reminder_time'], '20:00');
+    expect(body['p_study_end_time'], '21:00');
+
+    request.response
+      ..statusCode = HttpStatus.ok
+      ..headers.contentType = ContentType.json
+      ..write('true');
+    await request.response.close();
+
+    await resultFuture;
+  });
+
   for (final testCase in <({
     String constraintName,
     OnboardingConflictField expectedField,
@@ -84,6 +117,7 @@ void main() {
           phone: '0987654321',
           accountRole: 'personal',
           reminderTime: '20:00',
+          studyEndTime: '21:00',
           dailyTargetWords: 10,
         ),
       );

@@ -43,6 +43,15 @@ GoogleService-Info.plist
 build/
 ephemeral/
 
+# Generated platform configuration (machine-specific or recreated by Flutter)
+android/local.properties
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Runner/GeneratedPluginRegistrant.h
+ios/Runner/GeneratedPluginRegistrant.m
+macos/Flutter/GeneratedPluginRegistrant.swift
+
 # Symbol files
 *.symbols
 *.niko

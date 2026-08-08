@@ -9,6 +9,18 @@ const _usernamePattern = r'^[a-zA-Z0-9_]{3,20}$';
 const _phonePattern = r'^0[0-9]{9}$';
 const _timePattern = r'^(?:[01][0-9]|2[0-3]):[0-5][0-9]$';
 
+int studyDurationMinutes(String startTime, String endTime) {
+  final startMinutes = _minutesSinceMidnight(startTime);
+  final endMinutes = _minutesSinceMidnight(endTime);
+  final difference = endMinutes - startMinutes;
+  return difference >= 0 ? difference : difference + 24 * 60;
+}
+
+int _minutesSinceMidnight(String value) {
+  final parts = value.split(':');
+  return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+}
+
 final onboardingRepositoryProvider = Provider<OnboardingRepository>(
   (ref) => SupabaseOnboardingRepository(),
 );
@@ -148,7 +160,26 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void updateReminderTime(String value) {
     state = state.copyWith(
       data: state.data.copyWith(reminderTime: value),
-      fieldErrors: _withoutErrors('reminderTime'),
+      fieldErrors: _withoutStudyTimeErrors(),
+      saveError: null,
+    );
+  }
+
+  void updateStudyEndTime(String value) {
+    state = state.copyWith(
+      data: state.data.copyWith(studyEndTime: value),
+      fieldErrors: _withoutStudyTimeErrors(),
+      saveError: null,
+    );
+  }
+
+  void updateStudyTimeRange({required String start, required String end}) {
+    state = state.copyWith(
+      data: state.data.copyWith(
+        reminderTime: start,
+        studyEndTime: end,
+      ),
+      fieldErrors: _withoutStudyTimeErrors(),
       saveError: null,
     );
   }
@@ -403,14 +434,21 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
   bool _validateStudyTimeStep() {
     final reminderTime = state.data.reminderTime;
-    final isValid =
-        reminderTime != null && RegExp(_timePattern).hasMatch(reminderTime);
-    state = state.copyWith(
-      fieldErrors: isValid
-          ? const {}
-          : const {'reminderTime': 'Vui lòng chọn giờ học hợp lệ.'},
-    );
-    return isValid;
+    final studyEndTime = state.data.studyEndTime;
+    final errors = <String, String>{};
+
+    if (!_isValidTime(reminderTime)) {
+      errors['reminderTime'] = 'Vui lòng chọn giờ bắt đầu hợp lệ.';
+    }
+    if (!_isValidTime(studyEndTime)) {
+      errors['studyEndTime'] = 'Vui lòng chọn giờ kết thúc hợp lệ.';
+    } else if (_isValidTime(reminderTime) &&
+        studyDurationMinutes(reminderTime!, studyEndTime!) == 0) {
+      errors['studyEndTime'] = 'Giờ kết thúc không được trùng giờ bắt đầu.';
+    }
+
+    state = state.copyWith(fieldErrors: errors);
+    return errors.isEmpty;
   }
 
   bool _validateDailyTargetStep() {
@@ -424,6 +462,18 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
             },
     );
     return isValid;
+  }
+
+  bool _isValidTime(String? value) {
+    return value != null && RegExp(_timePattern).hasMatch(value);
+  }
+
+  Map<String, String> _withoutStudyTimeErrors() {
+    final errors = Map<String, String>.from(state.fieldErrors);
+    errors
+      ..remove('reminderTime')
+      ..remove('studyEndTime');
+    return errors;
   }
 
   Map<String, String> _withoutErrors(String key) {
