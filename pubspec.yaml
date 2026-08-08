@@ -18,6 +18,8 @@ dependencies:
 
   # Nén ảnh JPEG trước khi gửi Gemini (resize tối đa 1024×1024, < 300 KB)
   flutter_image_compress: ^2.3.0
+  image_picker: ^1.1.0
+  path_provider: ^2.1.0
 
   # SQLite cục bộ — cache kết quả AI Scan (local_path + vocab_json, không liên quan Supabase)
   sqflite: ^2.3.3
@@ -45,6 +47,7 @@ dependencies:
 
   # Video player cho animation CapyLogin
   video_player: ^2.8.6
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:

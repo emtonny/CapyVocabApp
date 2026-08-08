@@ -1,135 +1,81 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Service tương tác với Gemini 1.5 Flash API để phân tích ảnh (AI Scan).
-///
-/// Luồng chuẩn:
-///   1. Nhận File ảnh gốc từ Camera / Gallery
-///   2. Nén về JPEG tối đa 1024×1024 px, dung lượng < 300 KB
-///   3. Mã hóa Base64 → gửi POST lên Gemini endpoint
-///   4. Parse JSON response chứa danh sách từ vựng + tọa độ tương đối (x, y, w, h)
-///
-/// Xử lý lỗi:
-///   - Timeout 12 giây → ném [GeminiTimeoutException]
-///   - HTTP 429 (hết quota) → ném [GeminiQuotaException]
-///   - HTTP khác 200 → ném [GeminiApiException]
-class GeminiVisionService {
+import 'supabase_service.dart';
+
+typedef AccessTokenProvider = String? Function();
+typedef SupabaseRestUrlProvider = String Function();
+
+abstract interface class VisionScanClient {
+  Future<GeminiVisionResult> analyzeImageBytes(Uint8List compressedImageBytes);
+}
+
+/// Sends an already-compressed local image to the authenticated Vision Edge
+/// Function and converts its 0-1000 boxes into normalized coordinates.
+class GeminiVisionService implements VisionScanClient {
+  GeminiVisionService({
+    http.Client? httpClient,
+    AccessTokenProvider? accessTokenProvider,
+    SupabaseRestUrlProvider? supabaseRestUrlProvider,
+    Uri? endpoint,
+  })  : _httpClient = httpClient ?? http.Client(),
+        _endpointOverride = endpoint,
+        _supabaseRestUrlProvider = supabaseRestUrlProvider ??
+            (() => Supabase.instance.client.rest.url),
+        _accessTokenProvider = accessTokenProvider ??
+            (() => SupabaseService.auth.currentSession?.accessToken);
+
+  static const Duration requestTimeout = Duration(seconds: 30);
+
   final http.Client _httpClient;
+  final Uri? _endpointOverride;
+  final SupabaseRestUrlProvider _supabaseRestUrlProvider;
+  final AccessTokenProvider _accessTokenProvider;
 
-  /// Endpoint Gemini 1.5 Flash (generateContent)
-  static const String _geminiBaseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+  Uri get _endpoint =>
+      _endpointOverride ??
+      Uri.parse('${_supabaseRestUrlProvider()}/').resolve(
+        '../../functions/v1/gemini-vision-scan',
+      );
 
-  /// Timeout mỗi request API
-  static const Duration _requestTimeout = Duration(seconds: 12);
-
-  /// Ngưỡng dung lượng ảnh tối đa gửi Gemini (300 KB)
-  static const int _maxImageBytes = 300 * 1024;
-
-  GeminiVisionService({http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client();
-
-  // ── Public API ────────────────────────────────────────────────────────────
-
-  /// Phân tích [imageFile]: nén ảnh → gửi Gemini → trả về JSON kết quả.
-  ///
-  /// Throws:
-  ///   [GeminiTimeoutException] — nếu request vượt quá 12 giây
-  ///   [GeminiQuotaException]   — nếu server trả HTTP 429
-  ///   [GeminiApiException]     — nếu server trả mã lỗi khác
-  Future<GeminiVisionResult> analyzeImage(File imageFile) async {
-    final Uint8List compressed = await _compressImage(imageFile);
-    final String base64Image = base64Encode(compressed);
-    return _callGeminiApi(base64Image);
+  @override
+  Future<GeminiVisionResult> analyzeImageBytes(
+    Uint8List compressedImageBytes,
+  ) {
+    return analyzeBase64Image(base64Encode(compressedImageBytes));
   }
 
-  // ── Private helpers ───────────────────────────────────────────────────────
-
-  /// Nén ảnh về JPEG tối đa 1024×1024 px, dung lượng < 300 KB.
-  Future<Uint8List> _compressImage(File imageFile) async {
-    Uint8List? compressed = await FlutterImageCompress.compressWithFile(
-      imageFile.absolute.path,
-      minWidth: 512,
-      minHeight: 512,
-      quality: 85,
-      format: CompressFormat.jpeg,
-    );
-
-    // Nếu vẫn > 300 KB, giảm quality xuống 60
-    if (compressed != null && compressed.length > _maxImageBytes) {
-      compressed = await FlutterImageCompress.compressWithList(
-        compressed,
-        quality: 60,
-        format: CompressFormat.jpeg,
+  Future<GeminiVisionResult> analyzeBase64Image(String imageBase64) async {
+    final accessToken = _accessTokenProvider()?.trim();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw const GeminiAuthenticationException(
+        'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.',
       );
     }
 
-    return compressed ?? await imageFile.readAsBytes();
-  }
-
-  /// Gọi Gemini 1.5 Flash API với ảnh Base64 đã nén.
-  Future<GeminiVisionResult> _callGeminiApi(String base64Image) async {
-    final String apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
-    final Uri url = Uri.parse('$_geminiBaseUrl?key=$apiKey');
-
-    final Map<String, dynamic> requestBody = {
-      'contents': [
-        {
-          'parts': [
-            {
-              'inlineData': {
-                'mimeType': 'image/jpeg',
-                'data': base64Image,
-              }
-            },
-            {
-              'text': '''Analyze the English vocabulary in this image.
-Return a JSON object with this exact structure (no markdown, raw JSON only):
-{
-  "detected_vocabulary": [
-    {
-      "word": "example",
-      "phonetic": "/ɪɡˈzæmpəl/",
-      "meaning": "ví dụ (tiếng Việt)",
-      "part_of_speech": "noun",
-      "bounding_box": { "x": 0.10, "y": 0.20, "w": 0.15, "h": 0.05 }
-    }
-  ],
-  "image_language": "en",
-  "confidence": 0.95
-}
-Coordinates x, y, w, h are relative to image size (0.0 to 1.0).
-If no English words found, return an empty detected_vocabulary array.'''
-            }
-          ]
-        }
-      ],
-      'generationConfig': {
-        'temperature': 0.1,
-        'responseMimeType': 'application/json',
-      }
-    };
-
-    http.Response response;
+    late final http.Response response;
     try {
       response = await _httpClient
           .post(
-            url,
-            headers: {'Content-Type': 'application/json; charset=utf-8'},
-            body: jsonEncode(requestBody),
+            _endpoint,
+            headers: {
+              'Authorization': 'Bearer $accessToken',
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: jsonEncode({'image_base64': imageBase64}),
           )
-          .timeout(_requestTimeout);
+          .timeout(requestTimeout);
     } on TimeoutException {
-      throw GeminiTimeoutException(
-        'Gemini không phản hồi sau ${_requestTimeout.inSeconds} giây. '
-        'Kiểm tra kết nối mạng và thử lại.',
+      throw const GeminiTimeoutException('Quá thời gian chờ, thử lại');
+    } on http.ClientException catch (error) {
+      throw GeminiApiException(
+        0,
+        'Đã có lỗi, thử lại',
+        error.toString(),
       );
     }
 
@@ -137,159 +83,299 @@ If no English words found, return an empty detected_vocabulary array.'''
   }
 
   GeminiVisionResult _parseResponse(http.Response response) {
-    switch (response.statusCode) {
-      case 200:
-        try {
-          final body = jsonDecode(response.body) as Map<String, dynamic>;
-          // Gemini trả về trong candidates[0].content.parts[0].text
-          final candidates = body['candidates'] as List<dynamic>?;
-          if (candidates == null || candidates.isEmpty) {
-            return GeminiVisionResult.empty();
-          }
-          final text = (candidates.first as Map<String, dynamic>)['content']
-              ['parts'][0]['text'] as String;
-          final parsed = jsonDecode(text) as Map<String, dynamic>;
-          return GeminiVisionResult.fromJson(parsed);
-        } catch (e) {
-          debugPrint('GeminiVisionService: parse error — $e');
-          return GeminiVisionResult.empty();
-        }
+    final decodedBody = _decodeResponseBody(response);
 
+    if (response.statusCode == 200) {
+      try {
+        return GeminiVisionResult.fromJson(decodedBody);
+      } on Object catch (error) {
+        throw GeminiInvalidResponseException(
+          'Không nhận diện được, thử ảnh khác',
+          response.body,
+          error,
+        );
+      }
+    }
+
+    final errorCode = _readErrorCode(decodedBody);
+    switch (response.statusCode) {
+      case 401:
+      case 403:
+        throw GeminiAuthenticationException(
+          'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.',
+          statusCode: response.statusCode,
+          errorCode: errorCode,
+        );
+      case 413:
+        throw GeminiImageTooLargeException(
+          'Ảnh quá lớn, vui lòng chọn ảnh khác',
+          errorCode: errorCode,
+        );
+      case 422:
+        throw GeminiRecognitionException(
+          'Không nhận diện được, thử ảnh khác',
+          errorCode: errorCode,
+        );
       case 429:
         throw GeminiQuotaException(
-          'Hệ thống AI đang bận. Nâng cấp PRO để quét không giới hạn.',
+          'Hệ thống đang bận, thử lại sau',
+          errorCode: errorCode,
         );
-
-      case 400:
-        throw GeminiApiException(
-          400,
-          'Ảnh không hợp lệ, hãy chụp lại.',
-          response.body,
+      case 504:
+        throw GeminiTimeoutException(
+          'Quá thời gian chờ, thử lại',
+          errorCode: errorCode,
         );
-
       case 500:
-      case 503:
+      case 502:
         throw GeminiApiException(
           response.statusCode,
-          'Dịch vụ AI tạm thời gián đoạn, thử lại sau.',
+          'Đã có lỗi, thử lại',
           response.body,
+          errorCode: errorCode,
         );
-
       default:
         throw GeminiApiException(
           response.statusCode,
-          'Gemini 1.5 Flash API Error [${response.statusCode}]',
+          'Đã có lỗi, thử lại',
           response.body,
+          errorCode: errorCode,
         );
     }
   }
+
+  Map<String, dynamic> _decodeResponseBody(http.Response response) {
+    try {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      return decoded is Map<String, dynamic> ? decoded : const {};
+    } on FormatException {
+      return const {};
+    }
+  }
+
+  String? _readErrorCode(Map<String, dynamic> body) {
+    final error = body['error'];
+    if (error is String) return error;
+    if (error is Map<String, dynamic>) {
+      return error['code']?.toString();
+    }
+    return null;
+  }
 }
 
-// ── Result model ──────────────────────────────────────────────────────────────
-
-/// Kết quả từ Gemini Vision API.
 class GeminiVisionResult {
-  final List<VocabDetection> detectedVocabulary;
-  final String imageLanguage;
-  final double confidence;
-
   const GeminiVisionResult({
     required this.detectedVocabulary,
-    required this.imageLanguage,
-    required this.confidence,
+    this.imageLanguage = 'en',
+    this.confidence = 0.0,
   });
 
   factory GeminiVisionResult.empty() => const GeminiVisionResult(
         detectedVocabulary: [],
         imageLanguage: 'unknown',
-        confidence: 0.0,
       );
 
   factory GeminiVisionResult.fromJson(Map<String, dynamic> json) {
-    final rawList =
-        (json['detected_vocabulary'] as List<dynamic>?) ?? [];
+    final rawWords = json['words'];
+    if (rawWords is! List<dynamic>) {
+      throw const FormatException('Response field "words" must be a list.');
+    }
+
     return GeminiVisionResult(
-      detectedVocabulary: rawList
-          .map((e) => VocabDetection.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      imageLanguage: json['image_language']?.toString() ?? 'en',
-      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      detectedVocabulary: rawWords.map((rawWord) {
+        if (rawWord is! Map<String, dynamic>) {
+          throw const FormatException('Each word must be a JSON object.');
+        }
+        return VocabDetection.fromJson(rawWord);
+      }).toList(growable: false),
     );
   }
+
+  final List<VocabDetection> detectedVocabulary;
+  final String imageLanguage;
+  final double confidence;
+
+  List<VocabDetection> get words => detectedVocabulary;
+
+  Map<String, dynamic> toJson() => {
+        'words': detectedVocabulary.map((word) => word.toJson()).toList(),
+      };
 }
 
-/// Một từ vựng nhận diện được kèm tọa độ tương đối trên ảnh.
 class VocabDetection {
+  const VocabDetection({
+    required this.word,
+    required this.phonetic,
+    required this.meaning,
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+    this.partOfSpeech = '',
+  });
+
+  factory VocabDetection.fromJson(Map<String, dynamic> json) {
+    final rawBox = json['box'];
+    if (rawBox is! Map<String, dynamic>) {
+      throw const FormatException('Word field "box" must be an object.');
+    }
+
+    final word = json['word'];
+    final phonetic = json['phonetic'];
+    final meaning = json['meaning_vi'];
+    if (word is! String || phonetic is! String || meaning is! String) {
+      throw const FormatException(
+        'word, phonetic, and meaning_vi must be strings.',
+      );
+    }
+
+    final x = _readCoordinate(rawBox, 'x');
+    final y = _readCoordinate(rawBox, 'y');
+    final width = _readCoordinate(rawBox, 'w');
+    final height = _readCoordinate(rawBox, 'h');
+    if (x + width > 1000 || y + height > 1000) {
+      throw const FormatException(
+        'Word box must stay within the 0-1000 image bounds.',
+      );
+    }
+
+    return VocabDetection(
+      word: word,
+      phonetic: phonetic,
+      meaning: meaning,
+      x: x / 1000.0,
+      y: y / 1000.0,
+      w: width / 1000.0,
+      h: height / 1000.0,
+    );
+  }
+
   final String word;
   final String phonetic;
   final String meaning;
   final String partOfSpeech;
-
-  /// Tọa độ tương đối (0.0–1.0) so với kích thước ảnh gốc
   final double x;
   final double y;
   final double w;
   final double h;
 
-  const VocabDetection({
-    required this.word,
-    required this.phonetic,
-    required this.meaning,
-    required this.partOfSpeech,
-    required this.x,
-    required this.y,
-    required this.w,
-    required this.h,
-  });
-
-  factory VocabDetection.fromJson(Map<String, dynamic> json) {
-    final bbox =
-        (json['bounding_box'] as Map<String, dynamic>?) ?? {};
-    return VocabDetection(
-      word: json['word']?.toString() ?? '',
-      phonetic: json['phonetic']?.toString() ?? '',
-      meaning: json['meaning']?.toString() ?? '',
-      partOfSpeech: json['part_of_speech']?.toString() ?? '',
-      x: (bbox['x'] as num?)?.toDouble() ?? 0.0,
-      y: (bbox['y'] as num?)?.toDouble() ?? 0.0,
-      w: (bbox['w'] as num?)?.toDouble() ?? 0.0,
-      h: (bbox['h'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
+  String get meaningVi => meaning;
 
   Map<String, dynamic> toJson() => {
         'word': word,
         'phonetic': phonetic,
-        'meaning': meaning,
-        'part_of_speech': partOfSpeech,
-        'bounding_box': {'x': x, 'y': y, 'w': w, 'h': h},
+        'meaning_vi': meaning,
+        'box': {
+          'x': (x * 1000).round(),
+          'y': (y * 1000).round(),
+          'w': (w * 1000).round(),
+          'h': (h * 1000).round(),
+        },
       };
+
+  static int _readCoordinate(Map<String, dynamic> box, String key) {
+    final value = box[key];
+    if (value is! int || value < 0 || value > 1000) {
+      throw FormatException('box.$key must be an integer from 0 to 1000.');
+    }
+    return value;
+  }
 }
 
-// ── Exceptions ────────────────────────────────────────────────────────────────
+abstract interface class GeminiVisionException implements Exception {
+  String get message;
+}
 
-/// Gemini không phản hồi trong thời gian timeout.
-class GeminiTimeoutException implements Exception {
+class GeminiAuthenticationException implements GeminiVisionException {
+  const GeminiAuthenticationException(
+    this.message, {
+    this.statusCode,
+    this.errorCode,
+  });
+
+  @override
   final String message;
-  const GeminiTimeoutException(this.message);
+  final int? statusCode;
+  final String? errorCode;
+
+  @override
+  String toString() => 'GeminiAuthenticationException: $message';
+}
+
+class GeminiTimeoutException implements GeminiVisionException {
+  const GeminiTimeoutException(this.message, {this.errorCode});
+
+  @override
+  final String message;
+  final String? errorCode;
+
   @override
   String toString() => 'GeminiTimeoutException: $message';
 }
 
-/// Gemini trả về HTTP 429 — hết quota, cần nâng cấp PRO.
-class GeminiQuotaException implements Exception {
+class GeminiQuotaException implements GeminiVisionException {
+  const GeminiQuotaException(this.message, {this.errorCode});
+
+  @override
   final String message;
-  const GeminiQuotaException(this.message);
+  final String? errorCode;
+
   @override
   String toString() => 'GeminiQuotaException: $message';
 }
 
-/// Gemini trả về lỗi HTTP khác (400, 500, ...).
-class GeminiApiException implements Exception {
-  final int statusCode;
+class GeminiRecognitionException implements GeminiVisionException {
+  const GeminiRecognitionException(this.message, {this.errorCode});
+
+  @override
+  final String message;
+  final String? errorCode;
+
+  @override
+  String toString() => 'GeminiRecognitionException: $message';
+}
+
+class GeminiImageTooLargeException implements GeminiVisionException {
+  const GeminiImageTooLargeException(this.message, {this.errorCode});
+
+  @override
+  final String message;
+  final String? errorCode;
+
+  @override
+  String toString() => 'GeminiImageTooLargeException: $message';
+}
+
+class GeminiInvalidResponseException implements GeminiVisionException {
+  const GeminiInvalidResponseException(
+    this.message,
+    this.rawBody,
+    this.cause,
+  );
+
+  @override
   final String message;
   final String rawBody;
-  const GeminiApiException(this.statusCode, this.message, this.rawBody);
+  final Object cause;
+
+  @override
+  String toString() => 'GeminiInvalidResponseException: $message';
+}
+
+class GeminiApiException implements GeminiVisionException {
+  const GeminiApiException(
+    this.statusCode,
+    this.message,
+    this.rawBody, {
+    this.errorCode,
+  });
+
+  final int statusCode;
+  @override
+  final String message;
+  final String rawBody;
+  final String? errorCode;
+
   @override
   String toString() => 'GeminiApiException[$statusCode]: $message';
 }

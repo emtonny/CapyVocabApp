@@ -17,47 +17,44 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
       'icon': '🌅',
       'title': 'Sáng sớm',
       'range': '07:00 - 08:00',
-      'time': '07:30',
+      'start': '07:00',
+      'end': '08:00',
     },
     {
       'icon': '☀️',
       'title': 'Trưa nghỉ',
       'range': '12:00 - 13:00',
-      'time': '12:30',
+      'start': '12:00',
+      'end': '13:00',
     },
     {
       'icon': '🌆',
       'title': 'Chiều tối',
       'range': '17:30 - 18:30',
-      'time': '18:00',
+      'start': '17:30',
+      'end': '18:30',
     },
     {
       'icon': '🌙',
       'title': 'Buổi tối',
       'range': '20:00 - 21:00',
-      'time': '20:00',
+      'start': '20:00',
+      'end': '21:00',
     },
   ];
-
-  static const _presetTimes = {'07:30', '12:30', '18:00', '20:00'};
 
   String? _customRange;
 
   Future<void> _pickCustomTimeRange(
     BuildContext context,
     WidgetRef ref,
-    String currentTime,
+    String currentStartTime,
+    String currentEndTime,
   ) async {
-    int startHour = 9;
-    int startMinute = 0;
-    if (!_presetTimes.contains(currentTime) && currentTime.contains(':')) {
-      final parts = currentTime.split(':');
-      startHour = int.tryParse(parts[0]) ?? 9;
-      startMinute = int.tryParse(parts[1]) ?? 0;
-    }
-
-    final initialStart = TimeOfDay(hour: startHour, minute: startMinute);
-    final initialEnd = TimeOfDay(hour: (startHour + 1) % 24, minute: startMinute);
+    final initialStart =
+        _parseTime(currentStartTime, const TimeOfDay(hour: 20, minute: 0));
+    final initialEnd =
+        _parseTime(currentEndTime, const TimeOfDay(hour: 21, minute: 0));
 
     await showModalBottomSheet<void>(
       context: context,
@@ -68,30 +65,54 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
           initialStart: initialStart,
           initialEnd: initialEnd,
           onConfirm: (startTime, endTime) {
-            final startStr =
-                '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
-            final endStr =
-                '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}';
+            final start = _formatTime(startTime);
+            final end = _formatTime(endTime);
 
             setState(() {
-              _customRange = '$startStr - $endStr';
+              _customRange = '$start - $end';
             });
 
-            ref.read(onboardingProvider.notifier).updateReminderTime(startStr);
+            ref
+                .read(onboardingProvider.notifier)
+                .updateStudyTimeRange(start: start, end: end);
           },
         );
       },
     );
   }
 
+  TimeOfDay _parseTime(String value, TimeOfDay fallback) {
+    final parts = value.split(':');
+    if (parts.length != 2) return fallback;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null || hour > 23 || minute > 59) {
+      return fallback;
+    }
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  String _formatTime(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(onboardingProvider);
     final notifier = ref.read(onboardingProvider.notifier);
-    final currentTime = state.data.reminderTime ?? '20:00';
-    final isCustomSelected = !_presetTimes.contains(currentTime);
+    final currentStartTime = state.data.reminderTime ?? '20:00';
+    final currentEndTime = state.data.studyEndTime ?? '21:00';
+    final matchingPreset = _presetSlots.any(
+      (slot) =>
+          slot['start'] == currentStartTime && slot['end'] == currentEndTime,
+    );
+    final isCustomSelected = _customRange != null || !matchingPreset;
     final customDisplayRange = _customRange ??
-        (isCustomSelected ? '$currentTime (Tùy chỉnh)' : 'Tự chọn giờ');
+        (isCustomSelected
+            ? '$currentStartTime - $currentEndTime'
+            : 'Tự chọn khung giờ');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,7 +123,11 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
         ),
         SizedBox(
           height: 0,
-          child: Text(currentTime, style: const TextStyle(fontSize: 0)),
+          child: Text(currentStartTime, style: const TextStyle(fontSize: 0)),
+        ),
+        SizedBox(
+          height: 0,
+          child: Text(currentEndTime, style: const TextStyle(fontSize: 0)),
         ),
         // Step Title Header
         const Text(
@@ -129,8 +154,11 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
           itemCount: _presetSlots.length,
           itemBuilder: (context, index) {
             final slot = _presetSlots[index];
-            final slotTime = slot['time']!;
-            final isSelected = currentTime == slotTime;
+            final slotStart = slot['start']!;
+            final slotEnd = slot['end']!;
+            final isSelected = !isCustomSelected &&
+                currentStartTime == slotStart &&
+                currentEndTime == slotEnd;
 
             return _TimeSlotCard(
               key: index == 3 ? const Key('study-time-picker-button') : null,
@@ -139,23 +167,38 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
               range: slot['range']!,
               isSelected: isSelected,
               enabled: !state.isBusy,
-              onTap: () => notifier.updateReminderTime(slotTime),
+              onTap: () {
+                setState(() => _customRange = null);
+                notifier.updateStudyTimeRange(start: slotStart, end: slotEnd);
+              },
             );
           },
         ),
 
         const SizedBox(height: 12),
 
-        // Custom Time Range Selection Option Card
+        // Custom study-time range selection option card.
         _CustomTimeSlotCard(
           key: const Key('custom-study-time-card'),
-          range: customDisplayRange,
+          time: customDisplayRange,
           isSelected: isCustomSelected,
           enabled: !state.isBusy,
-          onTap: () => _pickCustomTimeRange(context, ref, currentTime),
+          onTap: () => _pickCustomTimeRange(
+            context,
+            ref,
+            currentStartTime,
+            currentEndTime,
+          ),
         ),
 
         if (state.fieldErrors['reminderTime'] case final error?) ...[
+          const SizedBox(height: 12),
+          Text(
+            error,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
+        if (state.fieldErrors['studyEndTime'] case final error?) ...[
           const SizedBox(height: 12),
           Text(
             error,
@@ -169,14 +212,14 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
 
 class _CustomTimeSlotCard extends StatelessWidget {
   const _CustomTimeSlotCard({
-    required this.range,
+    required this.time,
     required this.isSelected,
     required this.enabled,
     required this.onTap,
     super.key,
   });
 
-  final String range;
+  final String time;
   final bool isSelected;
   final bool enabled;
   final VoidCallback onTap;
@@ -237,7 +280,7 @@ class _CustomTimeSlotCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        range,
+                        time,
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -375,7 +418,7 @@ class __CustomTimePickerBottomSheetState
     extends State<_CustomTimePickerBottomSheet> {
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
-  int _activeTab = 0; // 0 for Start Time, 1 for End Time
+  int _activeTab = 0;
 
   @override
   void initState() {
@@ -390,17 +433,43 @@ class __CustomTimePickerBottomSheetState
     return '$h:$m';
   }
 
+  DateTime _dateTime(TimeOfDay time) {
+    return DateTime(2000, 1, 1, time.hour, time.minute);
+  }
+
+  void _selectStart(DateTime value) {
+    setState(() {
+      _startTime = TimeOfDay(hour: value.hour, minute: value.minute);
+    });
+  }
+
+  void _selectEnd(DateTime value) {
+    setState(() {
+      _endTime = TimeOfDay(hour: value.hour, minute: value.minute);
+    });
+  }
+
+  String _formatDurationHours(int durationMinutes) {
+    if (durationMinutes % 60 == 0) {
+      return '${durationMinutes ~/ 60}';
+    }
+    final hours = (durationMinutes / 60).toStringAsFixed(2);
+    return hours
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '')
+        .replaceAll('.', ',');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final currentActiveTime = _activeTab == 0 ? _startTime : _endTime;
-    final pickerDateTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      currentActiveTime.hour,
-      currentActiveTime.minute,
+    final isPickingStart = _activeTab == 0;
+    final selectedTime = isPickingStart ? _startTime : _endTime;
+    final durationMinutes = studyDurationMinutes(
+      _formatTime(_startTime),
+      _formatTime(_endTime),
     );
+    final isValidRange = durationMinutes > 0;
+    final shouldWarnAboutDuration = durationMinutes > 180;
 
     return Container(
       decoration: const BoxDecoration(
@@ -439,7 +508,6 @@ class __CustomTimePickerBottomSheetState
           ),
           const SizedBox(height: 16),
 
-          // Segmented Tab for Start Time / End Time
           Container(
             decoration: BoxDecoration(
               color: const Color(0xFFF7F4EF),
@@ -450,84 +518,22 @@ class __CustomTimePickerBottomSheetState
             child: Row(
               children: [
                 Expanded(
-                  child: GestureDetector(
+                  child: _TimeTab(
+                    key: const Key('study-start-time-tab'),
+                    label: 'Giờ bắt đầu',
+                    time: _formatTime(_startTime),
+                    isSelected: isPickingStart,
                     onTap: () => setState(() => _activeTab = 0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _activeTab == 0
-                            ? const Color(0xFFFFF6DC)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                        border: _activeTab == 0
-                            ? Border.all(
-                                color: const Color(0xFF58CC02), width: 1.5)
-                            : null,
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Giờ bắt đầu',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF786C65),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _formatTime(_startTime),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF3C2A21),
-                              fontFamily: 'Fredoka',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: GestureDetector(
+                  child: _TimeTab(
+                    key: const Key('study-end-time-tab'),
+                    label: 'Giờ kết thúc',
+                    time: _formatTime(_endTime),
+                    isSelected: !isPickingStart,
                     onTap: () => setState(() => _activeTab = 1),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _activeTab == 1
-                            ? const Color(0xFFFFF6DC)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                        border: _activeTab == 1
-                            ? Border.all(
-                                color: const Color(0xFF58CC02), width: 1.5)
-                            : null,
-                      ),
-                      child: Column(
-                        children: [
-                          const Text(
-                            'Giờ kết thúc',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF786C65),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _formatTime(_endTime),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF3C2A21),
-                              fontFamily: 'Fredoka',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -539,28 +545,15 @@ class __CustomTimePickerBottomSheetState
           SizedBox(
             height: 180,
             child: CupertinoDatePicker(
-              key: ValueKey(_activeTab),
+              key: ValueKey('study-time-picker-$_activeTab'),
               mode: CupertinoDatePickerMode.time,
               use24hFormat: true,
-              initialDateTime: pickerDateTime,
-              onDateTimeChanged: (DateTime newDateTime) {
-                setState(() {
-                  final newTod = TimeOfDay(
-                    hour: newDateTime.hour,
-                    minute: newDateTime.minute,
-                  );
-                  if (_activeTab == 0) {
-                    _startTime = newTod;
-                  } else {
-                    _endTime = newTod;
-                  }
-                });
-              },
+              initialDateTime: _dateTime(selectedTime),
+              onDateTimeChanged: isPickingStart ? _selectStart : _selectEnd,
             ),
           ),
           const SizedBox(height: 12),
 
-          // Selected Time Range Display Summary
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
@@ -587,6 +580,40 @@ class __CustomTimePickerBottomSheetState
               ],
             ),
           ),
+          if (!isValidRange) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Giờ kết thúc không được trùng giờ bắt đầu.',
+              key: const Key('study-time-range-error'),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (shouldWarnAboutDuration) ...[
+            const SizedBox(height: 8),
+            Container(
+              key: const Key('study-time-duration-warning'),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFFB74D)),
+              ),
+              child: Text(
+                'Khung giờ học khá dài '
+                '(${_formatDurationHours(durationMinutes)} tiếng) — '
+                'nhớ giữ gìn sức khỏe, nghỉ ngơi hợp lý nhé!',
+                style: const TextStyle(
+                  color: Color(0xFFE65100),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
 
           // Confirm Button
@@ -594,10 +621,13 @@ class __CustomTimePickerBottomSheetState
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                widget.onConfirm(_startTime, _endTime);
-              },
+              key: const Key('confirm-study-time-range'),
+              onPressed: isValidRange
+                  ? () {
+                      Navigator.of(context).pop();
+                      widget.onConfirm(_startTime, _endTime);
+                    }
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF58CC02),
                 elevation: 0,
@@ -622,3 +652,62 @@ class __CustomTimePickerBottomSheetState
   }
 }
 
+class _TimeTab extends StatelessWidget {
+  const _TimeTab({
+    required this.label,
+    required this.time,
+    required this.isSelected,
+    required this.onTap,
+    super.key,
+  });
+
+  final String label;
+  final String time;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isSelected ? const Color(0xFFFFF6DC) : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: isSelected
+                ? Border.all(color: const Color(0xFF58CC02), width: 1.5)
+                : null,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF786C65),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                time,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF3C2A21),
+                  fontFamily: 'Fredoka',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
