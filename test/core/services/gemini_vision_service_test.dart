@@ -5,7 +5,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+final _testEndpoint = Uri.parse(
+  'https://test-project.supabase.co/functions/v1/gemini-vision-scan',
+);
+
 void main() {
+  test('endpoint mặc định dùng đúng project host từ Supabase runtime',
+      () async {
+    late Uri capturedUrl;
+    final service = GeminiVisionService(
+      httpClient: MockClient((request) async {
+        capturedUrl = request.url;
+        return http.Response(jsonEncode({'words': []}), 200);
+      }),
+      accessTokenProvider: () => 'valid-user-jwt',
+      supabaseRestUrlProvider: () =>
+          'https://configured-project.supabase.co/rest/v1',
+    );
+
+    await service.analyzeBase64Image('compressed-base64');
+
+    expect(
+      capturedUrl,
+      Uri.parse(
+        'https://configured-project.supabase.co/functions/v1/'
+        'gemini-vision-scan',
+      ),
+    );
+  });
+
   test('gửi JWT, base64 và chuẩn hóa box 0-1000', () async {
     late http.Request capturedRequest;
     final client = MockClient((request) async {
@@ -28,12 +56,13 @@ void main() {
     final service = GeminiVisionService(
       httpClient: client,
       accessTokenProvider: () => 'valid-user-jwt',
+      endpoint: _testEndpoint,
     );
 
     final result = await service.analyzeBase64Image('compressed-base64');
 
     expect(capturedRequest.method, 'POST');
-    expect(capturedRequest.url, GeminiVisionService.endpoint);
+    expect(capturedRequest.url, _testEndpoint);
     expect(
       capturedRequest.headers['authorization'],
       'Bearer valid-user-jwt',
@@ -70,6 +99,7 @@ void main() {
         return http.Response('{}', 200);
       }),
       accessTokenProvider: () => null,
+      endpoint: _testEndpoint,
     );
 
     await expectLater(
@@ -147,6 +177,7 @@ void main() {
             ),
           ),
           accessTokenProvider: () => 'valid-user-jwt',
+          endpoint: _testEndpoint,
         );
 
         try {
@@ -166,6 +197,7 @@ void main() {
         (request) async => http.Response(jsonEncode({'words': 'invalid'}), 200),
       ),
       accessTokenProvider: () => 'valid-user-jwt',
+      endpoint: _testEndpoint,
     );
 
     await expectLater(
@@ -173,4 +205,49 @@ void main() {
       throwsA(isA<GeminiInvalidResponseException>()),
     );
   });
+
+  test('bounding box chạm biên phải và dưới vẫn hợp lệ', () {
+    final result = GeminiVisionResult.fromJson({
+      'words': [
+        {
+          'word': 'edge',
+          'phonetic': '/edʒ/',
+          'meaning_vi': 'cạnh',
+          'box': {'x': 750, 'y': 800, 'w': 250, 'h': 200},
+        },
+      ],
+    });
+
+    expect(result.words.single.x + result.words.single.w, 1.0);
+    expect(result.words.single.y + result.words.single.h, 1.0);
+  });
+
+  final overflowingBoxes = <Map<String, int>>[
+    {'x': 800, 'y': 100, 'w': 201, 'h': 100},
+    {'x': 100, 'y': 900, 'w': 100, 'h': 101},
+  ];
+
+  for (final box in overflowingBoxes) {
+    test('bounding box tràn biên ảnh bị từ chối: $box', () {
+      expect(
+        () => GeminiVisionResult.fromJson({
+          'words': [
+            {
+              'word': 'overflow',
+              'phonetic': '/ˌəʊvəˈfləʊ/',
+              'meaning_vi': 'tràn',
+              'box': box,
+            },
+          ],
+        }),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            'Word box must stay within the 0-1000 image bounds.',
+          ),
+        ),
+      );
+    });
+  }
 }

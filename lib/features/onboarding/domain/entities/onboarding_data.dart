@@ -6,6 +6,7 @@ class OnboardingData {
     this.phone = '',
     this.accountRole,
     this.reminderTime = '20:00',
+    this.studyEndTime = '21:00',
     this.dailyTargetWords = 10,
   });
 
@@ -17,6 +18,7 @@ class OnboardingData {
   final String phone;
   final String? accountRole;
   final String? reminderTime;
+  final String? studyEndTime;
   final int? dailyTargetWords;
 
   OnboardingData copyWith({
@@ -26,6 +28,7 @@ class OnboardingData {
     String? phone,
     Object? accountRole = _notProvided,
     Object? reminderTime = _notProvided,
+    Object? studyEndTime = _notProvided,
     Object? dailyTargetWords = _notProvided,
   }) {
     return OnboardingData(
@@ -39,6 +42,9 @@ class OnboardingData {
       reminderTime: identical(reminderTime, _notProvided)
           ? this.reminderTime
           : reminderTime as String?,
+      studyEndTime: identical(studyEndTime, _notProvided)
+          ? this.studyEndTime
+          : studyEndTime as String?,
       dailyTargetWords: identical(dailyTargetWords, _notProvided)
           ? this.dailyTargetWords
           : dailyTargetWords as int?,

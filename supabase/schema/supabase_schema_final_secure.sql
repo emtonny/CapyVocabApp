@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS public.user_settings (
     theme_mode TEXT DEFAULT 'light' CHECK (theme_mode IN ('light', 'dark')),
     daily_target_words INT DEFAULT 10 CHECK (daily_target_words > 0),
     reminder_time TEXT DEFAULT '20:00',
+    study_end_time TEXT DEFAULT '21:00' CHECK (
+        study_end_time IS NULL
+        OR study_end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    ),
     sound_effects_enabled BOOLEAN DEFAULT TRUE
 );
 
@@ -393,6 +397,18 @@ WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- Complete onboarding in one transaction. SECURITY INVOKER keeps RLS and
 -- column privileges active, while auth.uid() fixes ownership to the caller.
+-- The extra argument changes the PostgreSQL function identity, so remove the
+-- previous seven-argument overload before creating the new contract.
+DROP FUNCTION IF EXISTS public.complete_onboarding(
+    TEXT,
+    TEXT,
+    INT,
+    TEXT,
+    TEXT,
+    TEXT,
+    INT
+);
+
 CREATE OR REPLACE FUNCTION public.complete_onboarding(
     p_display_name TEXT,
     p_username TEXT,
@@ -400,6 +416,7 @@ CREATE OR REPLACE FUNCTION public.complete_onboarding(
     p_phone TEXT,
     p_account_role TEXT,
     p_reminder_time TEXT,
+    p_study_end_time TEXT,
     p_daily_target_words INT
 )
 RETURNS BOOLEAN
@@ -448,6 +465,17 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    IF p_study_end_time IS NULL
+       OR p_study_end_time !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
+        RAISE EXCEPTION 'Invalid study end time'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF p_study_end_time::TIME <= p_reminder_time::TIME THEN
+        RAISE EXCEPTION 'Study end time must be after reminder time'
+            USING ERRCODE = '22023';
+    END IF;
+
     IF p_daily_target_words IS NULL OR p_daily_target_words <= 0 THEN
         RAISE EXCEPTION 'Daily target must be greater than zero'
             USING ERRCODE = '22023';
@@ -472,16 +500,19 @@ BEGIN
     INSERT INTO public.user_settings (
         user_id,
         reminder_time,
+        study_end_time,
         daily_target_words
     )
     VALUES (
         v_user_id,
         p_reminder_time,
+        p_study_end_time,
         p_daily_target_words
     )
     ON CONFLICT (user_id) DO UPDATE
     SET
         reminder_time = EXCLUDED.reminder_time,
+        study_end_time = EXCLUDED.study_end_time,
         daily_target_words = EXCLUDED.daily_target_words;
 
     UPDATE public.users
@@ -501,6 +532,7 @@ REVOKE ALL ON FUNCTION public.complete_onboarding(
     TEXT,
     TEXT,
     TEXT,
+    TEXT,
     INT
 ) FROM PUBLIC, anon;
 
@@ -508,6 +540,7 @@ GRANT EXECUTE ON FUNCTION public.complete_onboarding(
     TEXT,
     TEXT,
     INT,
+    TEXT,
     TEXT,
     TEXT,
     TEXT,

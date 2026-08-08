@@ -55,6 +55,14 @@ void main() {
     expect(notifier.state.fieldErrors['reminderTime'], isNotNull);
 
     notifier.updateReminderTime('07:05');
+    notifier.updateStudyEndTime('07:05');
+    expect(await notifier.nextStep(), isFalse);
+    expect(
+      notifier.state.fieldErrors['studyEndTime'],
+      'Giờ kết thúc không được trùng giờ bắt đầu.',
+    );
+
+    notifier.updateStudyTimeRange(start: '22:00', end: '02:00');
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 4);
 
@@ -64,6 +72,12 @@ void main() {
 
     notifier.updateDailyTargetWords(15);
     expect(await notifier.validateCurrentStep(), isTrue);
+  });
+
+  test('tính thời lượng cùng ngày, qua đêm và trùng giờ', () {
+    expect(studyDurationMinutes('20:00', '23:00'), 180);
+    expect(studyDurationMinutes('22:00', '02:00'), 240);
+    expect(studyDurationMinutes('07:05', '07:05'), 0);
   });
 
   test('dữ liệu được giữ nguyên khi quay lại bước trước', () async {
@@ -179,7 +193,7 @@ Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAccountRole('personal');
   expect(await notifier.nextStep(), isTrue);
-  notifier.updateReminderTime('20:00');
+  notifier.updateStudyTimeRange(start: '20:00', end: '21:00');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateDailyTargetWords(10);
 }

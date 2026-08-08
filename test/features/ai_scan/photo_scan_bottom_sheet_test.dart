@@ -14,8 +14,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
+  test('device picker ánh xạ đúng gallery và camera sang image_picker',
+      () async {
+    final imagePicker = _FakeDeviceImagePicker();
+    final picker = DeviceScanImagePicker(imagePicker: imagePicker);
+
+    await picker.pick(ScanImageSource.gallery);
+    await picker.pick(ScanImageSource.camera);
+
+    expect(
+      imagePicker.sources,
+      [ImageSource.gallery, ImageSource.camera],
+    );
+    expect(imagePicker.requestFullMetadataValues, [false, false]);
+  });
+
   testWidgets('chọn ảnh, nén, lưu tạm, scan rồi mở overlay', (tester) async {
     final sourceBytes = _testImageBytes();
     final compressedBytes = _testImageBytes();
@@ -47,6 +63,7 @@ void main() {
       compressor: compressor,
       storage: storage,
       visionClient: visionClient,
+      debugIsWebOverride: true,
     );
 
     final galleryButton = find.byKey(const Key('pick-gallery-button'));
@@ -85,6 +102,7 @@ void main() {
       visionClient: _FakeVisionClient(
         onAnalyze: (bytes) => throw UnimplementedError(),
       ),
+      debugIsWebOverride: false,
     );
 
     final cameraButton = find.byKey(const Key('pick-camera-button'));
@@ -94,6 +112,64 @@ void main() {
 
     expect(picker.lastSource, ScanImageSource.camera);
     expect(find.byType(ScanLoadingOverlay), findsNothing);
+  });
+
+  testWidgets('Web camera trả XFile vào đúng pipeline scan', (tester) async {
+    final sourceBytes = _testImageBytes();
+    final compressedBytes = _testImageBytes();
+    final picker = _FakePicker(
+      onPick: (source) => throw StateError(
+        'Web camera must not use the image_picker camera branch.',
+      ),
+    );
+    final storage = _FakeStorage();
+
+    await _pumpScreen(
+      tester,
+      picker: picker,
+      compressor: _FakeCompressor(
+        onCompress: (bytes) async {
+          expect(bytes, orderedEquals(sourceBytes));
+          return compressedBytes;
+        },
+      ),
+      storage: storage,
+      visionClient: _FakeVisionClient(
+        onAnalyze: (bytes) async {
+          expect(bytes, same(compressedBytes));
+          return const GeminiVisionResult(detectedVocabulary: []);
+        },
+      ),
+      debugIsWebOverride: true,
+      webCameraCaptureBuilder: (context) => Scaffold(
+        body: Center(
+          child: FilledButton(
+            key: const Key('fake-web-camera-capture'),
+            onPressed: () => Navigator.of(context).pop(
+              XFile.fromData(
+                sourceBytes,
+                name: 'web-camera.jpg',
+                mimeType: 'image/jpeg',
+              ),
+            ),
+            child: const Text('Chụp'),
+          ),
+        ),
+      ),
+    );
+
+    final cameraButton = find.byKey(const Key('pick-camera-button'));
+    await tester.ensureVisible(cameraButton);
+    await tester.tap(cameraButton);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('fake-web-camera-capture')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('fake-web-camera-capture')));
+    await tester.pumpAndSettle();
+
+    expect(picker.lastSource, isNull);
+    expect(storage.savedBytes, same(compressedBytes));
+    expect(find.text('Overlay: memory://scan.jpg'), findsOneWidget);
   });
 
   testWidgets('lỗi nén hiển thị dialog và không gọi scan', (tester) async {
@@ -139,13 +215,22 @@ Future<void> _pumpScreen(
   required ScanImageCompressor compressor,
   required ScanImageStorage storage,
   required VisionScanClient visionClient,
+  bool? debugIsWebOverride,
+  WebCameraCaptureBuilder? webCameraCaptureBuilder,
 }) async {
   final router = GoRouter(
     initialLocation: '/scan',
     routes: [
       GoRoute(
         path: '/scan',
-        builder: (context, state) => const PhotoScanBottomSheet(),
+        builder: (context, state) => webCameraCaptureBuilder == null
+            ? PhotoScanBottomSheet(
+                debugIsWebOverride: debugIsWebOverride,
+              )
+            : PhotoScanBottomSheet(
+                debugIsWebOverride: debugIsWebOverride,
+                webCameraCaptureBuilder: webCameraCaptureBuilder,
+              ),
       ),
       GoRoute(
         path: '/scan-overlay',
@@ -189,6 +274,25 @@ class _FakePicker implements ScanImagePicker {
   Future<PickedScanImage?> pick(ScanImageSource source) {
     lastSource = source;
     return onPick(source);
+  }
+}
+
+class _FakeDeviceImagePicker extends ImagePicker {
+  final List<ImageSource> sources = [];
+  final List<bool> requestFullMetadataValues = [];
+
+  @override
+  Future<XFile?> pickImage({
+    required ImageSource source,
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    CameraDevice preferredCameraDevice = CameraDevice.rear,
+    bool requestFullMetadata = true,
+  }) async {
+    sources.add(source);
+    requestFullMetadataValues.add(requestFullMetadata);
+    return null;
   }
 }
 

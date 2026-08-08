@@ -1,16 +1,32 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../data/services/scan_image_compressor.dart';
 import '../../data/services/scan_image_picker.dart';
 import '../controllers/scan_flow_controller.dart';
 import '../providers/scan_provider.dart';
+import '../widgets/camera_capture_view.dart';
 import '../widgets/scan_loading_overlay.dart';
 
+typedef WebCameraCaptureBuilder = Widget Function(BuildContext context);
+
+Widget _buildDefaultWebCameraCaptureView(BuildContext context) {
+  return const CameraCaptureView();
+}
+
 class PhotoScanBottomSheet extends ConsumerStatefulWidget {
-  const PhotoScanBottomSheet({super.key});
+  const PhotoScanBottomSheet({
+    super.key,
+    this.debugIsWebOverride,
+    this.webCameraCaptureBuilder = _buildDefaultWebCameraCaptureView,
+  });
+
+  final bool? debugIsWebOverride;
+  final WebCameraCaptureBuilder webCameraCaptureBuilder;
 
   @override
   ConsumerState<PhotoScanBottomSheet> createState() =>
@@ -22,11 +38,16 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
   bool _isProcessing = false;
   String _processingStatus = 'Đang chuẩn bị ảnh...';
 
-  Future<void> _pickAndScan(ScanImageSource source) async {
+  Future<void> _pickAndScan(
+    ScanImageSource source, {
+    Future<PickedScanImage?> Function()? pickOverride,
+  }) async {
     if (_isProcessing) return;
 
     try {
-      final pickedImage = await ref.read(scanImagePickerProvider).pick(source);
+      final pickedImage = pickOverride == null
+          ? await ref.read(scanImagePickerProvider).pick(source)
+          : await pickOverride();
       if (pickedImage == null || !mounted) return;
 
       setState(() {
@@ -68,6 +89,35 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         setState(() => _isProcessing = false);
       }
     }
+  }
+
+  Future<PickedScanImage?> _captureWithWebCamera() async {
+    final image = await Navigator.of(context).push<XFile>(
+      MaterialPageRoute<XFile>(
+        fullscreenDialog: true,
+        builder: widget.webCameraCaptureBuilder,
+      ),
+    );
+    if (image == null || !mounted) return null;
+
+    return PickedScanImage(
+      bytes: await image.readAsBytes(),
+      name: image.name,
+    );
+  }
+
+  Future<void> _captureAndScan() {
+    final useWebCamera = widget.debugIsWebOverride ?? kIsWeb;
+    if (useWebCamera) {
+      return _pickAndScan(
+        ScanImageSource.camera,
+        pickOverride: _captureWithWebCamera,
+      );
+    }
+
+    // Mobile keeps image_picker so the native OS camera experience remains
+    // unchanged (ScanImageSource.camera -> ImageSource.camera).
+    return _pickAndScan(ScanImageSource.camera);
   }
 
   Future<void> _showPreparationError(String message) {
@@ -139,9 +189,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     key: const Key('pick-camera-button'),
-                    onPressed: _isProcessing
-                        ? null
-                        : () => _pickAndScan(ScanImageSource.camera),
+                    onPressed: _isProcessing ? null : _captureAndScan,
                     icon: const Icon(Icons.photo_camera_outlined),
                     label: const Text('Chụp ảnh'),
                   ),
