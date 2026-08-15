@@ -10,6 +10,8 @@ import 'supabase_service.dart';
 typedef AccessTokenProvider = String? Function();
 typedef SupabaseRestUrlProvider = String Function();
 
+const int maxGeminiVocabularyWords = 15;
+
 abstract interface class VisionScanClient {
   Future<GeminiVisionResult> analyzeImageBytes(Uint8List compressedImageBytes);
 }
@@ -29,7 +31,7 @@ class GeminiVisionService implements VisionScanClient {
         _accessTokenProvider = accessTokenProvider ??
             (() => SupabaseService.auth.currentSession?.accessToken);
 
-  static const Duration requestTimeout = Duration(seconds: 30);
+  static const Duration requestTimeout = Duration(seconds: 90);
 
   final http.Client _httpClient;
   final Uri? _endpointOverride;
@@ -126,6 +128,17 @@ class GeminiVisionService implements VisionScanClient {
           'Quá thời gian chờ, thử lại',
           errorCode: errorCode,
         );
+      case 503:
+        throw GeminiUnavailableException(
+          'Dịch vụ Gemini đang tạm thời không khả dụng, vui lòng thử lại sau.',
+          errorCode: errorCode,
+          upstreamStatus: decodedBody['upstream_status'] is int
+              ? decodedBody['upstream_status'] as int
+              : null,
+          scanId: decodedBody['scan_id'] is String
+              ? decodedBody['scan_id'] as String
+              : null,
+        );
       case 500:
       case 502:
         throw GeminiApiException(
@@ -166,6 +179,7 @@ class GeminiVisionService implements VisionScanClient {
 class GeminiVisionResult {
   const GeminiVisionResult({
     required this.detectedVocabulary,
+    this.sceneDetections = const [],
     this.imageLanguage = 'en',
     this.confidence = 0.0,
   });
@@ -181,25 +195,82 @@ class GeminiVisionResult {
       throw const FormatException('Response field "words" must be a list.');
     }
 
+    final parsedWords = _parseDetectionList(rawWords);
+    final rawSceneWords = json['scene_words'];
+    final sceneDetections = rawSceneWords is List<dynamic>
+        ? _parseDetectionList(rawSceneWords)
+        : parsedWords;
+
     return GeminiVisionResult(
-      detectedVocabulary: rawWords.map((rawWord) {
-        if (rawWord is! Map<String, dynamic>) {
-          throw const FormatException('Each word must be a JSON object.');
-        }
-        return VocabDetection.fromJson(rawWord);
-      }).toList(growable: false),
+      detectedVocabulary: rankDetectionsByBoxArea(
+        keepLargestDetectionPerWord(parsedWords),
+      ).take(maxGeminiVocabularyWords).toList(growable: false),
+      sceneDetections: sceneDetections,
     );
   }
 
   final List<VocabDetection> detectedVocabulary;
+  final List<VocabDetection> sceneDetections;
   final String imageLanguage;
   final double confidence;
 
   List<VocabDetection> get words => detectedVocabulary;
+  List<VocabDetection> get placementContext =>
+      sceneDetections.isEmpty ? detectedVocabulary : sceneDetections;
 
   Map<String, dynamic> toJson() => {
         'words': detectedVocabulary.map((word) => word.toJson()).toList(),
+        'scene_words': placementContext.map((word) => word.toJson()).toList(),
       };
+}
+
+List<VocabDetection> _parseDetectionList(List<dynamic> rawWords) {
+  return rawWords.map((rawWord) {
+    if (rawWord is! Map<String, dynamic>) {
+      throw const FormatException('Each word must be a JSON object.');
+    }
+    return VocabDetection.fromJson(rawWord);
+  }).toList(growable: false);
+}
+
+List<VocabDetection> keepLargestDetectionPerWord(
+  Iterable<VocabDetection> detections,
+) {
+  final order = <String>[];
+  final largestByWord = <String, VocabDetection>{};
+
+  for (final detection in detections) {
+    final normalizedWord = detection.word.trim().toLowerCase();
+    final current = largestByWord[normalizedWord];
+    if (current == null) {
+      order.add(normalizedWord);
+      largestByWord[normalizedWord] = detection;
+      continue;
+    }
+    if (detection.w * detection.h > current.w * current.h) {
+      largestByWord[normalizedWord] = detection;
+    }
+  }
+
+  return List.unmodifiable(order.map((word) => largestByWord[word]!));
+}
+
+List<VocabDetection> rankDetectionsByBoxArea(
+  Iterable<VocabDetection> detections,
+) {
+  final ranked = detections.toList(growable: false)
+    ..sort((first, second) {
+      final byArea = (second.w * second.h).compareTo(first.w * first.h);
+      if (byArea != 0) return byArea;
+
+      final byWord = first.word
+          .trim()
+          .toLowerCase()
+          .compareTo(second.word.trim().toLowerCase());
+      if (byWord != 0) return byWord;
+      return first.word.compareTo(second.word);
+    });
+  return List.unmodifiable(ranked);
 }
 
 class VocabDetection {
@@ -324,6 +395,28 @@ class GeminiQuotaException implements GeminiVisionException {
   String toString() => 'GeminiQuotaException: $message';
 }
 
+class GeminiUnavailableException implements GeminiVisionException {
+  const GeminiUnavailableException(
+    this.message, {
+    this.errorCode,
+    this.upstreamStatus,
+    this.scanId,
+  });
+
+  @override
+  final String message;
+  final String? errorCode;
+  final int? upstreamStatus;
+  final String? scanId;
+
+  @override
+  String toString() {
+    return 'GeminiUnavailableException['
+        'code=$errorCode, upstreamStatus=$upstreamStatus, scanId=$scanId'
+        ']: $message';
+  }
+}
+
 class GeminiRecognitionException implements GeminiVisionException {
   const GeminiRecognitionException(this.message, {this.errorCode});
 
@@ -377,5 +470,8 @@ class GeminiApiException implements GeminiVisionException {
   final String? errorCode;
 
   @override
-  String toString() => 'GeminiApiException[$statusCode]: $message';
+  String toString() {
+    final codeSuffix = errorCode == null ? '' : ', code=$errorCode';
+    return 'GeminiApiException[$statusCode$codeSuffix]: $message';
+  }
 }

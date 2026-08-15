@@ -7,10 +7,16 @@ abstract interface class ScanImageStorage {
 }
 
 class ScanImageStorageException implements Exception {
-  const ScanImageStorageException(this.message);
+  const ScanImageStorageException(this.message, {this.cause});
 
   final String message;
+  final Object? cause;
 
   @override
-  String toString() => 'ScanImageStorageException: $message';
+  String toString() {
+    final rootCause = cause;
+    return rootCause == null
+        ? 'ScanImageStorageException: $message'
+        : 'ScanImageStorageException: $message Cause: $rootCause';
+  }
 }

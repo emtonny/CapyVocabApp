@@ -23,17 +23,44 @@ class DeviceScanImagePicker implements ScanImagePicker {
 
   @override
   Future<PickedScanImage?> pick(ScanImageSource source) async {
-    final image = await _imagePicker.pickImage(
-      source: source == ScanImageSource.camera
-          ? ImageSource.camera
-          : ImageSource.gallery,
-      requestFullMetadata: false,
-    );
-    if (image == null) return null;
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source == ScanImageSource.camera
+            ? ImageSource.camera
+            : ImageSource.gallery,
+        requestFullMetadata: false,
+      );
+      if (image == null) return null;
 
-    return PickedScanImage(
-      bytes: await image.readAsBytes(),
-      name: image.name,
-    );
+      return PickedScanImage(
+        bytes: await image.readAsBytes(),
+        name: image.name,
+      );
+    } catch (error, stackTrace) {
+      Error.throwWithStackTrace(
+        ScanImagePickerException(
+          source == ScanImageSource.camera
+              ? 'Không thể mở camera. Vui lòng kiểm tra quyền truy cập.'
+              : 'Không thể chọn ảnh. Vui lòng thử lại.',
+          cause: error,
+        ),
+        stackTrace,
+      );
+    }
+  }
+}
+
+class ScanImagePickerException implements Exception {
+  const ScanImagePickerException(this.message, {this.cause});
+
+  final String message;
+  final Object? cause;
+
+  @override
+  String toString() {
+    final rootCause = cause;
+    return rootCause == null
+        ? 'ScanImagePickerException: $message'
+        : 'ScanImagePickerException: $message Cause: $rootCause';
   }
 }

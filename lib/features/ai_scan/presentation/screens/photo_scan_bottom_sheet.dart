@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show debugPrint, debugPrintStack, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
@@ -10,6 +11,8 @@ import '../../../../core/services/gemini_vision_service.dart';
 import '../../data/datasources/scan_result_local_datasource.dart';
 import '../../data/services/scan_image_compressor.dart';
 import '../../data/services/scan_image_picker.dart';
+import '../../data/services/scan_image_storage.dart';
+import '../controllers/scan_flow_controller.dart';
 import '../providers/scan_provider.dart';
 import '../widgets/camera_capture_view.dart';
 import '../widgets/scan_loading_overlay.dart';
@@ -94,24 +97,55 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
   }) async {
     if (_isProcessing) return;
 
+    setState(() {
+      _previewBytes = null;
+      _imageAspectRatio = null;
+      _scanRecord = null;
+      _processingStatus = 'Đang chuẩn bị ảnh...';
+    });
+
+    final PickedScanImage? pickedImage;
     try {
-      final pickedImage = pickOverride == null
+      pickedImage = pickOverride == null
           ? await ref.read(scanImagePickerProvider).pick(source)
           : await pickOverride();
-      if (pickedImage == null || !mounted) return;
+    } catch (error, stackTrace) {
+      await _handlePreparationError(
+        stage: 'pick',
+        error: error,
+        stackTrace: stackTrace,
+        fallbackMessage: source == ScanImageSource.camera
+            ? 'Không thể mở camera. Vui lòng kiểm tra quyền truy cập.'
+            : 'Không thể chọn ảnh. Vui lòng thử lại.',
+      );
+      return;
+    }
+    if (pickedImage == null || !mounted) return;
+    final selectedImage = pickedImage;
 
-      _updateImageDimensions(pickedImage.bytes);
+    _updateImageDimensions(selectedImage.bytes);
 
-      setState(() {
-        _previewBytes = pickedImage.bytes;
-        _isProcessing = true;
-        _processingStatus = 'Đang nén ảnh...';
-        _scanRecord = null;
-      });
+    setState(() {
+      _previewBytes = selectedImage.bytes;
+      _isProcessing = true;
+      _processingStatus = 'Đang nén ảnh...';
+    });
 
-      final compressedBytes = await ref
-          .read(scanImageCompressorProvider)
-          .compress(pickedImage.bytes);
+    try {
+      final Uint8List compressedBytes;
+      try {
+        compressedBytes = await ref
+            .read(scanImageCompressorProvider)
+            .compress(selectedImage.bytes);
+      } catch (error, stackTrace) {
+        await _handlePreparationError(
+          stage: 'compress',
+          error: error,
+          stackTrace: stackTrace,
+          fallbackMessage: 'Không thể xử lý ảnh đã chọn. Vui lòng thử lại.',
+        );
+        return;
+      }
       if (!mounted) return;
 
       _updateImageDimensions(compressedBytes);
@@ -121,31 +155,59 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         _processingStatus = 'Đang nhận diện từ vựng...';
       });
 
-      final localPath =
-          await ref.read(scanImageStorageProvider).saveJpeg(compressedBytes);
+      final String localPath;
+      try {
+        localPath =
+            await ref.read(scanImageStorageProvider).saveJpeg(compressedBytes);
+      } catch (error, stackTrace) {
+        await _handlePreparationError(
+          stage: 'store',
+          error: error,
+          stackTrace: stackTrace,
+          fallbackMessage: 'Không thể lưu ảnh đã chọn. Vui lòng thử lại.',
+        );
+        return;
+      }
       if (!mounted) return;
 
-      final record =
-          await ref.read(scanProvider.notifier).scanImage(localPath);
+      final record = await ScanFlowController.scan(
+        context,
+        ref,
+        localPath: localPath,
+      );
       if (!mounted) return;
+      if (record == null) return;
 
       setState(() {
         _scanRecord = record;
       });
-    } catch (error) {
-      if (!mounted) return;
-
-      final message = error is ScanImagePreparationException
-          ? error.message
-          : source == ScanImageSource.camera
-              ? 'Không thể mở camera. Vui lòng kiểm tra quyền truy cập.'
-              : 'Không thể chọn ảnh. Vui lòng thử lại.';
-      await _showPreparationError(message);
     } finally {
       if (mounted) {
         setState(() => _isProcessing = false);
       }
     }
+  }
+
+  Future<void> _handlePreparationError({
+    required String stage,
+    required Object error,
+    required StackTrace stackTrace,
+    required String fallbackMessage,
+  }) async {
+    debugPrint('AI scan failed during $stage: $error');
+    debugPrintStack(
+      label: 'AI scan $stage stack trace',
+      stackTrace: stackTrace,
+    );
+    if (!mounted) return;
+
+    final message = switch (error) {
+      ScanImagePickerException() => error.message,
+      ScanImagePreparationException() => error.message,
+      ScanImageStorageException() => error.message,
+      _ => fallbackMessage,
+    };
+    await _showPreparationError(message);
   }
 
   Future<PickedScanImage?> _captureWithWebCamera() async {
@@ -195,6 +257,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
     BuildContext context,
     Uint8List bytes,
     List<VocabDetection> words,
+    List<VocabDetection> sceneWords,
     double aspectRatio,
   ) {
     showDialog<void>(
@@ -213,6 +276,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                       ? VocabCanvasOverlay(
                           imageProvider: MemoryImage(bytes),
                           words: words,
+                          sceneWords: sceneWords,
                         )
                       : Image.memory(
                           bytes,
@@ -246,6 +310,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
 
     final aspectRatio = _imageAspectRatio ?? (4 / 3);
     final words = _scanRecord?.result.detectedVocabulary ?? [];
+    final sceneWords = _scanRecord?.result.placementContext ?? words;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -273,6 +338,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                       key: const Key('scan-image-preview'),
                       imageProvider: MemoryImage(bytes),
                       words: words,
+                      sceneWords: sceneWords,
                     )
                   : Image.memory(
                       bytes,
@@ -296,6 +362,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                     context,
                     bytes,
                     words,
+                    sceneWords,
                     aspectRatio,
                   ),
                   child: const Padding(
@@ -383,151 +450,152 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                        // Top Drag Handle Bar
-                        Center(
-                          child: Container(
-                            width: 44,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE2D6C5),
-                              borderRadius: BorderRadius.circular(10),
+                          // Top Drag Handle Bar
+                          Center(
+                            child: Container(
+                              width: 44,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE2D6C5),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                        // Title
-                        const Text(
-                          'Quét từ vựng qua ảnh',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Fredoka',
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF3C2A21),
+                          // Title
+                          const Text(
+                            'Quét từ vựng qua ảnh',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'Fredoka',
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3C2A21),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                        // Dynamic Image Preview & Labeled Result Widget
-                        _buildImagePreviewWidget(),
+                          // Dynamic Image Preview & Labeled Result Widget
+                          _buildImagePreviewWidget(),
 
-                        // 2 Main Options: "Chụp ảnh thô" & "Tải ảnh lên"
-                        Row(
-                          children: [
-                            // Option 1: Chụp ảnh thô
-                            Expanded(
-                              child: _buildMainActionButton(
-                                buttonKey: const Key('pick-camera-button'),
-                                label: 'Chụp ảnh thô',
-                                iconWidget: const Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Icon(
-                                      Icons.photo_camera_rounded,
-                                      size: 38,
-                                      color: Color(0xFF5D4037),
-                                    ),
-                                    Positioned(
-                                      top: -4,
-                                      right: -6,
-                                      child: Icon(
-                                        Icons.auto_awesome_rounded,
-                                        size: 18,
-                                        color: Color(0xFFFFB300),
+                          // 2 Main Options: "Chụp ảnh thô" & "Tải ảnh lên"
+                          Row(
+                            children: [
+                              // Option 1: Chụp ảnh thô
+                              Expanded(
+                                child: _buildMainActionButton(
+                                  buttonKey: const Key('pick-camera-button'),
+                                  label: 'Chụp ảnh thô',
+                                  iconWidget: const Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Icon(
+                                        Icons.photo_camera_rounded,
+                                        size: 38,
+                                        color: Color(0xFF5D4037),
                                       ),
+                                      Positioned(
+                                        top: -4,
+                                        right: -6,
+                                        child: Icon(
+                                          Icons.auto_awesome_rounded,
+                                          size: 18,
+                                          color: Color(0xFFFFB300),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: _isProcessing ? null : _captureAndScan,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+
+                              // Option 2: Tải ảnh lên
+                              Expanded(
+                                child: _buildMainActionButton(
+                                  buttonKey: const Key('pick-gallery-button'),
+                                  label: 'Tải ảnh lên',
+                                  iconWidget: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE8F5E9),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
-                                  ],
-                                ),
-                                onTap: _isProcessing ? null : _captureAndScan,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-
-                            // Option 2: Tải ảnh lên
-                            Expanded(
-                              child: _buildMainActionButton(
-                                buttonKey: const Key('pick-gallery-button'),
-                                label: 'Tải ảnh lên',
-                                iconWidget: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE8F5E9),
-                                    borderRadius: BorderRadius.circular(10),
+                                    child: const Icon(
+                                      Icons.insert_photo_rounded,
+                                      size: 34,
+                                      color: Color(0xFF4CAF50),
+                                    ),
                                   ),
-                                  child: const Icon(
-                                    Icons.insert_photo_rounded,
-                                    size: 34,
-                                    color: Color(0xFF4CAF50),
+                                  onTap: _isProcessing
+                                      ? null
+                                      : () =>
+                                          _pickAndScan(ScanImageSource.gallery),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Section Header: "CHỌN MẪU NOTE GHIM 🦫"
+                          const Row(
+                            children: [
+                              Text(
+                                'CHỌN MẪU NOTE GHIM',
+                                style: TextStyle(
+                                  fontFamily: 'Fredoka',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF9E8F85),
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                '🦫',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Fit all 3 template cards neatly in 1 horizontal row
+                          Row(
+                            children:
+                                List.generate(_noteTemplates.length, (index) {
+                              final template = _noteTemplates[index];
+                              final isSelected =
+                                  _selectedTemplateIndex == index;
+                              return Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    right: index < _noteTemplates.length - 1
+                                        ? 8.0
+                                        : 0.0,
+                                  ),
+                                  child: _buildTemplateCard(
+                                    title: template['title'] as String,
+                                    subtitle: template['subtitle'] as String,
+                                    icon: template['icon'] as IconData,
+                                    color: template['color'] as Color,
+                                    isSelected: isSelected,
+                                    onTap: () {
+                                      setState(
+                                          () => _selectedTemplateIndex = index);
+                                    },
                                   ),
                                 ),
-                                onTap: _isProcessing
-                                    ? null
-                                    : () =>
-                                        _pickAndScan(ScanImageSource.gallery),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Section Header: "CHỌN MẪU NOTE GHIM 🦫"
-                        const Row(
-                          children: [
-                            Text(
-                              'CHỌN MẪU NOTE GHIM',
-                              style: TextStyle(
-                                fontFamily: 'Fredoka',
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF9E8F85),
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              '🦫',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Fit all 3 template cards neatly in 1 horizontal row
-                        Row(
-                          children: List.generate(_noteTemplates.length, (index) {
-                            final template = _noteTemplates[index];
-                            final isSelected =
-                                _selectedTemplateIndex == index;
-                            return Expanded(
-                              child: Padding(
-                                padding: EdgeInsets.only(
-                                  right: index < _noteTemplates.length - 1
-                                      ? 8.0
-                                      : 0.0,
-                                ),
-                                child: _buildTemplateCard(
-                                  title: template['title'] as String,
-                                  subtitle: template['subtitle'] as String,
-                                  icon: template['icon'] as IconData,
-                                  color: template['color'] as Color,
-                                  isSelected: isSelected,
-                                  onTap: () {
-                                    setState(
-                                        () => _selectedTemplateIndex = index);
-                                  },
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ],
+                              );
+                            }),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
 
             // Processing Overlay
             if (_isProcessing)
@@ -603,9 +671,8 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFFFFF9F2)
-                : const Color(0xFFFAF6F0),
+            color:
+                isSelected ? const Color(0xFFFFF9F2) : const Color(0xFFFAF6F0),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelected

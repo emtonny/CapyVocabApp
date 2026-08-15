@@ -1,12 +1,21 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js@2.112.3/edge-runtime.d.ts";
 
 import {
   buildGenerationConfig,
   fetchGeminiModelChain,
   GeminiChainError,
 } from "./gemini_client.ts";
+import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const GEMINI_HEALTH_STORE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createSupabaseGeminiHealthStore({
+    supabaseUrl: SUPABASE_URL,
+    serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+  })
+  : undefined;
 const MAX_WORDS = 15;
 
 const RESPONSE_SCHEMA = {
@@ -188,6 +197,7 @@ Deno.serve(async (req) => {
         ],
         generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
       }),
+      healthStore: GEMINI_HEALTH_STORE,
     });
     const { response: geminiRes, model, modelsTried, attemptsForModel } =
       geminiResult;
@@ -290,7 +300,7 @@ Deno.serve(async (req) => {
     let parsed;
     try {
       parsed = JSON.parse(rawText);
-    } catch (parseErr) {
+    } catch {
       console.error(
         "JSON parse failed, finishReason:",
         finishReason,

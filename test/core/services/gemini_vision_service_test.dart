@@ -10,6 +10,10 @@ final _testEndpoint = Uri.parse(
 );
 
 void main() {
+  test('timeout client đủ dài để Edge Function thử toàn bộ model chain', () {
+    expect(GeminiVisionService.requestTimeout, const Duration(seconds: 90));
+  });
+
   test('endpoint mặc định dùng đúng project host từ Supabase runtime',
       () async {
     late Uri capturedUrl;
@@ -89,6 +93,80 @@ void main() {
         },
       ],
     );
+    expect(result.toJson()['scene_words'], result.toJson()['words']);
+  });
+
+  test('trùng word chỉ giữ box riêng lẻ lớn nhất và bảo toàn scene context',
+      () {
+    final result = GeminiVisionResult.fromJson({
+      'words': [
+        {
+          'word': 'apple',
+          'phonetic': '/ˈæpl/',
+          'meaning_vi': 'quả táo',
+          'box': {'x': 62, 'y': 631, 'w': 109, 'h': 189},
+        },
+        {
+          'word': ' Apple ',
+          'phonetic': '/ˈæpl/',
+          'meaning_vi': 'quả táo',
+          'box': {'x': 500, 'y': 365, 'w': 117, 'h': 185},
+        },
+        {
+          'word': 'apple',
+          'phonetic': '/ˈæpl/',
+          'meaning_vi': 'quả táo',
+          'box': {'x': 609, 'y': 441, 'w': 113, 'h': 113},
+        },
+        {
+          'word': 'leaf',
+          'phonetic': '/liːf/',
+          'meaning_vi': 'chiếc lá',
+          'box': {'x': 324, 'y': 144, 'w': 334, 'h': 340},
+        },
+      ],
+    });
+
+    expect(result.sceneDetections, hasLength(4));
+    expect(result.words, hasLength(2));
+    expect(result.words.first.word, 'leaf');
+    final apple = result.words.last;
+    expect(apple.word, ' Apple ');
+    expect(apple.x, 0.5);
+    expect(apple.y, 0.365);
+    expect(apple.w, 0.117);
+    expect(apple.h, 0.185);
+  });
+
+  test('top 15 luôn giữ object có diện tích lớn nhất bất kể response order',
+      () {
+    Map<String, dynamic> word(int index) => {
+          'word': 'object-$index',
+          'phonetic': '/object/',
+          'meaning_vi': 'vật thể $index',
+          'box': {'x': 0, 'y': 0, 'w': 10 + index, 'h': 10},
+        };
+    final responseOrder = List.generate(17, word);
+
+    final result = GeminiVisionResult.fromJson({'words': responseOrder});
+    final reversed = GeminiVisionResult.fromJson({
+      'words': responseOrder.reversed.toList(),
+    });
+
+    expect(result.words, hasLength(maxGeminiVocabularyWords));
+    expect(
+      result.words.map((detection) => detection.word),
+      reversed.words.map((detection) => detection.word),
+    );
+    expect(result.sceneDetections, hasLength(17));
+    final keptAreas = result.words
+        .map((detection) => detection.w * detection.h)
+        .toList(growable: false);
+    for (var index = 1; index < keptAreas.length; index++) {
+      expect(keptAreas[index - 1], greaterThanOrEqualTo(keptAreas[index]));
+    }
+    expect(result.words.map((word) => word.word), isNot(contains('object-0')));
+    expect(result.words.map((word) => word.word), isNot(contains('object-1')));
   });
 
   test('không gửi request khi không có access token', () async {
@@ -163,6 +241,13 @@ void main() {
       type: GeminiApiException,
       message: 'Đã có lỗi, thử lại',
     ),
+    (
+      status: 503,
+      code: 'upstream_unavailable',
+      type: GeminiUnavailableException,
+      message:
+          'Dịch vụ Gemini đang tạm thời không khả dụng, vui lòng thử lại sau.',
+    ),
   ];
 
   for (final errorCase in errorCases) {
@@ -172,7 +257,13 @@ void main() {
         final service = GeminiVisionService(
           httpClient: MockClient(
             (request) async => http.Response(
-              jsonEncode({'error': errorCase.code}),
+              jsonEncode({
+                'error': errorCase.code,
+                if (errorCase.status == 503) ...{
+                  'upstream_status': 503,
+                  'scan_id': 'scan-503',
+                },
+              }),
               errorCase.status,
             ),
           ),
@@ -186,6 +277,13 @@ void main() {
         } catch (error) {
           expect(error.runtimeType, errorCase.type);
           expect((error as GeminiVisionException).message, errorCase.message);
+          if (error is GeminiUnavailableException) {
+            expect(error.errorCode, errorCase.code);
+            expect(error.upstreamStatus, 503);
+            expect(error.scanId, 'scan-503');
+            expect(error.toString(), contains('upstreamStatus=503'));
+            expect(error.toString(), contains('scanId=scan-503'));
+          }
         }
       },
     );

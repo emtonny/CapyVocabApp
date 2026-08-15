@@ -8,6 +8,7 @@ const GEMINI_API_BASE_URL =
 const GEMINI_503_RETRY_DELAY_MS = 750;
 const GEMINI_ATTEMPT_TIMEOUT_MS = 35_000;
 const MODEL_FAILOVER_STATUSES = new Set([404, 429, 500, 502, 503, 504]);
+const MODEL_HEALTH_FAILURE_STATUSES = new Set([500, 502, 503, 504]);
 
 type Fetcher = (
   input: string | URL | Request,
@@ -49,6 +50,19 @@ export interface GeminiChainResult {
   attemptsForModel: number;
 }
 
+export interface GeminiModelHealth {
+  modelName: string;
+  isHealthy: boolean;
+}
+
+export interface GeminiHealthStore {
+  getModelHealth(
+    modelNames: readonly string[],
+  ): Promise<readonly GeminiModelHealth[]>;
+  recordSuccess(modelName: string): Promise<void>;
+  recordSystemFailure(modelName: string): Promise<void>;
+}
+
 interface GeminiChainOptions {
   apiKey: string;
   scanId: string;
@@ -57,6 +71,7 @@ interface GeminiChainOptions {
   sleep?: (delayMs: number) => Promise<void>;
   attemptTimeoutMs?: number;
   logger?: Logger;
+  healthStore?: GeminiHealthStore;
 }
 
 interface GeminiAttemptOptions {
@@ -135,6 +150,58 @@ export async function fetchGemini(
   }
 }
 
+async function loadOrderedModelChain(
+  healthStore: GeminiHealthStore | undefined,
+  logger: Logger,
+  scanId: string,
+): Promise<string[]> {
+  const defaultChain = [...MODEL_CHAIN];
+  if (!healthStore) return defaultChain;
+
+  try {
+    const rows = await healthStore.getModelHealth(defaultChain);
+    const healthByModel = new Map(
+      rows.map((row) => [row.modelName, row.isHealthy]),
+    );
+
+    // Modern JS sorting is stable. Models with the same/unknown health retain
+    // their configured priority in MODEL_CHAIN.
+    return defaultChain.sort((first, second) =>
+      Number(healthByModel.get(first) === false) -
+      Number(healthByModel.get(second) === false)
+    );
+  } catch (error) {
+    logger.warn(
+      "Gemini health read failed; using default model chain",
+      JSON.stringify({ scanId, error: String(error) }),
+    );
+    return defaultChain;
+  }
+}
+
+async function recordAttemptHealth(
+  healthStore: GeminiHealthStore | undefined,
+  logger: Logger,
+  scanId: string,
+  model: string,
+  outcome: "success" | "system_failure",
+): Promise<void> {
+  if (!healthStore) return;
+
+  try {
+    if (outcome === "success") {
+      await healthStore.recordSuccess(model);
+    } else {
+      await healthStore.recordSystemFailure(model);
+    }
+  } catch (error) {
+    logger.warn(
+      "Gemini health write failed; continuing scan",
+      JSON.stringify({ scanId, model, outcome, error: String(error) }),
+    );
+  }
+}
+
 export async function fetchGeminiModelChain(
   options: GeminiChainOptions,
 ): Promise<GeminiChainResult> {
@@ -145,11 +212,20 @@ export async function fetchGeminiModelChain(
   const timeoutMs = options.attemptTimeoutMs ?? GEMINI_ATTEMPT_TIMEOUT_MS;
   const logger = options.logger ?? console;
   let lastAttemptError: GeminiAttemptError | undefined;
+  const orderedModelChain = await loadOrderedModelChain(
+    options.healthStore,
+    logger,
+    options.scanId,
+  );
 
-  for (let modelIndex = 0; modelIndex < MODEL_CHAIN.length; modelIndex += 1) {
-    const model = MODEL_CHAIN[modelIndex];
+  for (
+    let modelIndex = 0;
+    modelIndex < orderedModelChain.length;
+    modelIndex += 1
+  ) {
+    const model = orderedModelChain[modelIndex];
     const modelsTried = modelIndex + 1;
-    const isLastModel = modelsTried === MODEL_CHAIN.length;
+    const isLastModel = modelsTried === orderedModelChain.length;
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
@@ -160,6 +236,24 @@ export async function fetchGeminiModelChain(
           fetcher,
           timeoutMs,
         });
+
+        if (response.ok) {
+          await recordAttemptHealth(
+            options.healthStore,
+            logger,
+            options.scanId,
+            model,
+            "success",
+          );
+        } else if (MODEL_HEALTH_FAILURE_STATUSES.has(response.status)) {
+          await recordAttemptHealth(
+            options.healthStore,
+            logger,
+            options.scanId,
+            model,
+            "system_failure",
+          );
+        }
 
         if (response.status === 503 && attempt === 1) {
           await response.body?.cancel();
@@ -187,7 +281,7 @@ export async function fetchGeminiModelChain(
               model,
               status: response.status,
               attemptsForModel: attempt,
-              nextModel: MODEL_CHAIN[modelIndex + 1],
+              nextModel: orderedModelChain[modelIndex + 1],
             }),
           );
           break;
@@ -197,6 +291,13 @@ export async function fetchGeminiModelChain(
       } catch (error) {
         if (!(error instanceof GeminiAttemptError)) throw error;
         lastAttemptError = error;
+        await recordAttemptHealth(
+          options.healthStore,
+          logger,
+          options.scanId,
+          model,
+          "system_failure",
+        );
         logger.warn(
           "Gemini model fallback",
           JSON.stringify({
@@ -204,7 +305,7 @@ export async function fetchGeminiModelChain(
             model,
             failureKind: error.kind,
             attemptsForModel: attempt,
-            nextModel: isLastModel ? null : MODEL_CHAIN[modelIndex + 1],
+            nextModel: isLastModel ? null : orderedModelChain[modelIndex + 1],
           }),
         );
         break;
@@ -212,11 +313,11 @@ export async function fetchGeminiModelChain(
     }
   }
 
-  const finalModel = MODEL_CHAIN[MODEL_CHAIN.length - 1];
+  const finalModel = orderedModelChain[orderedModelChain.length - 1];
   throw new GeminiChainError(
     lastAttemptError?.kind ?? "network",
     finalModel,
-    MODEL_CHAIN.length,
+    orderedModelChain.length,
     lastAttemptError,
   );
 }

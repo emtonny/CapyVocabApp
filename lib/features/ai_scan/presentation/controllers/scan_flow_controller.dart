@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/services/gemini_vision_service.dart';
+import '../../data/datasources/scan_result_local_datasource.dart';
+import '../../data/services/scan_image_storage.dart';
 import '../providers/scan_provider.dart';
 
 class ScanFlowController {
@@ -13,16 +15,28 @@ class ScanFlowController {
     WidgetRef ref, {
     required String localPath,
   }) async {
+    final record = await scan(context, ref, localPath: localPath);
+    if (record == null || !context.mounted) return;
+
+    context.push('/scan-overlay', extra: record);
+  }
+
+  static Future<ScanResultRecord?> scan(
+    BuildContext context,
+    WidgetRef ref, {
+    required String localPath,
+  }) async {
     try {
-      final record = await ref.read(scanProvider.notifier).scanImage(localPath);
-      if (!context.mounted) return;
+      return await ref.read(scanProvider.notifier).scanImage(localPath);
+    } catch (error, stackTrace) {
+      _logError('scan', error, stackTrace);
+      if (!context.mounted) return null;
 
-      context.push('/scan-overlay', extra: record);
-    } catch (error) {
-      if (!context.mounted) return;
-
-      final message =
-          error is GeminiVisionException ? error.message : 'Đã có lỗi, thử lại';
+      final message = switch (error) {
+        GeminiVisionException() => error.message,
+        ScanImageStorageException() => error.message,
+        _ => 'Đã có lỗi khi quét ảnh, vui lòng thử lại.',
+      };
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -36,6 +50,19 @@ class ScanFlowController {
           ],
         ),
       );
+      return null;
     }
+  }
+
+  static void _logError(
+    String stage,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    debugPrint('AI scan failed during $stage: $error');
+    debugPrintStack(
+      label: 'AI scan $stage stack trace',
+      stackTrace: stackTrace,
+    );
   }
 }
