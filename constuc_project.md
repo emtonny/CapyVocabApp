@@ -828,30 +828,31 @@ final response = await http.post(
 | `500` | Lỗi server Gemini | Retry 1 lần sau 2s, nếu vẫn lỗi show snackbar | "Dịch vụ AI tạm thời gián đoạn, thử lại sau" |
 | `TimeoutException` | Mạng chậm / ảnh lớn | Show snackbar | "Quét ảnh mất quá nhiều thời gian, kiểm tra kết nối mạng" |
 
-### 📄 Định Dạng JSON Response Mong Đợi Từ Gemini
+### 📄 Định Dạng JSON Edge Function Trả Về Cho Ứng Dụng
 
 ```json
 {
-  "detected_vocabulary": [
+  "words": [
     {
-      "word": "hello",
-      "phonetic": "/həˈloʊ/",
-      "meaning": "xin chào",
-      "part_of_speech": "exclamation",
-      "bounding_box": {
-        "x": 0.12,
-        "y": 0.35,
-        "w": 0.08,
-        "h": 0.04
+      "number": 1,
+      "word": "apple",
+      "phonetic": "/ˈæp.əl/",
+      "meaning_vi": "quả táo",
+      "box": {
+        "x": 250,
+        "y": 300,
+        "w": 200,
+        "h": 150
       }
     }
-  ],
-  "image_language": "en",
-  "confidence": 0.94
+  ]
 }
 ```
 
-> Tọa độ `x, y, w, h` là **tỷ lệ tương đối** so với kích thước ảnh (0.0–1.0), KHÔNG phải pixel tuyệt đối — để Canvas render đúng trên mọi kích thước màn hình.
+> Gemini trả full, tight bounding box theo thang số nguyên `0–1000` cho Edge
+> Function. Edge Function co `w/h` còn 50%, giữ nguyên tâm, clamp vào biên ảnh
+> rồi mới trả JSON trên cho ứng dụng. Flutter chỉ chuẩn hóa box này về `0.0–1.0`
+> để lưu và render; không co box thêm lần nữa.
 
 ---
 
@@ -878,9 +879,9 @@ final response = await http.post(
 │ BƯỚC 2 — GỬI GEMINI API                                     │
 │                                                              │
 │  Đọc file từ local_path → mã hóa Base64                     │
-│  Tạo JSON request → POST Gemini 1.5 Flash                   │
-│  Timeout: 12 giây                                            │
-│  → Nhận JSON response: [{word, phonetic, meaning, x,y,w,h}] │
+│  Edge Function gửi request đến chuỗi model Gemini           │
+│  Gemini trả full box → Edge Function co w/h còn 50%         │
+│  → App nhận JSON: [{number, word, phonetic, meaning_vi, box}]│
 └──────────────────────────────────────────────────────────────┘
          ↓
 ┌──────────────────────────────────────────────────────────────┐

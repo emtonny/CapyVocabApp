@@ -46,6 +46,7 @@ void main() {
         jsonEncode({
           'words': [
             {
+              'number': 1,
               'word': 'apple',
               'phonetic': '/ˈæp.əl/',
               'meaning_vi': 'quả táo',
@@ -76,7 +77,9 @@ void main() {
       {'image_base64': 'compressed-base64'},
     );
     expect(result.words, hasLength(1));
+    expect(result.words.single.number, 1);
     expect(result.words.single.word, 'apple');
+    expect(result.words.single.numberedWord, '1. apple');
     expect(result.words.single.meaningVi, 'quả táo');
     expect(result.words.single.x, 0.125);
     expect(result.words.single.y, 0.25);
@@ -86,6 +89,7 @@ void main() {
       result.toJson()['words'],
       [
         {
+          'number': 1,
           'word': 'apple',
           'phonetic': '/ˈæp.əl/',
           'meaning_vi': 'quả táo',
@@ -167,6 +171,43 @@ void main() {
     }
     expect(result.words.map((word) => word.word), isNot(contains('object-0')));
     expect(result.words.map((word) => word.word), isNot(contains('object-1')));
+  });
+
+  test('response cũ thiếu number được đánh số lại sau khi xếp hạng', () {
+    final result = GeminiVisionResult.fromJson({
+      'words': [
+        {
+          'word': 'apple',
+          'phonetic': '/ˈæp.əl/',
+          'meaning_vi': 'quả táo',
+          'box': {'x': 100, 'y': 100, 'w': 100, 'h': 100},
+        },
+        {
+          'word': 'desk lamp',
+          'phonetic': '/desk læmp/',
+          'meaning_vi': 'đèn bàn',
+          'box': {'x': 300, 'y': 100, 'w': 100, 'h': 200},
+        },
+      ],
+    });
+
+    expect(result.words.map((word) => word.number), [1, 2]);
+    expect(result.toJson()['words'], [
+      {
+        'number': 1,
+        'word': 'desk lamp',
+        'phonetic': '/desk læmp/',
+        'meaning_vi': 'đèn bàn',
+        'box': {'x': 300, 'y': 100, 'w': 100, 'h': 200},
+      },
+      {
+        'number': 2,
+        'word': 'apple',
+        'phonetic': '/ˈæp.əl/',
+        'meaning_vi': 'quả táo',
+        'box': {'x': 100, 'y': 100, 'w': 100, 'h': 100},
+      },
+    ]);
   });
 
   test('không gửi request khi không có access token', () async {

@@ -201,10 +201,12 @@ class GeminiVisionResult {
         ? _parseDetectionList(rawSceneWords)
         : parsedWords;
 
+    final selectedDetections = rankDetectionsByBoxArea(
+      keepLargestDetectionPerWord(parsedWords),
+    ).take(maxGeminiVocabularyWords);
+
     return GeminiVisionResult(
-      detectedVocabulary: rankDetectionsByBoxArea(
-        keepLargestDetectionPerWord(parsedWords),
-      ).take(maxGeminiVocabularyWords).toList(growable: false),
+      detectedVocabulary: numberDetectionsSequentially(selectedDetections),
       sceneDetections: sceneDetections,
     );
   }
@@ -225,11 +227,15 @@ class GeminiVisionResult {
 }
 
 List<VocabDetection> _parseDetectionList(List<dynamic> rawWords) {
-  return rawWords.map((rawWord) {
+  return rawWords.asMap().entries.map((entry) {
+    final rawWord = entry.value;
     if (rawWord is! Map<String, dynamic>) {
       throw const FormatException('Each word must be a JSON object.');
     }
-    return VocabDetection.fromJson(rawWord);
+    return VocabDetection.fromJson(
+      rawWord,
+      fallbackNumber: entry.key + 1,
+    );
   }).toList(growable: false);
 }
 
@@ -273,8 +279,18 @@ List<VocabDetection> rankDetectionsByBoxArea(
   return List.unmodifiable(ranked);
 }
 
+List<VocabDetection> numberDetectionsSequentially(
+  Iterable<VocabDetection> detections,
+) {
+  var number = 0;
+  return List.unmodifiable(
+    detections.map((detection) => detection.withNumber(++number)),
+  );
+}
+
 class VocabDetection {
   const VocabDetection({
+    this.number = 1,
     required this.word,
     required this.phonetic,
     required this.meaning,
@@ -285,7 +301,10 @@ class VocabDetection {
     this.partOfSpeech = '',
   });
 
-  factory VocabDetection.fromJson(Map<String, dynamic> json) {
+  factory VocabDetection.fromJson(
+    Map<String, dynamic> json, {
+    int fallbackNumber = 1,
+  }) {
     final rawBox = json['box'];
     if (rawBox is! Map<String, dynamic>) {
       throw const FormatException('Word field "box" must be an object.');
@@ -294,10 +313,14 @@ class VocabDetection {
     final word = json['word'];
     final phonetic = json['phonetic'];
     final meaning = json['meaning_vi'];
+    final number = json['number'] ?? fallbackNumber;
     if (word is! String || phonetic is! String || meaning is! String) {
       throw const FormatException(
         'word, phonetic, and meaning_vi must be strings.',
       );
+    }
+    if (number is! int || number < 1) {
+      throw const FormatException('number must be a positive integer.');
     }
 
     final x = _readCoordinate(rawBox, 'x');
@@ -311,6 +334,7 @@ class VocabDetection {
     }
 
     return VocabDetection(
+      number: number,
       word: word,
       phonetic: phonetic,
       meaning: meaning,
@@ -321,6 +345,7 @@ class VocabDetection {
     );
   }
 
+  final int number;
   final String word;
   final String phonetic;
   final String meaning;
@@ -331,8 +356,22 @@ class VocabDetection {
   final double h;
 
   String get meaningVi => meaning;
+  String get numberedWord => '$number. $word';
+
+  VocabDetection withNumber(int value) => VocabDetection(
+        number: value,
+        word: word,
+        phonetic: phonetic,
+        meaning: meaning,
+        x: x,
+        y: y,
+        w: w,
+        h: h,
+        partOfSpeech: partOfSpeech,
+      );
 
   Map<String, dynamic> toJson() => {
+        'number': number,
         'word': word,
         'phonetic': phonetic,
         'meaning_vi': meaning,

@@ -87,6 +87,7 @@ void main() {
 }
 
 const _word = VocabDetection(
+  number: 1,
   word: 'apple',
   phonetic: '/ˈæp.əl/',
   meaning: 'quả táo',

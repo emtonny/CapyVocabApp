@@ -6,6 +6,11 @@ import {
   GeminiChainError,
 } from "./gemini_client.ts";
 import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
+import {
+  type BoundingBox,
+  DEFAULT_BOUNDING_BOX_RATIO,
+  shrinkBoundingBox,
+} from "./bounding_box.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -16,31 +21,38 @@ const GEMINI_HEALTH_STORE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
   })
   : undefined;
-const MAX_WORDS = 15;
+const MAX_WORDS = 12;
+const REDUCED_BOX_AREA_SCALE = DEFAULT_BOUNDING_BOX_RATIO ** 2;
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     words: {
       type: "ARRAY",
+      maxItems: MAX_WORDS,
       items: {
         type: "OBJECT",
         properties: {
+          number: {
+            type: "INTEGER",
+            minimum: 1,
+            maximum: MAX_WORDS,
+          },
           word: { type: "STRING" },
           phonetic: { type: "STRING" },
           meaning_vi: { type: "STRING" },
           box: {
             type: "OBJECT",
             properties: {
-              x: { type: "INTEGER" },
-              y: { type: "INTEGER" },
-              w: { type: "INTEGER" },
-              h: { type: "INTEGER" },
+              x: { type: "INTEGER", minimum: 0, maximum: 1000 },
+              y: { type: "INTEGER", minimum: 0, maximum: 1000 },
+              w: { type: "INTEGER", minimum: 1, maximum: 1000 },
+              h: { type: "INTEGER", minimum: 1, maximum: 1000 },
             },
             required: ["x", "y", "w", "h"],
           },
         },
-        required: ["word", "phonetic", "meaning_vi", "box"],
+        required: ["number", "word", "phonetic", "meaning_vi", "box"],
       },
     },
   },
@@ -48,36 +60,29 @@ const RESPONSE_SCHEMA = {
 };
 
 const PROMPT =
-  `Ban la tro ly nhan dien do vat trong anh de hoc tu vung tieng Anh.
-Hay xac dinh CAC DOI TUONG RO RANG, PHO BIEN nhat trong anh.
-GIOI HAN NGHIEM NGAT: TOI DA ${MAX_WORDS} DOI TUONG - neu anh co nhieu hon,
-CHI chon ${MAX_WORDS} doi tuong quan trong/ro rang nhat, bo qua phan con lai.
-XEP UU TIEN CAC DOI TUONG THEO THU TU: dien tich bounding box lon hon la
-uu tien cao nhat; khi dien tich gan tuong duong, uu tien doi tuong co gia tri
-hoc tu vung, pho bien, ro rang va de nhan dien hon.
-Neu anh co nhieu vat the cung loai (vi du nhieu qua tao giong nhau), CHI
-chon DUNG 1 VAT THE DAI DIEN ro rang/de nhan dien nhat de dua vao ket qua.
-KHONG liet ke trung lap nhieu lan cung 1 tu trong mang words tra ve.
+  `Identify up to ${MAX_WORDS} of the clearest, most common, and most useful objects for vocabulary learning in the image. Prioritize objects that are larger, visually clear, and easy to recognize. If multiple objects of the same type are present, select only the single clearest representative. Do not return duplicate vocabulary items.
 
-Voi moi doi tuong, tra ve: tu tieng Anh (thuong, so it), phien am IPA,
-nghia tieng Viet ngan gon, va toa do khung bao quanh doi tuong do.
+Assign each selected object a unique sequential number using the field \`number\`, starting from \`1\` and continuing in order (\`1, 2, 3, ...\`) with no duplicates or skipped numbers.
 
-QUAN TRONG VE TOA DO: tra ve duoi dang SO NGUYEN trong khoang 0 den 1000
-(KHONG PHAI so thap phan 0.0-1.0), voi x/y la goc tren-trai cua khung,
-w/h la chieu rong/cao cua khung, tat ca tinh theo ty le so voi kich
-thuoc anh (anh rong/cao = 1000 don vi).
-TOA DO BOX PHAI OM SAT DUNG VIEN VAT THE THAT TRONG ANH, KHONG UOC LUONG
-QUA LOA. Voi vat the lon hoac phuc tap (nguoi, do noi that, nhom vat the),
-hay tinh tam va kich thuoc dua tren TOAN BO VUNG VAT THE chiem trong anh,
-khong chi dua vao phan de nhan dien nhat (vi du: khuon mat).
+For each object, return: its \`number\`; a natural and accurate English name, lowercase and normally singular; its IPA pronunciation; an accurate, natural Vietnamese meaning that closely matches the actual object shown; and its bounding box.
 
-TRUOC KHI TRA JSON, TU KIEM TRA LAI MOT LAN cho tung box: box phai nam
-hoan toan trong anh, om dung vat the tuong ung voi "word" da chon, va
-khong bo sot phan ro rang nao cua vat the.
+Use the most specific object name supported by the visual evidence, but do not infer or guess any subtype, brand, function, or characteristic that is not clearly visible in the image.
 
-Tra loi NGAY, khong can suy nghi nhieu buoc - day la tac vu nhan dien
-don gian. Chi tra JSON, khong giai thich them, khong vuot qua
-${MAX_WORDS} phan tu trong mang words.`;
+Bounding box coordinates must be INTEGERS from 0 to 1000, not decimal values from 0.0 to 1.0. \`x/y\` represent the top-left corner, and \`w/h\` represent the width and height relative to the full image dimensions.
+
+Return the FULL and PIXEL-TIGHT bounding box of the entire visible object.
+
+Each side of the box must closely follow the object's outermost visible pixels:
+- left x: the object's leftmost visible point;
+- right edge: the object's rightmost visible point;
+- top y: the object's highest visible point;
+- bottom edge: the object's lowest visible point.
+
+Include the smallest possible amount of margin or background. Do not enlarge the box to include nearby, overlapping, or visually related objects. For transparent, hollow, or irregularly shaped objects, include only the object's own visible structure and full silhouette; do not treat objects visible through or behind it as part of the object.
+
+Before returning each box, independently verify all four edges. Moving any edge inward must crop the target object, while moving it outward would add unnecessary background.
+
+Return valid JSON only, with no additional explanation, and never return more than ${MAX_WORDS} elements in the \`words\` array.`;
 
 function logSuspiciousBoxes(words: unknown[], scanId: string) {
   words.forEach((item, index) => {
@@ -102,9 +107,9 @@ function logSuspiciousBoxes(words: unknown[], scanId: string) {
       box,
     });
 
-    if (areaRatio > 0.7) {
+    if (areaRatio > 0.7 * REDUCED_BOX_AREA_SCALE) {
       console.warn("box bất thường lớn", context);
-    } else if (areaRatio < 0.005) {
+    } else if (areaRatio < 0.005 * REDUCED_BOX_AREA_SCALE) {
       console.warn("box bất thường nhỏ", context);
     }
   });
@@ -127,6 +132,49 @@ function readBoxArea(word: unknown): number {
   if (typeof w !== "number" || typeof h !== "number") return -1;
   if (!Number.isFinite(w) || !Number.isFinite(h)) return -1;
   return w >= 0 && h >= 0 ? w * h : -1;
+}
+
+function deduplicateWords(words: unknown[]): unknown[] {
+  const seenWords = new Set<string>();
+
+  return words.filter((item) => {
+    if (!item || typeof item !== "object") return true;
+    const word = (item as { word?: unknown }).word;
+    if (typeof word !== "string") return true;
+
+    const normalizedWord = word.trim().toLowerCase();
+    if (!normalizedWord || seenWords.has(normalizedWord)) return false;
+    seenWords.add(normalizedWord);
+    return true;
+  });
+}
+
+function shrinkDetectedWordBox(word: unknown): unknown {
+  if (!word || typeof word !== "object") return word;
+  const record = word as { box?: unknown };
+  if (!record.box || typeof record.box !== "object") return word;
+
+  const box = record.box as Partial<BoundingBox>;
+  if (
+    typeof box.x !== "number" ||
+    typeof box.y !== "number" ||
+    typeof box.w !== "number" ||
+    typeof box.h !== "number"
+  ) {
+    return word;
+  }
+
+  const shrunkBox = shrinkBoundingBox({
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
+  });
+
+  return {
+    ...record,
+    box: shrunkBox,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -323,7 +371,17 @@ Deno.serve(async (req) => {
     }
 
     if (Array.isArray(parsed.words)) {
-      parsed.words = rankWordsByBoxArea(parsed.words).slice(0, MAX_WORDS);
+      // Rank using Gemini's full boxes, then shrink exactly once before the
+      // response reaches Flutter or local persistence.
+      parsed.words = deduplicateWords(rankWordsByBoxArea(parsed.words)).slice(
+        0,
+        MAX_WORDS,
+      ).map((word: unknown, index: number) => {
+        const wordWithReducedBox = shrinkDetectedWordBox(word);
+        return wordWithReducedBox && typeof wordWithReducedBox === "object"
+          ? { ...wordWithReducedBox, number: index + 1 }
+          : wordWithReducedBox;
+      });
     }
 
     const words = Array.isArray(parsed.words) ? parsed.words : [];

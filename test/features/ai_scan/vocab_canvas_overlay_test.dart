@@ -19,6 +19,7 @@ void main() {
       ),
     );
     const word = VocabDetection(
+      number: 1,
       word: 'apple',
       phonetic: '/ˈæp.əl/',
       meaning: 'quả táo',
@@ -63,6 +64,7 @@ void main() {
     expect(cardRect.top, greaterThanOrEqualTo(painter.imageRect.top));
     expect(cardRect.right, lessThanOrEqualTo(painter.imageRect.right));
     expect(cardRect.bottom, lessThanOrEqualTo(painter.imageRect.bottom));
+    expect(word.numberedWord, '1. apple');
     expect(tester.takeException(), isNull);
   });
 
