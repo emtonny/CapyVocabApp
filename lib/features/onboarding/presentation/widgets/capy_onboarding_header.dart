@@ -10,28 +10,18 @@ class CapyOnboardingHeader extends StatefulWidget {
     required this.currentStep,
   });
 
-  @override
-  State<CapyOnboardingHeader> createState() => _CapyOnboardingHeaderState();
-}
-
-class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
-  late VideoPlayerController _controller;
-  bool _isInitialized = false;
-
   static const _prompts = <Map<String, String>>[
     {
-      'title': 'Chào bạn mới! 🍊',
+      'title': 'Chào bạn mới! 🍪',
       'subtitle': 'Nhập tên thật và biệt danh bạn muốn bạn bè nhìn thấy nhé!',
     },
     {
       'title': 'Thông tin độ tuổi & SĐT 📱',
-      'subtitle':
-          'Giúp Bé Capy bảo mật và gửi thông báo nhắc nhớ chuẩn hơn!',
+      'subtitle': 'Giúp Bé Deer bảo mật và gửi thông báo nhắc nhớ chuẩn hơn!',
     },
     {
       'title': 'Chọn vai trò tài khoản 👥',
-      'subtitle':
-          'Bạn dùng ứng dụng làm cá nhân hay phụ huynh theo dõi con?',
+      'subtitle': 'Bạn dùng ứng dụng làm cá nhân hay phụ huynh theo dõi con?',
     },
     {
       'title': 'Lên lịch học tập ⏰',
@@ -39,10 +29,17 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
     },
     {
       'title': 'Mục tiêu học từ vựng 📚',
-      'subtitle':
-          'Tự nhập số lượng từ vựng bạn muốn chinh phục mỗi ngày!',
+      'subtitle': 'Tự nhập số lượng từ vựng bạn muốn chinh phục mỗi ngày!',
     },
   ];
+
+  @override
+  State<CapyOnboardingHeader> createState() => _CapyOnboardingHeaderState();
+}
+
+class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -52,31 +49,32 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
 
   Future<void> _initVideo() async {
     try {
-      _controller = VideoPlayerController.asset('assets/CapyOnboarding.mp4');
-      await _controller.initialize();
-      _controller.setLooping(true);
-      _controller.setVolume(0.0);
-      await _controller.play();
+      final controller =
+          VideoPlayerController.asset('assets/DeerOnboarding.mp4');
+      _controller = controller;
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(0);
+      await controller.play();
+
       if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
+        setState(() => _isInitialized = true);
       }
-    } catch (e) {
-      debugPrint('CapyOnboardingHeader video init error: $e');
+    } catch (error) {
+      debugPrint('Deer onboarding video init error: $error');
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final stepIndex = widget.currentStep.clamp(0, 4);
-    final prompt = _prompts[stepIndex];
+    final prompt = CapyOnboardingHeader._prompts[stepIndex];
     final progress = (stepIndex + 1) / 5;
 
     return Column(
@@ -107,6 +105,7 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
         ),
         const SizedBox(height: 8),
         Container(
+          key: const Key('onboarding-progress-bar'),
           height: 12,
           decoration: BoxDecoration(
             color: const Color(0xFFEFE8DB),
@@ -153,28 +152,28 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
           ),
           child: Row(
             children: [
-              // 9:16 Video Animation Box
               Container(
-                height: 84,
-                width: 84 * (9 / 16), // 47.25px width for 9:16 vertical ratio
+                key: const Key('onboarding-video-box'),
+                width: 112 * (9 / 16),
+                height: 112,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
                   color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: _isInitialized
+                child: _isInitialized && _controller != null
                     ? FittedBox(
                         fit: BoxFit.cover,
                         child: SizedBox(
-                          width: _controller.value.size.width,
-                          height: _controller.value.size.height,
-                          child: VideoPlayer(_controller),
+                          width: _controller!.value.size.width,
+                          height: _controller!.value.size.height,
+                          child: VideoPlayer(_controller!),
                         ),
                       )
                     : const Center(
                         child: Text(
-                          '🦫',
-                          style: TextStyle(fontSize: 32),
+                          '🦌',
+                          style: TextStyle(fontSize: 28),
                         ),
                       ),
               ),

@@ -54,7 +54,7 @@ class Step1NameUsername extends ConsumerWidget {
             color: Color(0xFF3C2A21),
           ),
           decoration: _inputDecoration(
-            hintText: 'Capy Mây',
+            hintText: 'Deer Mây',
             errorText: state.fieldErrors['displayName'],
           ),
           onChanged: notifier.updateDisplayName,

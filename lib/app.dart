@@ -8,7 +8,7 @@ class CapyVocabApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Capy Vocab',
+      title: 'Deery Vocab',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

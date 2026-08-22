@@ -80,6 +80,73 @@ void main() {
     expect(calls, ['rpc', 'signOut']);
     expect(find.text('AuthScreen'), findsOneWidget);
   });
+
+  testWidgets('hủy dialog đăng xuất không gọi signOut', (tester) async {
+    final repository = _RecordingAuthRepository();
+    await _pumpSettingsScreen(
+      tester,
+      repository: repository,
+      resetOnboarding: () async {},
+    );
+
+    await tester.tap(find.byKey(const Key('logout-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Bạn có chắc chắn muốn đăng xuất khỏi DeerVocab?'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Hủy'));
+    await tester.pumpAndSettle();
+
+    expect(repository.signOutCallCount, 0);
+    expect(find.text('SettingsScreen'), findsOneWidget);
+  });
+
+  testWidgets('xác nhận đăng xuất gọi signOut và điều hướng về auth',
+      (tester) async {
+    final repository = _RecordingAuthRepository();
+    await _pumpSettingsScreen(
+      tester,
+      repository: repository,
+      resetOnboarding: () async {},
+    );
+
+    await tester.tap(find.byKey(const Key('logout-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Bạn có chắc chắn muốn đăng xuất khỏi DeerVocab?'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('logout-confirm-button')));
+    await tester.pumpAndSettle();
+
+    expect(repository.signOutCallCount, 1);
+    expect(find.text('AuthScreen'), findsOneWidget);
+  });
+
+  testWidgets('đăng xuất lỗi hiển thị SnackBar lỗi', (tester) async {
+    final repository = _FailingAuthRepository();
+    await _pumpSettingsScreen(
+      tester,
+      repository: repository,
+      resetOnboarding: () async {},
+    );
+
+    await tester.tap(find.byKey(const Key('logout-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logout-confirm-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Không thể đăng xuất. Vui lòng thử lại.'),
+      findsOneWidget,
+    );
+    expect(find.text('SettingsScreen'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpSettingsScreen(
@@ -156,5 +223,12 @@ class _RecordingAuthRepository implements AuthRepository {
   @override
   Future<void> sendPasswordResetEmail(String email) {
     throw UnimplementedError();
+  }
+}
+
+class _FailingAuthRepository extends _RecordingAuthRepository {
+  @override
+  Future<void> signOut() async {
+    throw Exception('Sign out failed');
   }
 }

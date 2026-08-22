@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
-import '../../../../core/widgets/responsive_layout.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/capy_video_header.dart';
 import '../widgets/social_auth_button.dart';
@@ -16,6 +15,8 @@ class AuthScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
+  static const _wideLayoutMinWidth = 760.0;
+
   final _formKey = GlobalKey<FormState>();
   final _displayNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -102,32 +103,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       backgroundColor: const Color(0xFFFAF3E7),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isWide =
-              constraints.maxWidth >= ResponsiveBreakpoints.mobileMax;
-          final bgAsset = isWide
-              ? 'assets/capy_background.png'
-              : 'assets/capy_background_mobile.png';
+          final isWide = constraints.maxWidth >= _wideLayoutMinWidth;
 
-          return Stack(
-            children: [
-              // Full-screen Responsive Background Image
-              Positioned.fill(
-                child: Image.asset(
-                  bgAsset,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(color: const Color(0xFFFAF3E7));
-                  },
-                ),
-              ),
-              // Screen Content
-              SafeArea(
-                child: isWide
-                    ? _buildWideScreenLayout(context, isLoading, errorMessage)
-                    : _buildMobileScreenLayout(context, isLoading, errorMessage),
-              ),
-            ],
+          return SafeArea(
+            child: isWide
+                ? _buildWideScreenLayout(context, isLoading, errorMessage)
+                : _buildMobileScreenLayout(context, isLoading, errorMessage),
           );
         },
       ),
@@ -143,7 +124,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
+          constraints: const BoxConstraints(maxWidth: 480),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -176,7 +157,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             children: [
               // Top Prominent Banner Header for Web/PC & Tablet
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
                 margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -195,29 +177,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ),
                 child: const Column(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'CapyVocab',
-                          style: TextStyle(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF3C2A21),
-                            fontFamily: 'Fredoka',
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          '🍊',
-                          style: TextStyle(fontSize: 32),
-                        ),
-                      ],
+                    Text(
+                      'Deery Vocab',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF3C2A21),
+                        fontFamily: 'Fredoka',
+                        letterSpacing: 0.5,
+                      ),
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Học từ vựng Tiếng Anh mỗi ngày cùng chú Chuột lang Capybara siêu đáng yêu!',
+                      'Học tiếng cùng Deery, đi khắp thế giới',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 15,
@@ -229,51 +202,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ),
               ),
 
-              // Dual-Pane Layout: Left Video/Features + Right Form
+              // Dual-Pane Layout: Full Video Card + Right Form
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left Pane - Enlarged Capy MP4 Animation & Feature Badges
-                  Expanded(
-                    flex: 5,
-                    child: Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: const Color(0xFF3C2A21),
-                          width: 2.5,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0xFF3C2A21),
-                            offset: Offset(0, 4),
-                            blurRadius: 0,
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Enlarged Capy Video Animation Box
-                          const CapyVideoHeader(
-                            showText: false,
-                            showContainerBorder: false,
-                            videoHeight: 250,
-                          ),
-
-                          const SizedBox(height: 20),
-                          const Divider(color: Color(0xFFE2D6C5)),
-                          const SizedBox(height: 14),
-
-                          _buildFeatureHighlight('🎯', 'Lộ trình cá nhân hoá thông minh'),
-                          const SizedBox(height: 10),
-                          _buildFeatureHighlight('🎮', 'Mini-game ôn tập tương tác cao'),
-                          const SizedBox(height: 10),
-                          _buildFeatureHighlight('🤖', 'Trợ lý AI quét từ & giải đáp 24/7'),
-                        ],
-                      ),
+                  const SizedBox(
+                    width: 315,
+                    child: CapyVideoHeader(
+                      showText: false,
+                      videoHeight: 520,
                     ),
                   ),
 
@@ -299,25 +236,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildFeatureHighlight(String icon, String text) {
-    return Row(
-      children: [
-        Text(icon, style: const TextStyle(fontSize: 18)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF3C2A21),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -425,14 +343,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   labelText: 'Mật khẩu',
                   hintText: '••••••',
                   suffixIcon: IconButton(
-                    tooltip: _obscurePassword
-                        ? 'Hiện mật khẩu'
-                        : 'Ẩn mật khẩu',
+                    tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
                     onPressed: isLoading
                         ? null
                         : () => setState(
-                              () => _obscurePassword =
-                                  !_obscurePassword,
+                              () => _obscurePassword = !_obscurePassword,
                             ),
                     icon: Icon(
                       _obscurePassword
@@ -451,8 +366,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   }
                   return null;
                 },
-                onFieldSubmitted:
-                    isLoading ? null : (_) => _submit(),
+                onFieldSubmitted: isLoading ? null : (_) => _submit(),
               ),
               if (errorMessage != null) ...[
                 const SizedBox(height: 16),

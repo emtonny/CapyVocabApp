@@ -1,6 +1,7 @@
 import 'package:capy_vocab/features/auth/domain/repositories/auth_repository.dart';
 import 'package:capy_vocab/features/auth/presentation/providers/auth_provider.dart';
 import 'package:capy_vocab/features/auth/presentation/screens/auth_screen.dart';
+import 'package:capy_vocab/features/auth/presentation/widgets/capy_video_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,13 +62,37 @@ void main() {
 
     expect(repository.receivedDisplayName, 'Nguyễn Văn An');
     expect(
-      find.text('Đăng ký tài khoản thành công! Vui lòng nhập mật khẩu để đăng nhập.'),
+      find.text(
+          'Đăng ký tài khoản thành công! Vui lòng nhập mật khẩu để đăng nhập.'),
       findsOneWidget,
     );
     expect(
       find.byKey(const Key('sign-up-display-name-field')),
       findsNothing,
     );
+  });
+
+  testWidgets('video lớn và tên thương hiệu nằm phía trên trên mọi kích thước',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    tester.view.physicalSize = const Size(600, 1000);
+    await _pumpAuthScreen(tester, _RecordingAuthRepository());
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getTopLeft(find.text('Deery Vocab')).dy,
+      lessThan(tester.getTopLeft(find.text('🦌')).dy),
+    );
+
+    tester.view.physicalSize = const Size(900, 1000);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final videoCardSize = tester.getSize(find.byType(CapyVideoHeader));
+    expect(videoCardSize.width, 315);
+    expect(videoCardSize.height, greaterThan(500));
   });
 }
 

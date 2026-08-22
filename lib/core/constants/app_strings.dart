@@ -3,5 +3,5 @@
 class AppStrings {
   AppStrings._();
 
-  static const appName = 'Capy Vocab — Spa Từ Vựng Chill';
+  static const appName = 'Deery Vocab — Học tiếng cùng Deery, đi khắp thế giới';
 }

@@ -90,30 +90,12 @@ class OnboardingWizardScreen extends ConsumerWidget {
         builder: (context, constraints) {
           final isWide =
               constraints.maxWidth >= ResponsiveBreakpoints.mobileMax;
-          final bgAsset = isWide
-              ? 'assets/capy_background.png'
-              : 'assets/capy_background_mobile.png';
 
-          return Stack(
-            children: [
-              // Full-screen Responsive Background Image
-              Positioned.fill(
-                child: Image.asset(
-                  bgAsset,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(color: const Color(0xFFFAF3E7));
-                  },
-                ),
-              ),
-              // Screen Content
-              SafeArea(
-                child: isWide
-                    ? _buildWideScreenLayout(context, state, notifier)
-                    : _buildMobileScreenLayout(context, state, notifier),
-              ),
-            ],
+          return SafeArea(
+            minimum: EdgeInsets.only(top: isWide ? 0 : 16),
+            child: isWide
+                ? _buildWideScreenLayout(context, state, notifier)
+                : _buildMobileScreenLayout(context, state, notifier),
           );
         },
       ),
@@ -125,15 +107,19 @@ class OnboardingWizardScreen extends ConsumerWidget {
     OnboardingState state,
     OnboardingNotifier notifier,
   ) {
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CapyOnboardingHeader(currentStep: state.currentStep),
+              CapyOnboardingHeader(
+                key: const Key('onboarding-header'),
+                currentStep: state.currentStep,
+              ),
               const SizedBox(height: 16),
               _buildStepContentCard(state.currentStep),
               if (state.saveError != null) ...[
@@ -302,6 +288,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
 
   Widget _buildStepContentCard(int currentStep) {
     return Container(
+      key: const Key('onboarding-step-content-card'),
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -319,9 +306,9 @@ class OnboardingWizardScreen extends ConsumerWidget {
           ),
         ],
       ),
-      child: IndexedStack(
-        index: currentStep,
-        children: _steps,
+      child: KeyedSubtree(
+        key: ValueKey('onboarding-step-$currentStep'),
+        child: _steps[currentStep],
       ),
     );
   }
@@ -333,8 +320,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
   ) {
     return _NavigationBar(
       currentStep: state.currentStep,
-      isCheckingAvailability:
-          state.isCheckingUsername || state.isCheckingPhone,
+      isCheckingAvailability: state.isCheckingUsername || state.isCheckingPhone,
       isSaving: state.isSaving,
       hasSaveError: state.saveError != null,
       onBack: notifier.previousStep,

@@ -8,6 +8,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('progress nằm trên cùng và video onboarding được phóng lớn',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 1000);
+    tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+    addTearDown(tester.view.reset);
+    addTearDown(tester.view.resetPadding);
+
+    final repository = _WidgetTestRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          onboardingRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: OnboardingWizardScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('onboarding-header'))).dy,
+      55,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('onboarding-progress-bar'))).dy,
+      greaterThan(47),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('onboarding-video-box'))),
+      const Size(63, 112),
+    );
+  });
+
   testWidgets('hiển thị và điều hướng đúng thứ tự 5 bước', (tester) async {
     final repository = _WidgetTestRepository();
     await tester.pumpWidget(
@@ -30,6 +64,14 @@ void main() {
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
     expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
+
+    final step2Card = tester.getRect(
+      find.byKey(const Key('onboarding-step-content-card')),
+    );
+    final phoneField = tester.getRect(
+      find.byKey(const Key('onboarding-phone-field')),
+    );
+    expect(step2Card.bottom - phoneField.bottom, closeTo(22.5, 0.1));
 
     await tester.enterText(
       find.byKey(const Key('onboarding-age-field')),

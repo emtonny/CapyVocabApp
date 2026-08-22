@@ -9,7 +9,7 @@ class CapyVideoHeader extends StatefulWidget {
 
   const CapyVideoHeader({
     super.key,
-    this.videoPath = 'assets/CapyLogin.mp4',
+    this.videoPath = 'assets/DeerLogin.mp4',
     this.showText = true,
     this.showContainerBorder = true,
     this.videoHeight = 180.0,
@@ -20,7 +20,7 @@ class CapyVideoHeader extends StatefulWidget {
 }
 
 class _CapyVideoHeaderState extends State<CapyVideoHeader> {
-  late VideoPlayerController _controller;
+  VideoPlayerController? _controller;
   bool _isInitialized = false;
 
   @override
@@ -31,97 +31,81 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
 
   Future<void> _initVideo() async {
     try {
-      _controller = VideoPlayerController.asset(widget.videoPath);
-      await _controller.initialize();
-      _controller.setLooping(true);
-      _controller.setVolume(0.0);
-      await _controller.play();
+      final controller = VideoPlayerController.asset(widget.videoPath);
+      _controller = controller;
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(0);
+      await controller.play();
+
       if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
+        setState(() => _isInitialized = true);
       }
-    } catch (e) {
-      debugPrint('CapyVideoHeader video init error: $e');
+    } catch (error) {
+      debugPrint('Deer login video init error: $error');
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final vHeight = widget.videoHeight;
-    final vWidth = vHeight * (9 / 16);
-
+    final videoWidth = widget.videoHeight * (9 / 16);
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 9:16 Video Animation Box
-        Container(
-          height: vHeight,
-          width: vWidth,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Colors.transparent,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: _isInitialized
-              ? FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _controller.value.size.width,
-                    height: _controller.value.size.height,
-                    child: VideoPlayer(_controller),
-                  ),
-                )
-              : const Center(
-                  child: Text(
-                    '🦫',
-                    style: TextStyle(fontSize: 48),
-                  ),
-                ),
-        ),
         if (widget.showText) ...[
-          const SizedBox(height: 12),
-          // Title
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  'Capy Vocab',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF3C2A21),
-                    fontFamily: 'Fredoka',
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              SizedBox(width: 6),
-              Text(
-                '🍊',
-                style: TextStyle(fontSize: 26),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          // Subtitle
           const Text(
-            'Học từ vựng chill & kết bạn mỗi ngày!',
+            'Deery Vocab',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 34,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF3C2A21),
+              fontFamily: 'Fredoka',
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Học tiếng cùng Deery, đi khắp thế giới',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15.5,
               fontWeight: FontWeight.w600,
               color: Color(0xFF6E5D53),
             ),
           ),
+          const SizedBox(height: 16),
         ],
+        Container(
+          width: videoWidth,
+          height: widget.videoHeight,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: _isInitialized && _controller != null
+              ? FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _controller!.value.size.width,
+                    height: _controller!.value.size.height,
+                    child: VideoPlayer(_controller!),
+                  ),
+                )
+              : Center(
+                  child: Text(
+                    '🦌',
+                    style: TextStyle(fontSize: widget.videoHeight * 0.45),
+                  ),
+                ),
+        ),
       ],
     );
 
@@ -131,7 +115,9 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+      padding: widget.showText
+          ? const EdgeInsets.symmetric(vertical: 24, horizontal: 22)
+          : const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),

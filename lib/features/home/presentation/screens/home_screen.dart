@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../shared/navigation/bottom_nav_bar.dart';
 
@@ -43,10 +44,10 @@ class HomeScreen extends StatelessWidget {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('🍊', style: TextStyle(fontSize: 18)),
+                        Text('🍪', style: TextStyle(fontSize: 18)),
                         SizedBox(width: 6),
                         Text(
-                          '220 PTS',
+                          '220',
                           style: TextStyle(
                             fontFamily: 'Fredoka',
                             fontSize: 16,
@@ -111,21 +112,24 @@ class HomeScreen extends StatelessWidget {
                       const SizedBox(width: 10),
 
                       // Settings Gear Icon
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFE6D8),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color(0xFFE0D4C3),
-                            width: 1.5,
+                      GestureDetector(
+                        onTap: () => context.push('/settings'),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFE6D8),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFFE0D4C3),
+                              width: 1.5,
+                            ),
                           ),
-                        ),
-                        child: const Icon(
-                          Icons.settings_rounded,
-                          color: Color(0xFF5D4037),
-                          size: 24,
+                          child: const Icon(
+                            Icons.settings_rounded,
+                            color: Color(0xFF5D4037),
+                            size: 24,
+                          ),
                         ),
                       ),
                     ],
