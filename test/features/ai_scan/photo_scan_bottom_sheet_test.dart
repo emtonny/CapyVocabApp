@@ -8,7 +8,6 @@ import 'package:capy_vocab/features/ai_scan/data/services/scan_image_compressor.
 import 'package:capy_vocab/features/ai_scan/data/services/scan_image_picker.dart';
 import 'package:capy_vocab/features/ai_scan/data/services/scan_image_storage.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/providers/scan_provider.dart';
-import 'package:capy_vocab/features/ai_scan/presentation/layout/vocab_overlay_layout.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/scan_loading_overlay.dart';
@@ -317,7 +316,6 @@ void main() {
     );
     final previewPainter = tester.widget<CustomPaint>(previewPaint).painter!
         as VocabOverlayPainter;
-    final previewSize = tester.getSize(previewPaint);
 
     await tester.tap(find.byKey(const Key('zoom-image-button')));
     await tester.pumpAndSettle();
@@ -352,60 +350,36 @@ void main() {
     final fullscreenPainter = tester
         .widget<CustomPaint>(fullscreenPaint)
         .painter! as VocabOverlayPainter;
-    final fullscreenSize = tester.getSize(fullscreenPaint);
-
-    expect(
-      fullscreenPainter.placements,
-      hasLength(previewPainter.placements.length),
-    );
-    for (final previewPlacement in previewPainter.placements) {
-      final fullscreenPlacement = fullscreenPainter.placements.singleWhere(
-        (placement) =>
-            placement.detection.word == previewPlacement.detection.word,
-      );
+    expect(fullscreenPainter.boxes, hasLength(previewPainter.boxes.length));
+    for (var index = 0; index < previewPainter.boxes.length; index++) {
       expect(
-        _normalizedRect(previewPlacement.objectRect, previewSize),
+        _normalizedRect(
+          previewPainter.boxes[index],
+          previewPainter.imageRect,
+        ),
         _rectCloseTo(
-          _normalizedRect(fullscreenPlacement.objectRect, fullscreenSize),
+          _normalizedRect(
+            fullscreenPainter.boxes[index],
+            fullscreenPainter.imageRect,
+          ),
         ),
       );
       expect(
         previewPainter.imageRect
                 .inflate(0.001)
-                .contains(previewPlacement.slot.cardRect.topLeft) &&
+                .contains(previewPainter.boxes[index].topLeft) &&
             previewPainter.imageRect
                 .inflate(0.001)
-                .contains(previewPlacement.slot.cardRect.bottomRight),
+                .contains(previewPainter.boxes[index].bottomRight),
         isTrue,
-        reason:
-            'image=${previewPainter.imageRect}, card=${previewPlacement.slot.cardRect}',
       );
       expect(
         fullscreenPainter.imageRect
                 .inflate(0.001)
-                .contains(fullscreenPlacement.slot.cardRect.topLeft) &&
+                .contains(fullscreenPainter.boxes[index].topLeft) &&
             fullscreenPainter.imageRect
                 .inflate(0.001)
-                .contains(fullscreenPlacement.slot.cardRect.bottomRight),
-        isTrue,
-      );
-
-      final previewArrow = calculateArrowGeometry(
-        placement: previewPlacement,
-        imageCenter: previewPainter.imageRect.center,
-      );
-      final fullscreenArrow = calculateArrowGeometry(
-        placement: fullscreenPlacement,
-        imageCenter: fullscreenPainter.imageRect.center,
-      );
-      expect(
-        previewPlacement.objectRect.inflate(0.001).contains(previewArrow.end),
-        isTrue,
-      );
-      expect(
-        fullscreenPlacement.objectRect
-            .inflate(0.001)
-            .contains(fullscreenArrow.end),
+                .contains(fullscreenPainter.boxes[index].bottomRight),
         isTrue,
       );
     }
@@ -561,11 +535,11 @@ Uint8List _testImageBytes() => Uint8List.fromList(
       ),
     );
 
-Rect _normalizedRect(Rect rect, Size containerSize) => Rect.fromLTRB(
-      rect.left / containerSize.width,
-      rect.top / containerSize.height,
-      rect.right / containerSize.width,
-      rect.bottom / containerSize.height,
+Rect _normalizedRect(Rect rect, Rect container) => Rect.fromLTRB(
+      (rect.left - container.left) / container.width,
+      (rect.top - container.top) / container.height,
+      (rect.right - container.left) / container.width,
+      (rect.bottom - container.top) / container.height,
     );
 
 Matcher _rectCloseTo(Rect expected) => predicate<Rect>(
