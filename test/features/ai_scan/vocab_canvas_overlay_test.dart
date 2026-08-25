@@ -201,35 +201,188 @@ void main() {
     image.dispose();
   });
 
-  test('placement tiers use the reconciled floating-badge typography', () {
+  test('placement tiers use the decorated pill-badge typography', () {
     const painter = VocabOverlayPainter(
       words: [],
       imageRect: Rect.zero,
     );
 
-    expect(painter.fullStyleConfig.badgeSize, const Size.square(16));
-    expect(painter.fullStyleConfig.badgeTextStyle.fontSize, 7);
+    expect(painter.fullStyleConfig.badgeSize, const Size(26, 16));
+    expect(painter.fullStyleConfig.badgeTextStyle.fontSize, 8);
     expect(
       painter.fullStyleConfig.badgeTextStyle.fontWeight,
       FontWeight.w700,
     );
-    expect(painter.compactStyleConfig.badgeSize, const Size.square(16));
-    expect(painter.compactStyleConfig.badgeTextStyle.fontSize, 7);
+    expect(painter.compactStyleConfig.badgeSize, const Size(26, 16));
+    expect(painter.compactStyleConfig.badgeTextStyle.fontSize, 8);
     expect(
       painter.compactStyleConfig.badgeTextStyle.fontWeight,
       FontWeight.w700,
     );
-    expect(painter.fullStyleConfig.wordStyle.fontSize, 7);
-    expect(painter.fullStyleConfig.phoneticStyle.fontSize, 6);
-    expect(painter.fullStyleConfig.meaningStyle.fontSize, 7);
-    expect(painter.compactStyleConfig.wordStyle.fontSize, 6);
-    expect(painter.compactStyleConfig.phoneticStyle.fontSize, 6);
-    expect(painter.compactStyleConfig.meaningStyle.fontSize, 6);
+    expect(
+      painter.compactStyleConfig.badgeSize,
+      painter.fullStyleConfig.badgeSize,
+    );
+    expect(
+      painter.compactStyleConfig.badgeTextStyle,
+      painter.fullStyleConfig.badgeTextStyle,
+    );
+    expect(painter.fullStyleConfig.wordStyle.fontSize, 7.5);
+    expect(painter.fullStyleConfig.phoneticStyle.fontSize, 6.2);
+    expect(painter.fullStyleConfig.meaningStyle.fontSize, 8);
+    expect(painter.compactStyleConfig.wordStyle.fontSize, 6.2);
+    expect(painter.compactStyleConfig.phoneticStyle.fontSize, 5.5);
+    expect(painter.compactStyleConfig.meaningStyle.fontSize, 6.5);
     expect(painter.fullStyleConfig.wordStyle.fontWeight, FontWeight.w700);
     expect(painter.fullStyleConfig.phoneticStyle.fontStyle, FontStyle.italic);
-    expect(painter.fullStyleConfig.meaningStyle.fontWeight, FontWeight.w400);
-    expect(painter.fullStyleConfig.padding.bottom, 7);
-    expect(painter.compactStyleConfig.padding.bottom, 5);
+    expect(painter.fullStyleConfig.meaningStyle.fontWeight, FontWeight.w700);
+    expect(painter.compactStyleConfig.meaningStyle.fontWeight, FontWeight.w700);
+    for (final style in [
+      painter.fullStyleConfig.wordStyle,
+      painter.fullStyleConfig.phoneticStyle,
+      painter.fullStyleConfig.meaningStyle,
+      painter.compactStyleConfig.wordStyle,
+      painter.compactStyleConfig.phoneticStyle,
+      painter.compactStyleConfig.meaningStyle,
+    ]) {
+      expect(style.height, 1);
+    }
+    expect(painter.fullStyleConfig.badgeLeftInset, 0);
+    expect(painter.compactStyleConfig.badgeLeftInset, 0);
+    expect(painter.fullStyleConfig.badgeCardOverlap, 8);
+    expect(painter.compactStyleConfig.badgeCardOverlap, 8);
+    expect(painter.fullStyleConfig.deerStickerSize, const Size.square(19));
+    expect(painter.fullStyleConfig.cookieIconSize, const Size.square(15));
+    expect(painter.compactStyleConfig.deerStickerSize, const Size.square(16));
+    expect(
+      painter.compactStyleConfig.cookieIconSize,
+      const Size.square(12.5),
+    );
+    expect(painter.fullStyleConfig.padding.bottom, 9);
+    expect(painter.compactStyleConfig.padding.bottom, 7);
+    expect(painter.fullStyleConfig.padding.vertical, 12);
+    expect(painter.compactStyleConfig.padding.vertical, 8);
+    expect(painter.fullStyleConfig.lineSpacing, 0);
+    expect(painter.fullStyleConfig.uniformLineRows, isTrue);
+    expect(
+      painter.compactStyleConfig.lineSpacing,
+      painter.fullStyleConfig.lineSpacing,
+    );
+    expect(painter.compactStyleConfig.uniformLineRows, isTrue);
+  });
+
+  test('deer requires enough horizontal space and must not cover text', () {
+    const basePainter = VocabOverlayPainter(words: [], imageRect: Rect.zero);
+    const word = VocabDetection(
+      number: 1,
+      word: 'refrigerator',
+      phonetic: '/rɪˈfrɪdʒəreɪtər/',
+      meaning: 'tủ lạnh',
+      x: 0,
+      y: 0,
+      w: 0.1,
+      h: 0.1,
+    );
+    final clearConfig = basePainter.fullStyleConfig;
+    final clearSize = const LabelSizeMeasurer().measure(word, clearConfig);
+    final clearPlaced = PlacedLabel(
+      word: word,
+      labelRect: Offset.zero & Size(clearSize.width, clearSize.height),
+      anchorBox: Rect.zero,
+      quality: PlacementQuality.ideal,
+    );
+    final clearPainter = VocabOverlayPainter(
+      words: const [],
+      imageRect: Rect.zero,
+      placedLabels: [clearPlaced],
+    );
+    expect(clearPainter.shouldPaintDeerFor(clearPlaced), isTrue);
+
+    const narrowWord = VocabDetection(
+      number: 2,
+      word: 'I',
+      phonetic: '/aɪ/',
+      meaning: 'tôi',
+      x: 0,
+      y: 0,
+      w: 0.1,
+      h: 0.1,
+    );
+    final narrowSize = const LabelSizeMeasurer().measure(
+      narrowWord,
+      clearConfig,
+    );
+    final narrowPlaced = PlacedLabel(
+      word: narrowWord,
+      labelRect: Offset.zero & Size(narrowSize.width, narrowSize.height),
+      anchorBox: Rect.zero,
+      quality: PlacementQuality.ideal,
+    );
+    final narrowPainter = VocabOverlayPainter(
+      words: const [],
+      imageRect: Rect.zero,
+      placedLabels: [narrowPlaced],
+    );
+    final narrowGeometry = narrowPainter.geometryFor(narrowPlaced);
+    expect(
+      narrowGeometry.deerStickerRect!.left - narrowGeometry.badgeRect.right,
+      lessThan(2),
+    );
+    expect(narrowPainter.shouldPaintDeerFor(narrowPlaced), isFalse);
+
+    final collidingConfig = clearConfig.copyWith(
+      padding: const LabelPaddingConfig(
+        horizontal: 6,
+        vertical: 0,
+        bottom: 9,
+      ),
+    );
+    final collidingSize = const LabelSizeMeasurer().measure(
+      word,
+      collidingConfig,
+    );
+    final collidingPlaced = PlacedLabel(
+      word: word,
+      labelRect: Offset.zero & Size(collidingSize.width, collidingSize.height),
+      anchorBox: Rect.zero,
+      quality: PlacementQuality.ideal,
+    );
+    final collidingPainter = VocabOverlayPainter(
+      words: const [],
+      imageRect: Rect.zero,
+      placedLabels: [collidingPlaced],
+      fullStyleConfig: collidingConfig,
+    );
+    expect(collidingPainter.shouldPaintDeerFor(collidingPlaced), isFalse);
+  });
+
+  test('overlap metadata no longer switches labels to orange styling',
+      () async {
+    const painterConfig = VocabOverlayPainter(words: [], imageRect: Rect.zero);
+    final measured = const LabelSizeMeasurer().measure(
+      _appleWord,
+      painterConfig.fullStyleConfig,
+    );
+    final footprint = Rect.fromLTWH(20, 20, measured.width, measured.height);
+    final normal = PlacedLabel(
+      word: _appleWord,
+      labelRect: footprint,
+      anchorBox: footprint,
+      quality: PlacementQuality.ideal,
+    );
+    final overlapping = PlacedLabel(
+      word: _appleWord,
+      labelRect: footprint,
+      anchorBox: footprint,
+      quality: PlacementQuality.ideal,
+      overlapsForbiddenZone: true,
+      overlapsPlacedLabel: true,
+    );
+
+    expect(
+      await _paintedLabelBytes(overlapping),
+      orderedEquals(await _paintedLabelBytes(normal)),
+    );
   });
 
   testWidgets('five unrelated rebuilds do not recompute placement',
@@ -465,8 +618,7 @@ void main() {
     expect(tappedWords, hasLength(2));
   });
 
-  testWidgets(
-      'card and badge tap once while transparent footprint gap does not',
+  testWidgets('card, pill badge, and stickers tap while footprint gap does not',
       (tester) async {
     final tappedWords = <VocabDetection>[];
     final imageProvider = MemoryImage(_testImageBytes());
@@ -497,8 +649,29 @@ void main() {
     await tester.pump();
     expect(tappedWords, hasLength(2));
 
+    await tester.tapAt(
+      paintOrigin +
+          _referencePointToCanvas(
+            painter,
+            geometry.deerStickerRect!.center,
+          ),
+    );
+    await tester.pump();
+    expect(tappedWords, hasLength(3));
+
+    await tester.tapAt(
+      paintOrigin +
+          _referencePointToCanvas(
+            painter,
+            geometry.cookieIconRect!.center,
+          ),
+    );
+    await tester.pump();
+    expect(tappedWords, hasLength(4));
+
+    final deerStickerRect = geometry.deerStickerRect!;
     final transparentGap = Offset(
-      geometry.cardRect.right - 1,
+      (geometry.badgeRect.right + deerStickerRect.left) / 2,
       geometry.footprintRect.top + 1,
     );
     expect(geometry.footprintRect.contains(transparentGap), isTrue);
@@ -507,7 +680,7 @@ void main() {
       paintOrigin + _referencePointToCanvas(painter, transparentGap),
     );
     await tester.pump();
-    expect(tappedWords, hasLength(2));
+    expect(tappedWords, hasLength(4));
   });
 
   testWidgets(
@@ -1017,39 +1190,7 @@ List<VocabDetection> _wardrobeDetections() {
 }
 
 List<VocabDetection> _maximumVocabularyDetections() {
-  return [
-    ..._wardrobeDetections(),
-    const VocabDetection(
-      number: 13,
-      word: 'shelf',
-      phonetic: '/ʃelf/',
-      meaning: 'kệ',
-      x: 0.18,
-      y: 0.24,
-      w: 0.1,
-      h: 0.1,
-    ),
-    const VocabDetection(
-      number: 14,
-      word: 'scarf',
-      phonetic: '/skɑːrf/',
-      meaning: 'khăn quàng',
-      x: 0.44,
-      y: 0.24,
-      w: 0.1,
-      h: 0.1,
-    ),
-    const VocabDetection(
-      number: 15,
-      word: 'hat',
-      phonetic: '/hæt/',
-      meaning: 'mũ',
-      x: 0.70,
-      y: 0.24,
-      w: 0.1,
-      h: 0.1,
-    ),
-  ];
+  return _wardrobeDetections();
 }
 
 List<VocabDetection> _withCacheRevision(
@@ -1089,6 +1230,23 @@ Uint8List _testImageBytes() => Uint8List.fromList(
         'YAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
       ),
     );
+
+Future<Uint8List> _paintedLabelBytes(PlacedLabel placedLabel) async {
+  final recorder = ui.PictureRecorder();
+  const canvasSize = Size(160, 100);
+  VocabOverlayPainter(
+    words: const [],
+    imageRect: Rect.zero,
+    placedLabels: [placedLabel],
+  ).paint(Canvas(recorder), canvasSize);
+  final image = await recorder.endRecording().toImage(
+        canvasSize.width.toInt(),
+        canvasSize.height.toInt(),
+      );
+  final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  image.dispose();
+  return data!.buffer.asUint8List();
+}
 
 Future<Uint8List> _createPngBytes(int width, int height) async {
   final recorder = ui.PictureRecorder();

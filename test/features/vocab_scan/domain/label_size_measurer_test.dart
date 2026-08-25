@@ -13,6 +13,23 @@ void main() {
 
   const measurer = LabelSizeMeasurer();
 
+  test('different text heights use evenly spaced centered rows', () {
+    final layout = resolveLabelLineLayout(
+      lineHeights: const [8, 6, 10],
+      lineSpacing: 0,
+    );
+    final centers = [
+      layout.centeredLineTop(0, 8) + 4,
+      layout.centeredLineTop(1, 6) + 3,
+      layout.centeredLineTop(2, 10) + 5,
+    ];
+
+    expect(layout.rowHeight, 10);
+    expect(layout.contentHeight, 30);
+    expect(centers[1] - centers[0], 10);
+    expect(centers[2] - centers[1], 10);
+  });
+
   test('measuring the same badge-card footprint twice is deterministic', () {
     final first = measurer.measure(wardrobeWords.first, _fullConfig);
     final second = measurer.measure(wardrobeWords.first, _fullConfig);
@@ -158,7 +175,7 @@ void main() {
         measurer.measureCard(oneDigit, _fullConfig));
   });
 
-  test('badge numbers 1, 9, 10, 11, and 15 fit the fixed circle', () {
+  test('badge numbers 1, 9, 10, 11, and 15 fit the configured bounds', () {
     for (final number in const [1, 9, 10, 11, 15]) {
       final fullText = _measureLine('$number', _fullConfig.badgeTextStyle);
       final compactText = _measureLine(
@@ -229,13 +246,16 @@ void main() {
     expect(reducedCount + increasedCount, wardrobeWords.length);
   });
 
-  test('measured footprint equals the pure badge-card union', () {
+  test('measured footprint equals the configured label-unit union', () {
     final card = measurer.measureCard(wardrobeWords.first, _fullConfig);
     final footprint = measurer.measure(wardrobeWords.first, _fullConfig);
     final geometry = resolveLabelUnitGeometry(
       footprintTopLeft: Offset.zero,
       cardSize: Size(card.width, card.height),
       badgeSize: _fullConfig.badgeSize,
+      badgeLeftInset: _fullConfig.badgeLeftInset,
+      deerStickerSize: _fullConfig.deerStickerSize,
+      cookieIconSize: _fullConfig.cookieIconSize,
     );
 
     expect(

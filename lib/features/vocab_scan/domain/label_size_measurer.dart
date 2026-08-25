@@ -5,6 +5,45 @@ import 'label_unit_geometry.dart';
 
 enum LabelCardMode { compact, full }
 
+@immutable
+class LabelLineLayout {
+  const LabelLineLayout({
+    required this.rowHeight,
+    required this.lineCount,
+    required this.lineSpacing,
+  });
+
+  final double rowHeight;
+  final int lineCount;
+  final double lineSpacing;
+
+  double get contentHeight =>
+      rowHeight * lineCount + lineSpacing * (lineCount - 1);
+
+  double centeredLineTop(int index, double lineHeight) {
+    assert(index >= 0 && index < lineCount);
+    assert(lineHeight >= 0 && lineHeight <= rowHeight);
+    return index * (rowHeight + lineSpacing) + (rowHeight - lineHeight) / 2;
+  }
+}
+
+LabelLineLayout resolveLabelLineLayout({
+  required List<double> lineHeights,
+  required double lineSpacing,
+}) {
+  assert(lineHeights.isNotEmpty);
+  assert(lineSpacing >= 0);
+  final rowHeight = lineHeights.fold<double>(
+    0,
+    (maximum, height) => height > maximum ? height : maximum,
+  );
+  return LabelLineLayout(
+    rowHeight: rowHeight,
+    lineCount: lineHeights.length,
+    lineSpacing: lineSpacing,
+  );
+}
+
 class LabelPaddingConfig {
   const LabelPaddingConfig({
     required this.horizontal,
@@ -47,14 +86,21 @@ class LabelStyleConfig {
     this.iconWidth,
     this.iconGap = 0,
     this.lineSpacing = 0,
+    this.uniformLineRows = false,
     this.textDirection = TextDirection.ltr,
+    this.badgeLeftInset = 0,
+    this.badgeCardOverlap = 3,
+    this.deerStickerSize = Size.zero,
+    this.cookieIconSize = Size.zero,
   })  : assert(badgeWidth > 0),
         assert(badgeHeight > 0),
         assert(iconWidth == null || iconWidth >= 0),
         assert(iconGap >= 0),
-        assert(lineSpacing >= 0);
+        assert(lineSpacing >= 0),
+        assert(badgeLeftInset >= 0),
+        assert(badgeCardOverlap >= 0 && badgeCardOverlap <= badgeHeight);
 
-  /// Style used only for the centered number inside the circular badge.
+  /// Style used only for the centered number inside the pill badge.
   final TextStyle badgeTextStyle;
 
   /// Fixed outer size of the floating badge in this style tier.
@@ -72,7 +118,12 @@ class LabelStyleConfig {
   final double? iconWidth;
   final double iconGap;
   final double lineSpacing;
+  final bool uniformLineRows;
   final TextDirection textDirection;
+  final double badgeLeftInset;
+  final double badgeCardOverlap;
+  final Size deerStickerSize;
+  final Size cookieIconSize;
 
   LabelStyleConfig copyWith({
     TextStyle? badgeTextStyle,
@@ -87,7 +138,12 @@ class LabelStyleConfig {
     bool clearIconWidth = false,
     double? iconGap,
     double? lineSpacing,
+    bool? uniformLineRows,
     TextDirection? textDirection,
+    double? badgeLeftInset,
+    double? badgeCardOverlap,
+    Size? deerStickerSize,
+    Size? cookieIconSize,
   }) {
     return LabelStyleConfig(
       badgeTextStyle: badgeTextStyle ?? this.badgeTextStyle,
@@ -101,7 +157,12 @@ class LabelStyleConfig {
       iconWidth: clearIconWidth ? null : iconWidth ?? this.iconWidth,
       iconGap: iconGap ?? this.iconGap,
       lineSpacing: lineSpacing ?? this.lineSpacing,
+      uniformLineRows: uniformLineRows ?? this.uniformLineRows,
       textDirection: textDirection ?? this.textDirection,
+      badgeLeftInset: badgeLeftInset ?? this.badgeLeftInset,
+      badgeCardOverlap: badgeCardOverlap ?? this.badgeCardOverlap,
+      deerStickerSize: deerStickerSize ?? this.deerStickerSize,
+      cookieIconSize: cookieIconSize ?? this.cookieIconSize,
     );
   }
 
@@ -120,7 +181,12 @@ class LabelStyleConfig {
             other.iconWidth == iconWidth &&
             other.iconGap == iconGap &&
             other.lineSpacing == lineSpacing &&
-            other.textDirection == textDirection;
+            other.uniformLineRows == uniformLineRows &&
+            other.textDirection == textDirection &&
+            other.badgeLeftInset == badgeLeftInset &&
+            other.badgeCardOverlap == badgeCardOverlap &&
+            other.deerStickerSize == deerStickerSize &&
+            other.cookieIconSize == cookieIconSize;
   }
 
   @override
@@ -136,15 +202,25 @@ class LabelStyleConfig {
         iconWidth,
         iconGap,
         lineSpacing,
+        uniformLineRows,
         textDirection,
+        badgeLeftInset,
+        badgeCardOverlap,
+        deerStickerSize,
+        cookieIconSize,
       );
 }
 
 class LabelSize {
-  const LabelSize({required this.width, required this.height});
+  const LabelSize({
+    required this.width,
+    required this.height,
+    this.collisionGeometry,
+  });
 
   final double width;
   final double height;
+  final LabelUnitGeometry? collisionGeometry;
 
   @override
   bool operator ==(Object other) {
@@ -168,11 +244,16 @@ class LabelSizeMeasurer {
       footprintTopLeft: Offset.zero,
       cardSize: Size(cardSize.width, cardSize.height),
       badgeSize: config.badgeSize,
+      badgeLeftInset: config.badgeLeftInset,
+      badgeCardOverlap: config.badgeCardOverlap,
+      deerStickerSize: config.deerStickerSize,
+      cookieIconSize: config.cookieIconSize,
     );
 
     return LabelSize(
       width: geometry.footprintRect.width,
       height: geometry.footprintRect.height,
+      collisionGeometry: geometry,
     );
   }
 
@@ -207,16 +288,28 @@ class LabelSizeMeasurer {
       0,
       (maximum, size) => size.width > maximum ? size.width : maximum,
     );
-    final contentHeight = lineSizes.fold<double>(
-          0,
-          (total, size) => total + size.height,
-        ) +
-        config.lineSpacing * (lineSizes.length - 1);
+    final contentHeight = config.uniformLineRows
+        ? resolveLabelLineLayout(
+            lineHeights:
+                lineSizes.map((size) => size.height).toList(growable: false),
+            lineSpacing: config.lineSpacing,
+          ).contentHeight
+        : lineSizes.fold<double>(
+              0,
+              (total, size) => total + size.height,
+            ) +
+            config.lineSpacing * (lineSizes.length - 1);
 
+    final minimumCardWidth = minimumLabelCardWidth(
+      badgeSize: config.badgeSize,
+      badgeLeftInset: config.badgeLeftInset,
+      deerStickerSize: config.deerStickerSize,
+      cookieIconSize: config.cookieIconSize,
+    );
     return LabelSize(
       width: _maximum(
         contentWidth + config.padding.horizontal * 2,
-        config.badgeSize.width,
+        minimumCardWidth,
       ),
       height: contentHeight + config.padding.vertical + config.padding.bottom,
     );

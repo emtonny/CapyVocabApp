@@ -7,6 +7,7 @@ import 'label_angle_ranker.dart';
 import 'label_candidate_generator.dart';
 import 'label_connector_geometry.dart';
 import 'label_size_measurer.dart';
+import 'label_unit_geometry.dart';
 
 enum PlacementQuality {
   ideal,
@@ -23,6 +24,7 @@ class PlacedLabel {
     required this.quality,
     this.overlapsForbiddenZone = false,
     this.overlapsPlacedLabel = false,
+    this.collisionGeometry,
   });
 
   final VocabDetection word;
@@ -42,13 +44,17 @@ class PlacedLabel {
   /// Edge candidates first avoid every previously placed label, regardless of
   /// quality or selected canvas side.
   final bool overlapsPlacedLabel;
+
+  /// Visible card, badge, and sticker bounds used for collision checks.
+  /// Null keeps legacy rectangular behavior for callers with raw sizes.
+  final LabelUnitGeometry? collisionGeometry;
 }
 
 /// Places at most 15 Gemini vocabulary labels using deterministic candidates.
 ///
-/// With N <= 15 (see maxGeminiVocabularyWords), the straightforward
-/// O(N^2 * candidateCount) overlap checks are intentionally preferable to a
-/// spatial index.
+/// With N <= 15 (see maxGeminiVocabularyWords), recomputing the remaining
+/// candidate counts after each placement is intentionally preferable to a
+/// more complex spatial index.
 List<PlacedLabel> solve({
   required List<VocabDetection> words,
   required List<LabelSize> labelSizes,
@@ -61,21 +67,64 @@ List<PlacedLabel> solve({
 }) {
   _validateInputs(words, labelSizes, anchorBoxes, canvasSize);
   final canvasRect = Offset.zero & canvasSize;
-  final indexes = List<int>.generate(words.length, (index) => index)
-    ..sort((first, second) {
-      final byArea = _area(anchorBoxes[second]).compareTo(
-        _area(anchorBoxes[first]),
-      );
-      return byArea != 0 ? byArea : first.compareTo(second);
-    });
   final placedLabels = <PlacedLabel>[];
   final unresolvedQueue = <int>[];
   // Production builds both lists from the same input words. Without exactly
   // one zone per word, no positional zone exclusion is safe for other callers.
   final hasOneForbiddenZonePerWord = forbiddenZones.length == words.length;
 
-  for (final index in indexes) {
-    // `index` is the original input identity, not the sorted-loop position.
+  final remainingIndexes = List<int>.generate(words.length, (index) => index);
+  while (remainingIndexes.isNotEmpty) {
+    final feasible = <_CandidateAssessment>[];
+    final impossible = <int>[];
+    for (final index in remainingIndexes) {
+      final ownForbiddenZoneIndex = hasOneForbiddenZonePerWord ? index : null;
+      final measured = labelSizes[index];
+      final size = _toSize(measured);
+      final candidates = _validCandidatesWithAngularRecovery(
+        anchorBox: anchorBoxes[index],
+        labelSize: size,
+        candidateCollisionGeometry: measured.collisionGeometry,
+        canvasSize: canvasSize,
+        canvasRect: canvasRect,
+        forbiddenZones: forbiddenZones,
+        placedLabels: placedLabels,
+        maximumOverlapRatio: 0,
+        ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
+        avoidConnectorIntersections: true,
+        angleDegrees: defaultCandidateAngleDegrees,
+      );
+      if (candidates.isEmpty) {
+        impossible.add(index);
+      } else {
+        feasible.add(
+          _CandidateAssessment(
+            index: index,
+            candidateCount: candidates.length,
+            labelArea: size.width * size.height,
+          ),
+        );
+      }
+    }
+
+    // A valid ideal slot can only disappear as more labels are placed. Defer
+    // zero-candidate words immediately, then place the most constrained word.
+    unresolvedQueue.addAll(impossible);
+    remainingIndexes.removeWhere(impossible.contains);
+    if (feasible.isEmpty) break;
+    feasible.sort((first, second) {
+      final byCandidateCount = first.candidateCount.compareTo(
+        second.candidateCount,
+      );
+      if (byCandidateCount != 0) return byCandidateCount;
+      final byLabelArea = second.labelArea.compareTo(first.labelArea);
+      return byLabelArea != 0
+          ? byLabelArea
+          : first.index.compareTo(second.index);
+    });
+    final selected = feasible.first;
+    final index = selected.index;
+    final measured = labelSizes[index];
     final ownForbiddenZoneIndex = hasOneForbiddenZonePerWord ? index : null;
     final rankedAngles = _rankAnglesForSnapshot(
       anchorBox: anchorBoxes[index],
@@ -85,10 +134,10 @@ List<PlacedLabel> solve({
       ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
       angleRanker: angleRanker,
     );
-    final size = _toSize(labelSizes[index]);
     final rect = _findCandidate(
       anchorBox: anchorBoxes[index],
-      labelSize: size,
+      labelSize: _toSize(measured),
+      candidateCollisionGeometry: measured.collisionGeometry,
       canvasSize: canvasSize,
       canvasRect: canvasRect,
       forbiddenZones: forbiddenZones,
@@ -99,7 +148,10 @@ List<PlacedLabel> solve({
       angleDegrees: rankedAngles,
     );
     if (rect == null) {
+      // A custom angle ranker may legally return a subset of the angles used
+      // for MRV counting. Keep that word recoverable through the fallback.
       unresolvedQueue.add(index);
+      remainingIndexes.remove(index);
       continue;
     }
     placedLabels.add(
@@ -108,8 +160,10 @@ List<PlacedLabel> solve({
         labelRect: rect,
         anchorBox: anchorBoxes[index],
         quality: PlacementQuality.ideal,
+        collisionGeometry: _positionCollisionGeometry(measured, rect),
       ),
     );
+    remainingIndexes.remove(index);
   }
 
   final compactConfig = compactStyleConfig.mode == LabelCardMode.compact
@@ -133,6 +187,7 @@ List<PlacedLabel> solve({
     final smallerFontRect = _findCandidate(
       anchorBox: anchorBoxes[index],
       labelSize: compactSize,
+      candidateCollisionGeometry: compactMeasured.collisionGeometry,
       canvasSize: canvasSize,
       canvasRect: canvasRect,
       forbiddenZones: forbiddenZones,
@@ -149,14 +204,19 @@ List<PlacedLabel> solve({
           labelRect: smallerFontRect,
           anchorBox: anchorBoxes[index],
           quality: PlacementQuality.fallbackSmallerFont,
+          collisionGeometry: _positionCollisionGeometry(
+            compactMeasured,
+            smallerFontRect,
+          ),
         ),
       );
       continue;
     }
 
-    final connectorSafeAllowOverlapRect = _findCandidate(
+    final connectorSafeRelaxedRect = _findCandidate(
       anchorBox: anchorBoxes[index],
       labelSize: compactSize,
+      candidateCollisionGeometry: compactMeasured.collisionGeometry,
       canvasSize: canvasSize,
       canvasRect: canvasRect,
       forbiddenZones: forbiddenZones,
@@ -171,11 +231,12 @@ List<PlacedLabel> solve({
       forbiddenZones: forbiddenZones,
       ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
     );
-    final targetContainerSafeAllowOverlapRect = connectorSafeAllowOverlapRect ??
+    final targetContainerSafeRelaxedRect = connectorSafeRelaxedRect ??
         (hasTargetContainingForeignZone
             ? _findCandidate(
                 anchorBox: anchorBoxes[index],
                 labelSize: compactSize,
+                candidateCollisionGeometry: compactMeasured.collisionGeometry,
                 canvasSize: canvasSize,
                 canvasRect: canvasRect,
                 forbiddenZones: forbiddenZones,
@@ -187,31 +248,95 @@ List<PlacedLabel> solve({
                 angleDegrees: rankedAngles,
               )
             : null);
-    // Preserve candidate order, but relax the connector constraint only after
-    // every 20%-overlap candidate has failed both connector-safe passes. A
-    // containing object zone is waived separately because reaching a nested
-    // target makes that one intersection geometrically unavoidable; placed
-    // label and connector geometry remains a hard constraint in that pass.
-    final allowOverlapRect = targetContainerSafeAllowOverlapRect ??
-        _findCandidate(
-          anchorBox: anchorBoxes[index],
-          labelSize: compactSize,
-          canvasSize: canvasSize,
-          canvasRect: canvasRect,
-          forbiddenZones: forbiddenZones,
-          placedLabels: placedLabels,
-          maximumOverlapRatio: 0.2,
-          ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
-          avoidConnectorIntersections: false,
-          angleDegrees: rankedAngles,
-        );
-    if (allowOverlapRect != null) {
+    if (targetContainerSafeRelaxedRect != null) {
       placedLabels.add(
         PlacedLabel(
           word: words[index],
-          labelRect: allowOverlapRect,
+          labelRect: targetContainerSafeRelaxedRect,
           anchorBox: anchorBoxes[index],
           quality: PlacementQuality.fallbackAllowOverlap,
+          collisionGeometry: _positionCollisionGeometry(
+            compactMeasured,
+            targetContainerSafeRelaxedRect,
+          ),
+        ),
+      );
+      continue;
+    }
+
+    // Moving the complete label to a connector-safe edge is preferable to
+    // drawing a connector through another object after a badge collision
+    // invalidates every nearby candidate.
+    final connectorSafeEdgePlacement = _findEdgePlacement(
+          anchorBox: anchorBoxes[index],
+          labelSize: compactSize,
+          forbiddenZones: forbiddenZones,
+          placedLabels: placedLabels,
+          canvasSize: canvasSize,
+          ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
+          avoidConnectorIntersections: true,
+        ) ??
+        (hasTargetContainingForeignZone
+            ? _findEdgePlacement(
+                anchorBox: anchorBoxes[index],
+                labelSize: compactSize,
+                forbiddenZones: forbiddenZones,
+                placedLabels: placedLabels,
+                canvasSize: canvasSize,
+                ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
+                avoidConnectorIntersections: true,
+                allowTargetContainingZoneIntersection: true,
+              )
+            : null);
+    if (connectorSafeEdgePlacement != null) {
+      placedLabels.add(
+        PlacedLabel(
+          word: words[index],
+          labelRect: connectorSafeEdgePlacement.rect,
+          anchorBox: anchorBoxes[index],
+          quality: PlacementQuality.fallbackEdge,
+          overlapsForbiddenZone:
+              connectorSafeEdgePlacement.overlapsForbiddenZone,
+          overlapsPlacedLabel: connectorSafeEdgePlacement.overlapsPlacedLabel,
+          collisionGeometry: _positionCollisionGeometry(
+            compactMeasured,
+            connectorSafeEdgePlacement.rect,
+          ),
+        ),
+      );
+      continue;
+    }
+
+    // Preserve candidate order, but relax the connector constraint only after
+    // both connector-safe passes fail. A containing object zone is waived
+    // separately because reaching a nested target makes that intersection
+    // geometrically unavoidable. Footprints may overlap by up to 20%, but a
+    // badge remains a hard collision boundary against every visible label
+    // component in both directions.
+    final relaxedRect = _findCandidate(
+      anchorBox: anchorBoxes[index],
+      labelSize: compactSize,
+      candidateCollisionGeometry: compactMeasured.collisionGeometry,
+      canvasSize: canvasSize,
+      canvasRect: canvasRect,
+      forbiddenZones: forbiddenZones,
+      placedLabels: placedLabels,
+      maximumOverlapRatio: 0.2,
+      ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
+      avoidConnectorIntersections: false,
+      angleDegrees: rankedAngles,
+    );
+    if (relaxedRect != null) {
+      placedLabels.add(
+        PlacedLabel(
+          word: words[index],
+          labelRect: relaxedRect,
+          anchorBox: anchorBoxes[index],
+          quality: PlacementQuality.fallbackAllowOverlap,
+          collisionGeometry: _positionCollisionGeometry(
+            compactMeasured,
+            relaxedRect,
+          ),
         ),
       );
       continue;
@@ -233,6 +358,10 @@ List<PlacedLabel> solve({
         quality: PlacementQuality.fallbackEdge,
         overlapsForbiddenZone: edgePlacement.overlapsForbiddenZone,
         overlapsPlacedLabel: edgePlacement.overlapsPlacedLabel,
+        collisionGeometry: _positionCollisionGeometry(
+          compactMeasured,
+          edgePlacement.rect,
+        ),
       ),
     );
   }
@@ -243,6 +372,89 @@ List<PlacedLabel> solve({
 Rect? _findCandidate({
   required Rect anchorBox,
   required Size labelSize,
+  required LabelUnitGeometry? candidateCollisionGeometry,
+  required Size canvasSize,
+  required Rect canvasRect,
+  required List<Rect> forbiddenZones,
+  required List<PlacedLabel> placedLabels,
+  required double maximumOverlapRatio,
+  required int? ignoredForbiddenZoneIndex,
+  required bool avoidConnectorIntersections,
+  required List<double> angleDegrees,
+  bool allowTargetContainingZoneIntersection = false,
+}) {
+  final candidates = _validCandidatesWithAngularRecovery(
+    anchorBox: anchorBox,
+    labelSize: labelSize,
+    candidateCollisionGeometry: candidateCollisionGeometry,
+    canvasSize: canvasSize,
+    canvasRect: canvasRect,
+    forbiddenZones: forbiddenZones,
+    placedLabels: placedLabels,
+    maximumOverlapRatio: maximumOverlapRatio,
+    ignoredForbiddenZoneIndex: ignoredForbiddenZoneIndex,
+    avoidConnectorIntersections: avoidConnectorIntersections,
+    angleDegrees: angleDegrees,
+    allowTargetContainingZoneIntersection:
+        allowTargetContainingZoneIntersection,
+  );
+  return candidates.firstOrNull;
+}
+
+List<Rect> _validCandidatesWithAngularRecovery({
+  required Rect anchorBox,
+  required Size labelSize,
+  required LabelUnitGeometry? candidateCollisionGeometry,
+  required Size canvasSize,
+  required Rect canvasRect,
+  required List<Rect> forbiddenZones,
+  required List<PlacedLabel> placedLabels,
+  required double maximumOverlapRatio,
+  required int? ignoredForbiddenZoneIndex,
+  required bool avoidConnectorIntersections,
+  required List<double> angleDegrees,
+  bool allowTargetContainingZoneIntersection = false,
+}) {
+  final baseCandidates = _validCandidates(
+    anchorBox: anchorBox,
+    labelSize: labelSize,
+    candidateCollisionGeometry: candidateCollisionGeometry,
+    canvasSize: canvasSize,
+    canvasRect: canvasRect,
+    forbiddenZones: forbiddenZones,
+    placedLabels: placedLabels,
+    maximumOverlapRatio: maximumOverlapRatio,
+    ignoredForbiddenZoneIndex: ignoredForbiddenZoneIndex,
+    avoidConnectorIntersections: avoidConnectorIntersections,
+    angleDegrees: angleDegrees,
+    allowTargetContainingZoneIntersection:
+        allowTargetContainingZoneIntersection,
+  );
+  if (baseCandidates.isNotEmpty) return baseCandidates;
+
+  final recoveryAngles = generateRecoveryAngleDegrees(angleDegrees);
+  if (recoveryAngles.isEmpty) return baseCandidates;
+  return _validCandidates(
+    anchorBox: anchorBox,
+    labelSize: labelSize,
+    candidateCollisionGeometry: candidateCollisionGeometry,
+    canvasSize: canvasSize,
+    canvasRect: canvasRect,
+    forbiddenZones: forbiddenZones,
+    placedLabels: placedLabels,
+    maximumOverlapRatio: maximumOverlapRatio,
+    ignoredForbiddenZoneIndex: ignoredForbiddenZoneIndex,
+    avoidConnectorIntersections: avoidConnectorIntersections,
+    angleDegrees: recoveryAngles,
+    allowTargetContainingZoneIntersection:
+        allowTargetContainingZoneIntersection,
+  );
+}
+
+List<Rect> _validCandidates({
+  required Rect anchorBox,
+  required Size labelSize,
+  required LabelUnitGeometry? candidateCollisionGeometry,
   required Size canvasSize,
   required Rect canvasRect,
   required List<Rect> forbiddenZones,
@@ -259,10 +471,16 @@ Rect? _findCandidate({
     canvasSize: canvasSize,
     angleDegrees: angleDegrees,
   );
+  final validCandidates = <Rect>[];
   for (final topLeft in candidates) {
     final candidate = topLeft & labelSize;
     if (!_isFullyInside(candidate, canvasRect) ||
-        anyOverlap(candidate, forbiddenZones)) {
+        anyOverlap(candidate, forbiddenZones) ||
+        _badgeOverlapsPlacedLabel(
+          candidate,
+          candidateCollisionGeometry,
+          placedLabels,
+        )) {
       continue;
     }
     if (avoidConnectorIntersections &&
@@ -281,9 +499,21 @@ Rect? _findCandidate({
       return _overlapRatio(candidate, placed.labelRect) <=
           maximumOverlapRatio + 1e-12;
     });
-    if (respectsPlacedLabels) return candidate;
+    if (respectsPlacedLabels) validCandidates.add(candidate);
   }
-  return null;
+  return validCandidates;
+}
+
+class _CandidateAssessment {
+  const _CandidateAssessment({
+    required this.index,
+    required this.candidateCount,
+    required this.labelArea,
+  });
+
+  final int index;
+  final int candidateCount;
+  final double labelArea;
 }
 
 List<double> _rankAnglesForSnapshot({
@@ -500,10 +730,7 @@ bool _connectorAvoidsPlacementGeometry({
   required int? ignoredForbiddenZoneIndex,
   required bool allowTargetContainingZoneIntersection,
 }) {
-  final connector = computeConnectorPath(
-    labelRect: labelRect,
-    targetBox: anchorBox,
-  );
+  final foreignZones = <Rect>[];
   for (final (zoneIndex, zone) in forbiddenZones.indexed) {
     // A connector whose target is nested inside another detection must enter
     // that containing zone. Treating it as avoidable would force every strict
@@ -514,20 +741,71 @@ bool _connectorAvoidsPlacementGeometry({
             _containsRect(zone, anchorBox))) {
       continue;
     }
+    foreignZones.add(zone);
+  }
+
+  // Preserve the established placement contract: a curve may not rescue a
+  // candidate whose direct connector was already considered invalid. The
+  // sampled route check below is an additional visual-safety guard only.
+  final directConnector = computeConnectorPath(
+    labelRect: labelRect,
+    targetBox: anchorBox,
+  );
+  for (final zone in foreignZones) {
     if (segmentIntersectsRect(
-      from: connector.from,
-      to: connector.to,
+      from: directConnector.from,
+      to: directConnector.to,
       rect: zone,
     )) {
       return false;
     }
   }
   for (final placed in placedLabels) {
-    final placedConnector = computeConnectorPath(
-      labelRect: placed.labelRect,
-      targetBox: placed.anchorBox,
-    );
     if (connectorConflictsWithPlacedGeometry(
+      candidateLabelRect: labelRect,
+      candidateConnector: directConnector,
+      placedLabelRect: placed.labelRect,
+      placedConnector: computeConnectorPath(
+        labelRect: placed.labelRect,
+        targetBox: placed.anchorBox,
+      ),
+    )) {
+      return false;
+    }
+  }
+
+  final placedConnectors = <ConnectorRoute>[];
+  for (final (placedIndex, placed) in placedLabels.indexed) {
+    placedConnectors.add(
+      selectConnectorRoute(
+        labelRect: placed.labelRect,
+        targetBox: placed.anchorBox,
+        obstacleRects: [
+          labelRect,
+          for (final (otherIndex, other) in placedLabels.indexed)
+            if (otherIndex != placedIndex) other.labelRect,
+        ],
+        existingRoutes: placedConnectors,
+      ),
+    );
+  }
+  final connector = selectConnectorRoute(
+    labelRect: labelRect,
+    targetBox: anchorBox,
+    obstacleRects: [
+      ...foreignZones,
+      ...placedLabels.map((placed) => placed.labelRect),
+    ],
+    existingRoutes: placedConnectors,
+  );
+  for (final zone in foreignZones) {
+    if (connectorRouteIntersectsRect(route: connector, rect: zone)) {
+      return false;
+    }
+  }
+  for (final (index, placed) in placedLabels.indexed) {
+    final placedConnector = placedConnectors[index];
+    if (connectorRouteConflictsWithPlacedGeometry(
       candidateLabelRect: labelRect,
       candidateConnector: connector,
       placedLabelRect: placed.labelRect,
@@ -633,6 +911,43 @@ bool _hasTargetContainingForeignZone({
 }
 
 Size _toSize(LabelSize size) => Size(size.width, size.height);
+
+LabelUnitGeometry? _positionCollisionGeometry(
+  LabelSize size,
+  Rect footprintRect,
+) {
+  final geometry = size.collisionGeometry;
+  return geometry?.shift(
+    footprintRect.topLeft - geometry.footprintRect.topLeft,
+  );
+}
+
+bool _badgeOverlapsPlacedLabel(
+  Rect candidateFootprint,
+  LabelUnitGeometry? candidateRelativeGeometry,
+  List<PlacedLabel> placedLabels,
+) {
+  if (candidateRelativeGeometry == null) return false;
+  final candidateGeometry = candidateRelativeGeometry.shift(
+    candidateFootprint.topLeft -
+        candidateRelativeGeometry.footprintRect.topLeft,
+  );
+  for (final placed in placedLabels) {
+    final placedGeometry = placed.collisionGeometry;
+    if (placedGeometry == null) continue;
+    if (placedGeometry.visibleCollisionRects.any(
+      candidateGeometry.badgeRect.overlaps,
+    )) {
+      return true;
+    }
+    if (candidateGeometry.visibleCollisionRects.any(
+      placedGeometry.badgeRect.overlaps,
+    )) {
+      return true;
+    }
+  }
+  return false;
+}
 
 bool _isFullyInside(Rect rect, Rect bounds) {
   return rect.left >= bounds.left &&

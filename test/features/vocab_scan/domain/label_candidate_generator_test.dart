@@ -82,6 +82,20 @@ void main() {
         _offsetCloseTo(const Offset(100, 150)));
   });
 
+  test('recovery angles add unique 15 and 30 degree offsets', () {
+    final recoveryAngles = generateRecoveryAngleDegrees(
+      defaultCandidateAngleDegrees,
+    );
+
+    expect(recoveryAngles, hasLength(16));
+    expect(recoveryAngles.take(4), [345, 15, 330, 30]);
+    expect(
+      recoveryAngles.where((angle) => angle % 45 == 0),
+      isEmpty,
+    );
+    expect(recoveryAngles.toSet(), hasLength(recoveryAngles.length));
+  });
+
   test('outward top-left candidate is filtered while down-right remains', () {
     const labelSize = Size(20, 20);
     final candidates = generateCandidates(

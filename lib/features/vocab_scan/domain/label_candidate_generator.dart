@@ -12,6 +12,26 @@ const List<double> defaultCandidateAngleDegrees = [
   270,
   315,
 ];
+const List<double> _recoveryAngleOffsets = [-15, 15, -30, 30];
+
+/// Adds only the unique ±15° and ±30° directions around [baseAngles].
+///
+/// Base directions are excluded because recovery runs only after their normal
+/// candidate pass has no valid result. Ordering follows the ranked base angle
+/// order so recovery retains the same openness and center-bias preference.
+List<double> generateRecoveryAngleDegrees(List<double> baseAngles) {
+  _validateValues(baseAngles, 'baseAngles', allowNegative: true);
+  final normalizedBaseAngles = baseAngles.map(_normalizeDegrees).toSet();
+  final seen = <double>{...normalizedBaseAngles};
+  final recoveryAngles = <double>[];
+  for (final baseAngle in baseAngles) {
+    for (final offset in _recoveryAngleOffsets) {
+      final recoveryAngle = _normalizeDegrees(baseAngle + offset);
+      if (seen.add(recoveryAngle)) recoveryAngles.add(recoveryAngle);
+    }
+  }
+  return List.unmodifiable(recoveryAngles);
+}
 
 /// Generates in-bounds label top-left positions, preserving ring-first order.
 ///
@@ -85,6 +105,11 @@ bool _isFullyInside(Rect candidate, Rect canvas) {
 
 double _zeroNearOrigin(double value) {
   return value.abs() < 1e-12 ? 0 : value;
+}
+
+double _normalizeDegrees(double value) {
+  final normalized = value % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
 }
 
 void _validateGeometry(Rect anchorBox, Size labelSize, Size canvasSize) {

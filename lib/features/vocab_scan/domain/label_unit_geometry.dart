@@ -1,6 +1,9 @@
 import 'dart:ui';
 
-const _badgeCardOverlap = 3.0;
+const defaultBadgeCardOverlap = 3.0;
+const _deerRightInset = 1.0;
+const _cookieRightOverhang = 3.0;
+const _cookieBottomOverhang = 3.0;
 
 /// Pixel-space geometry for one complete vocabulary label unit.
 ///
@@ -11,54 +14,134 @@ class LabelUnitGeometry {
     required this.footprintRect,
     required this.cardRect,
     required this.badgeRect,
+    this.deerStickerRect,
+    this.cookieIconRect,
   });
 
   final Rect footprintRect;
   final Rect cardRect;
   final Rect badgeRect;
+  final Rect? deerStickerRect;
+  final Rect? cookieIconRect;
 
-  bool containsVisiblePoint(Offset point) {
-    return cardRect.contains(point) || badgeRect.contains(point);
+  List<Rect> get visibleCollisionRects => [
+        cardRect,
+        badgeRect,
+        if (deerStickerRect != null) deerStickerRect!,
+        if (cookieIconRect != null) cookieIconRect!,
+      ];
+
+  LabelUnitGeometry shift(Offset delta) {
+    return LabelUnitGeometry(
+      footprintRect: footprintRect.shift(delta),
+      cardRect: cardRect.shift(delta),
+      badgeRect: badgeRect.shift(delta),
+      deerStickerRect: deerStickerRect?.shift(delta),
+      cookieIconRect: cookieIconRect?.shift(delta),
+    );
   }
+
+  bool containsVisiblePoint(
+    Offset point, {
+    bool includeDeerSticker = true,
+  }) {
+    return cardRect.contains(point) ||
+        badgeRect.contains(point) ||
+        (includeDeerSticker && (deerStickerRect?.contains(point) ?? false)) ||
+        (cookieIconRect?.contains(point) ?? false);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is LabelUnitGeometry &&
+            other.footprintRect == footprintRect &&
+            other.cardRect == cardRect &&
+            other.badgeRect == badgeRect &&
+            other.deerStickerRect == deerStickerRect &&
+            other.cookieIconRect == cookieIconRect;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        footprintRect,
+        cardRect,
+        badgeRect,
+        deerStickerRect,
+        cookieIconRect,
+      );
 }
 
 /// Resolves the floating badge/card layout from the solver's footprint
 /// top-left.
 ///
-/// The badge is left-aligned above the card. The card overlaps the badge's
-/// bottom edge by 3 logical pixels, creating one integrated silhouette while
-/// keeping the badge clear of all text.
+/// The badge floats above the card with an optional left inset. The card
+/// overlaps its bottom edge by [badgeCardOverlap], while optional deer and
+/// cookie decorations occupy the top-right and bottom-right corners.
 /// Geometry depends only on fixed style metrics, never on the number of digits
 /// painted inside the badge.
 LabelUnitGeometry resolveLabelUnitGeometry({
   required Offset footprintTopLeft,
   required Size cardSize,
   required Size badgeSize,
+  double badgeLeftInset = 0,
+  double badgeCardOverlap = defaultBadgeCardOverlap,
+  Size deerStickerSize = Size.zero,
+  Size cookieIconSize = Size.zero,
 }) {
   _validateInputs(
     footprintTopLeft: footprintTopLeft,
     cardSize: cardSize,
     badgeSize: badgeSize,
+    badgeLeftInset: badgeLeftInset,
+    badgeCardOverlap: badgeCardOverlap,
+    deerStickerSize: deerStickerSize,
+    cookieIconSize: cookieIconSize,
   );
 
-  final badgeRect = Rect.fromLTWH(
+  final cardTopOffset = _cardTopOffset(badgeSize, badgeCardOverlap);
+  final cardRect = Rect.fromLTWH(
     footprintTopLeft.dx,
+    footprintTopLeft.dy + cardTopOffset,
+    cardSize.width,
+    cardSize.height,
+  );
+  final badgeRect = Rect.fromLTWH(
+    footprintTopLeft.dx + badgeLeftInset,
     footprintTopLeft.dy,
     badgeSize.width,
     badgeSize.height,
   );
-  final cardRect = Rect.fromLTWH(
-    footprintTopLeft.dx,
-    footprintTopLeft.dy + badgeSize.height - _badgeCardOverlap,
-    cardSize.width,
-    cardSize.height,
-  );
-  final footprintRect = badgeRect.expandToInclude(cardRect);
+  final deerStickerRect = deerStickerSize.isEmpty
+      ? null
+      : Rect.fromLTWH(
+          cardRect.right - deerStickerSize.width - _deerRightInset,
+          footprintTopLeft.dy,
+          deerStickerSize.width,
+          deerStickerSize.height,
+        );
+  final cookieIconRect = cookieIconSize.isEmpty
+      ? null
+      : Rect.fromLTWH(
+          cardRect.right + _cookieRightOverhang - cookieIconSize.width,
+          cardRect.bottom + _cookieBottomOverhang - cookieIconSize.height,
+          cookieIconSize.width,
+          cookieIconSize.height,
+        );
+  var footprintRect = badgeRect.expandToInclude(cardRect);
+  if (deerStickerRect != null) {
+    footprintRect = footprintRect.expandToInclude(deerStickerRect);
+  }
+  if (cookieIconRect != null) {
+    footprintRect = footprintRect.expandToInclude(cookieIconRect);
+  }
 
   return LabelUnitGeometry(
     footprintRect: footprintRect,
     cardRect: cardRect,
     badgeRect: badgeRect,
+    deerStickerRect: deerStickerRect,
+    cookieIconRect: cookieIconRect,
   );
 }
 
@@ -70,15 +153,29 @@ LabelUnitGeometry resolveLabelUnitGeometry({
 LabelUnitGeometry resolvePlacedLabelUnitGeometry({
   required Rect footprintRect,
   required Size badgeSize,
+  double badgeLeftInset = 0,
+  double badgeCardOverlap = defaultBadgeCardOverlap,
+  Size deerStickerSize = Size.zero,
+  Size cookieIconSize = Size.zero,
 }) {
+  final cookieWidthOverhang =
+      cookieIconSize.isEmpty ? 0.0 : _cookieRightOverhang;
+  final cookieHeightOverhang =
+      cookieIconSize.isEmpty ? 0.0 : _cookieBottomOverhang;
   final cardSize = Size(
-    footprintRect.width,
-    footprintRect.height - badgeSize.height + _badgeCardOverlap,
+    footprintRect.width - cookieWidthOverhang,
+    footprintRect.height -
+        _cardTopOffset(badgeSize, badgeCardOverlap) -
+        cookieHeightOverhang,
   );
   final resolved = resolveLabelUnitGeometry(
     footprintTopLeft: footprintRect.topLeft,
     cardSize: cardSize,
     badgeSize: badgeSize,
+    badgeLeftInset: badgeLeftInset,
+    badgeCardOverlap: badgeCardOverlap,
+    deerStickerSize: deerStickerSize,
+    cookieIconSize: cookieIconSize,
   );
   if (!_rectsEqual(resolved.footprintRect, footprintRect)) {
     throw ArgumentError.value(
@@ -88,6 +185,24 @@ LabelUnitGeometry resolvePlacedLabelUnitGeometry({
     );
   }
   return resolved;
+}
+
+double minimumLabelCardWidth({
+  required Size badgeSize,
+  double badgeLeftInset = 0,
+  Size deerStickerSize = Size.zero,
+  Size cookieIconSize = Size.zero,
+}) {
+  return [
+    badgeLeftInset + badgeSize.width,
+    deerStickerSize.isEmpty ? 0.0 : deerStickerSize.width + _deerRightInset,
+    cookieIconSize.isEmpty ? 0.0 : cookieIconSize.width - _cookieRightOverhang,
+  ].reduce((largest, value) => value > largest ? value : largest);
+}
+
+double _cardTopOffset(Size badgeSize, double badgeCardOverlap) {
+  final offset = badgeSize.height - badgeCardOverlap;
+  return offset > 0 ? offset : 0;
 }
 
 bool _rectsEqual(Rect first, Rect second) {
@@ -102,6 +217,10 @@ void _validateInputs({
   required Offset footprintTopLeft,
   required Size cardSize,
   required Size badgeSize,
+  required double badgeLeftInset,
+  required double badgeCardOverlap,
+  required Size deerStickerSize,
+  required Size cookieIconSize,
 }) {
   if (!footprintTopLeft.dx.isFinite || !footprintTopLeft.dy.isFinite) {
     throw ArgumentError.value(
@@ -130,11 +249,50 @@ void _validateInputs({
       'must be finite and positive',
     );
   }
-  if (cardSize.width < badgeSize.width) {
+  if (!badgeLeftInset.isFinite || badgeLeftInset < 0) {
+    throw ArgumentError.value(
+      badgeLeftInset,
+      'badgeLeftInset',
+      'must be finite and non-negative',
+    );
+  }
+  if (!badgeCardOverlap.isFinite ||
+      badgeCardOverlap < 0 ||
+      badgeCardOverlap > badgeSize.height) {
+    throw ArgumentError.value(
+      badgeCardOverlap,
+      'badgeCardOverlap',
+      'must be finite and between zero and the badge height',
+    );
+  }
+  for (final entry in {
+    'deerStickerSize': deerStickerSize,
+    'cookieIconSize': cookieIconSize,
+  }.entries) {
+    final size = entry.value;
+    if (!size.width.isFinite ||
+        !size.height.isFinite ||
+        size.width < 0 ||
+        size.height < 0 ||
+        (size.width == 0) != (size.height == 0)) {
+      throw ArgumentError.value(
+        size,
+        entry.key,
+        'must be empty or finite with two positive dimensions',
+      );
+    }
+  }
+  final minimumCardWidth = minimumLabelCardWidth(
+    badgeSize: badgeSize,
+    badgeLeftInset: badgeLeftInset,
+    deerStickerSize: deerStickerSize,
+    cookieIconSize: cookieIconSize,
+  );
+  if (cardSize.width < minimumCardWidth) {
     throw ArgumentError.value(
       cardSize,
       'cardSize',
-      'must be at least as wide as the floating badge',
+      'must be wide enough for the badge and label decorations',
     );
   }
 }

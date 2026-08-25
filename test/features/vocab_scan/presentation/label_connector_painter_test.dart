@@ -211,6 +211,7 @@ class _WardrobeConnectorDemoPainter extends CustomPainter {
       canvas,
       placedLabels,
       labelRectResolver: (placed) => _geometryFor(placed).cardRect,
+      canvasSize: size,
     );
 
     for (final placed in placedLabels) {

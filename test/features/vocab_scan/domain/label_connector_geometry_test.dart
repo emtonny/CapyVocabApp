@@ -174,6 +174,109 @@ void main() {
     });
   });
 
+  group('distance-based connector routes', () {
+    test('uses subtle, medium, and S routes at the 20px and 80px thresholds',
+        () {
+      final zero = connectorRouteFromPath(
+        const ConnectorPath(from: Offset.zero, to: Offset.zero),
+      );
+      final subtle = connectorRouteFromPath(
+        const ConnectorPath(from: Offset.zero, to: Offset(20, 0)),
+      );
+      final medium = connectorRouteFromPath(
+        const ConnectorPath(from: Offset.zero, to: Offset(60, 0)),
+      );
+      final long = connectorRouteFromPath(
+        const ConnectorPath(from: Offset.zero, to: Offset(81, 0)),
+      );
+
+      expect(zero.kind, ConnectorRouteKind.straight);
+      expect(subtle.kind, ConnectorRouteKind.subtleCurve);
+      expect(subtle.from, const Offset(connectorLabelStartGap, 0));
+      expect(subtle.sampledPoints, hasLength(9));
+      expect(subtle.control1!.dy, closeTo(1.2, 1e-9));
+      expect(medium.kind, ConnectorRouteKind.gentleCurve);
+      expect(medium.sampledPoints, hasLength(13));
+      expect(long.kind, ConnectorRouteKind.gentleWave);
+      expect(long.sampledPoints, hasLength(21));
+      expect(long.control1!.dy, greaterThan(0));
+      expect(long.control2!.dy, lessThan(0));
+    });
+
+    test('leaves a small gap after the label-side anchor', () {
+      final route = connectorRouteFromPath(
+        const ConnectorPath(from: Offset(10, 10), to: Offset(60, 10)),
+      );
+
+      expect(route.from, const Offset(10 + connectorLabelStartGap, 10));
+      expect(route.to, const Offset(60, 10));
+    });
+
+    test('caps the gap for an extremely short connector', () {
+      final route = connectorRouteFromPath(
+        const ConnectorPath(from: Offset.zero, to: Offset(2, 0)),
+      );
+
+      expect(route.from, const Offset(0.8, 0));
+      expect((route.to - route.from).distance, closeTo(1.2, 1e-9));
+    });
+
+    test('chooses the mirrored curve that avoids an obstacle', () {
+      final route = selectConnectorRoute(
+        labelRect: const Rect.fromLTWH(-10, -10, 10, 20),
+        targetBox: const Rect.fromLTWH(60, -10, 10, 20),
+        obstacleRects: const [Rect.fromLTWH(25, 0.5, 10, 4)],
+      );
+
+      expect(route.kind, ConnectorRouteKind.gentleCurve);
+      expect(route.control1!.dy, lessThan(0));
+      expect(
+        connectorRouteIntersectsRect(
+          route: route,
+          rect: const Rect.fromLTWH(25, 0.5, 10, 4),
+        ),
+        isFalse,
+      );
+    });
+
+    test('a medium route can mirror away from a narrow obstacle', () {
+      final route = selectConnectorRoute(
+        labelRect: const Rect.fromLTWH(-10, -10, 10, 20),
+        targetBox: const Rect.fromLTWH(35, -10, 10, 20),
+        obstacleRects: const [Rect.fromLTWH(15, -0.5, 5, 1)],
+      );
+
+      expect(route.kind, ConnectorRouteKind.gentleCurve);
+      expect(
+        connectorRouteIntersectsRect(
+          route: route,
+          rect: const Rect.fromLTWH(15, -0.5, 5, 1),
+        ),
+        isFalse,
+      );
+    });
+
+    test('collision checks follow the sampled curve instead of its chord', () {
+      final route = connectorRouteFromPath(
+        const ConnectorPath(from: Offset.zero, to: Offset(70, 0)),
+      );
+      const obstacle = Rect.fromLTWH(33, 4.5, 4, 1);
+
+      expect(
+        segmentIntersectsRect(
+          from: route.from,
+          to: route.to,
+          rect: obstacle,
+        ),
+        isFalse,
+      );
+      expect(
+        connectorRouteIntersectsRect(route: route, rect: obstacle),
+        isTrue,
+      );
+    });
+  });
+
   test(
       'computeLabelAnchor uses the top or left border toward an upper-left target',
       () {

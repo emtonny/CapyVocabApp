@@ -8,6 +8,208 @@ class ConnectorPath {
   final Offset to;
 }
 
+const double connectorSubtleCurveMaxLength = 20;
+const double connectorGentleCurveMaxLength = 80;
+const double connectorLabelStartGap = 3.5;
+
+@Deprecated('Use connectorSubtleCurveMaxLength instead.')
+const double connectorStraightMaxLength = connectorSubtleCurveMaxLength;
+
+enum ConnectorRouteKind { straight, subtleCurve, gentleCurve, gentleWave }
+
+/// A drawable connector whose sampled polyline is also used for collision
+/// checks. Keeping those two representations together prevents the solver from
+/// approving a straight segment while the painter displays a curve elsewhere.
+class ConnectorRoute {
+  ConnectorRoute._({
+    required this.from,
+    required this.to,
+    required this.kind,
+    this.control1,
+    this.control2,
+    required List<Offset> sampledPoints,
+  })  : sampledPoints = List<Offset>.unmodifiable(sampledPoints),
+        bounds = _boundsForPoints(sampledPoints);
+
+  final Offset from;
+  final Offset to;
+  final ConnectorRouteKind kind;
+  final Offset? control1;
+  final Offset? control2;
+  final List<Offset> sampledPoints;
+  final Rect bounds;
+
+  Offset get endTangent {
+    switch (kind) {
+      case ConnectorRouteKind.straight:
+        return to - from;
+      case ConnectorRouteKind.subtleCurve:
+      case ConnectorRouteKind.gentleCurve:
+        return to - control1!;
+      case ConnectorRouteKind.gentleWave:
+        return to - control2!;
+    }
+  }
+
+  Path toPath() {
+    final path = Path()..moveTo(from.dx, from.dy);
+    switch (kind) {
+      case ConnectorRouteKind.straight:
+        path.lineTo(to.dx, to.dy);
+      case ConnectorRouteKind.subtleCurve:
+      case ConnectorRouteKind.gentleCurve:
+        path.quadraticBezierTo(
+          control1!.dx,
+          control1!.dy,
+          to.dx,
+          to.dy,
+        );
+      case ConnectorRouteKind.gentleWave:
+        path.cubicTo(
+          control1!.dx,
+          control1!.dy,
+          control2!.dx,
+          control2!.dy,
+          to.dx,
+          to.dy,
+        );
+    }
+    return path;
+  }
+}
+
+/// Builds the distance-based route used by both placement and painting.
+///
+/// [bendSign] selects one of the two sides of the direct segment. Positive and
+/// negative values mirror the curve while zero is normalized to positive.
+ConnectorRoute computeConnectorRoute({
+  required Rect labelRect,
+  required Rect targetBox,
+  double bendSign = 1,
+  ConnectorRouteKind? kindOverride,
+}) {
+  final endpoints = computeConnectorPath(
+    labelRect: labelRect,
+    targetBox: targetBox,
+  );
+  return connectorRouteFromPath(
+    endpoints,
+    bendSign: bendSign,
+    kindOverride: kindOverride,
+  );
+}
+
+ConnectorRoute connectorRouteFromPath(
+  ConnectorPath endpoints, {
+  double bendSign = 1,
+  ConnectorRouteKind? kindOverride,
+}) {
+  _validateOffsets([endpoints.from, endpoints.to]);
+  final fullDelta = endpoints.to - endpoints.from;
+  final fullDistance = fullDelta.distance;
+  final kind = kindOverride ?? _routeKindForLength(fullDistance);
+  if (fullDistance == 0 || kind == ConnectorRouteKind.straight) {
+    return ConnectorRoute._(
+      from: endpoints.from,
+      to: endpoints.to,
+      kind: ConnectorRouteKind.straight,
+      sampledPoints: [endpoints.from, endpoints.to],
+    );
+  }
+
+  final direction = fullDelta / fullDistance;
+  final startGap = math.min(
+    connectorLabelStartGap,
+    fullDistance * 0.4,
+  );
+  final from = endpoints.from + direction * startGap;
+  final delta = endpoints.to - from;
+  final sign = bendSign < 0 ? -1.0 : 1.0;
+  final normal = Offset(-direction.dy, direction.dx) * sign;
+  if (kind == ConnectorRouteKind.subtleCurve ||
+      kind == ConnectorRouteKind.gentleCurve) {
+    final isSubtle = kind == ConnectorRouteKind.subtleCurve;
+    final bend = isSubtle
+        ? (fullDistance * 0.06).clamp(0.35, 1.2)
+        : (2 + (fullDistance - connectorSubtleCurveMaxLength) * 0.16)
+            .clamp(2.0, 12.0);
+    final control = from + delta * 0.5 + normal * bend;
+    return ConnectorRoute._(
+      from: from,
+      to: endpoints.to,
+      kind: kind,
+      control1: control,
+      sampledPoints: _sampleQuadratic(
+        from,
+        control,
+        endpoints.to,
+        isSubtle ? 8 : 12,
+      ),
+    );
+  }
+
+  final bend = (fullDistance * 0.10).clamp(8.0, 18.0);
+  final firstControl = from + delta / 3 + normal * bend;
+  final secondControl = from + delta * (2 / 3) - normal * bend;
+  return ConnectorRoute._(
+    from: from,
+    to: endpoints.to,
+    kind: kind,
+    control1: firstControl,
+    control2: secondControl,
+    sampledPoints: _sampleCubic(
+      from,
+      firstControl,
+      secondControl,
+      endpoints.to,
+      20,
+    ),
+  );
+}
+
+/// Chooses the mirrored curve with the fewest collisions. A short connector
+/// remains straight unless an obstacle requires a small detour.
+ConnectorRoute selectConnectorRoute({
+  required Rect labelRect,
+  required Rect targetBox,
+  Iterable<Rect> obstacleRects = const [],
+  Iterable<ConnectorRoute> existingRoutes = const [],
+  Rect? canvasRect,
+}) {
+  final endpoints = computeConnectorPath(
+    labelRect: labelRect,
+    targetBox: targetBox,
+  );
+  final baseKind =
+      _routeKindForLength((endpoints.to - endpoints.from).distance);
+  final candidates = <ConnectorRoute>[
+    connectorRouteFromPath(endpoints, bendSign: 1, kindOverride: baseKind),
+    if (baseKind != ConnectorRouteKind.straight)
+      connectorRouteFromPath(endpoints, bendSign: -1, kindOverride: baseKind),
+  ];
+
+  var best = candidates.first;
+  var bestScore = _routeCollisionScore(
+    best,
+    obstacleRects: obstacleRects,
+    existingRoutes: existingRoutes,
+    canvasRect: canvasRect,
+  );
+  for (final candidate in candidates.skip(1)) {
+    final score = _routeCollisionScore(
+      candidate,
+      obstacleRects: obstacleRects,
+      existingRoutes: existingRoutes,
+      canvasRect: canvasRect,
+    );
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 /// Returns the label-side endpoint nearest to [targetBox].
 ///
 /// For disjoint rectangles, the result lies on [labelRect]'s border. The
@@ -159,6 +361,154 @@ bool connectorConflictsWithPlacedGeometry({
     return true;
   }
   return false;
+}
+
+bool connectorRouteIntersectsRect({
+  required ConnectorRoute route,
+  required Rect rect,
+}) {
+  if (!_rectsOverlapInclusive(route.bounds, rect)) return false;
+  for (var index = 0; index < route.sampledPoints.length - 1; index++) {
+    if (segmentIntersectsRect(
+      from: route.sampledPoints[index],
+      to: route.sampledPoints[index + 1],
+      rect: rect,
+    )) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool connectorRoutesIntersect(
+  ConnectorRoute first,
+  ConnectorRoute second,
+) {
+  if (!_rectsOverlapInclusive(first.bounds, second.bounds)) return false;
+  for (var firstIndex = 0;
+      firstIndex < first.sampledPoints.length - 1;
+      firstIndex++) {
+    for (var secondIndex = 0;
+        secondIndex < second.sampledPoints.length - 1;
+        secondIndex++) {
+      if (segmentsIntersect(
+        firstFrom: first.sampledPoints[firstIndex],
+        firstTo: first.sampledPoints[firstIndex + 1],
+        secondFrom: second.sampledPoints[secondIndex],
+        secondTo: second.sampledPoints[secondIndex + 1],
+      )) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool connectorRouteConflictsWithPlacedGeometry({
+  required Rect candidateLabelRect,
+  required ConnectorRoute candidateConnector,
+  required Rect placedLabelRect,
+  required ConnectorRoute placedConnector,
+}) {
+  return connectorRouteIntersectsRect(
+        route: candidateConnector,
+        rect: placedLabelRect,
+      ) ||
+      connectorRouteIntersectsRect(
+        route: placedConnector,
+        rect: candidateLabelRect,
+      ) ||
+      connectorRoutesIntersect(candidateConnector, placedConnector);
+}
+
+ConnectorRouteKind _routeKindForLength(double length) {
+  if (length == 0) {
+    return ConnectorRouteKind.straight;
+  }
+  if (length <= connectorSubtleCurveMaxLength) {
+    return ConnectorRouteKind.subtleCurve;
+  }
+  if (length <= connectorGentleCurveMaxLength) {
+    return ConnectorRouteKind.gentleCurve;
+  }
+  return ConnectorRouteKind.gentleWave;
+}
+
+int _routeCollisionScore(
+  ConnectorRoute route, {
+  required Iterable<Rect> obstacleRects,
+  required Iterable<ConnectorRoute> existingRoutes,
+  required Rect? canvasRect,
+}) {
+  var score = 0;
+  for (final obstacle in obstacleRects) {
+    if (connectorRouteIntersectsRect(route: route, rect: obstacle)) {
+      score += 1000;
+    }
+  }
+  for (final existing in existingRoutes) {
+    if (connectorRoutesIntersect(route, existing)) score += 1000;
+  }
+  if (canvasRect != null) {
+    score += route.sampledPoints
+            .where((point) => !_containsInclusive(canvasRect, point))
+            .length *
+        100;
+  }
+  return score;
+}
+
+List<Offset> _sampleQuadratic(
+  Offset from,
+  Offset control,
+  Offset to,
+  int segments,
+) {
+  return List<Offset>.generate(segments + 1, (index) {
+    final t = index / segments;
+    final inverse = 1 - t;
+    return from * (inverse * inverse) +
+        control * (2 * inverse * t) +
+        to * (t * t);
+  }, growable: false);
+}
+
+List<Offset> _sampleCubic(
+  Offset from,
+  Offset firstControl,
+  Offset secondControl,
+  Offset to,
+  int segments,
+) {
+  return List<Offset>.generate(segments + 1, (index) {
+    final t = index / segments;
+    final inverse = 1 - t;
+    return from * (inverse * inverse * inverse) +
+        firstControl * (3 * inverse * inverse * t) +
+        secondControl * (3 * inverse * t * t) +
+        to * (t * t * t);
+  }, growable: false);
+}
+
+Rect _boundsForPoints(List<Offset> points) {
+  var left = points.first.dx;
+  var top = points.first.dy;
+  var right = left;
+  var bottom = top;
+  for (final point in points.skip(1)) {
+    left = math.min(left, point.dx);
+    top = math.min(top, point.dy);
+    right = math.max(right, point.dx);
+    bottom = math.max(bottom, point.dy);
+  }
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
+bool _rectsOverlapInclusive(Rect first, Rect second) {
+  return first.left <= second.right &&
+      first.right >= second.left &&
+      first.top <= second.bottom &&
+      first.bottom >= second.top;
 }
 
 double _cross(Offset from, Offset to, Offset point) {
