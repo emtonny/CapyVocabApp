@@ -259,6 +259,11 @@ test("does not count client or quota responses as health failures", async () => 
   }
 });
 
+import {
+  createCachedGeminiHealthStore,
+  HEALTH_CACHE_TTL_MS,
+} from "./gemini_model_health.ts";
+
 test("falls back to the default chain when health storage fails", async () => {
   const calls: string[] = [];
   const unavailableHealthStore: GeminiHealthStore = {
@@ -284,4 +289,140 @@ test("falls back to the default chain when health storage fails", async () => {
     calls.map((url) => MODEL_CHAIN.find((model) => url.includes(model))),
     [MODEL_CHAIN[0]],
   );
+});
+
+test("health cache: cache MISS calls DB once and populates cache", async () => {
+  let dbCalls = 0;
+  const mockDbStore: GeminiHealthStore = {
+    getModelHealth: (models) => {
+      dbCalls++;
+      return Promise.resolve(
+        models.map((m) => ({ modelName: m, isHealthy: true })),
+      );
+    },
+    recordSuccess: () => Promise.resolve(),
+    recordSystemFailure: () => Promise.resolve(),
+  };
+
+  let currentTime = 1000;
+  const cachedStore = createCachedGeminiHealthStore(mockDbStore, {
+    cacheTtlMs: HEALTH_CACHE_TTL_MS,
+    now: () => currentTime,
+  });
+
+  const result = await cachedStore.getModelHealth([
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+  ]);
+  assert.equal(dbCalls, 1);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].isHealthy, true);
+  assert.equal(result[1].isHealthy, true);
+});
+
+test("health cache: cache HIT does not call DB when within 30s TTL", async () => {
+  let dbCalls = 0;
+  const mockDbStore: GeminiHealthStore = {
+    getModelHealth: (models) => {
+      dbCalls++;
+      return Promise.resolve(
+        models.map((m) => ({ modelName: m, isHealthy: true })),
+      );
+    },
+    recordSuccess: () => Promise.resolve(),
+    recordSystemFailure: () => Promise.resolve(),
+  };
+
+  let currentTime = 1000;
+  const cachedStore = createCachedGeminiHealthStore(mockDbStore, {
+    cacheTtlMs: 30_000,
+    now: () => currentTime,
+  });
+
+  // First call: MISS -> calls DB
+  await cachedStore.getModelHealth([
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+  ]);
+  assert.equal(dbCalls, 1);
+
+  // Advance time by 15s (within 30s TTL)
+  currentTime += 15_000;
+
+  // Second call: HIT -> does NOT call DB
+  const cachedResult = await cachedStore.getModelHealth([
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+  ]);
+  assert.equal(dbCalls, 1);
+  assert.equal(cachedResult.length, 2);
+});
+
+test("health cache: after 30s TTL expires, cache treats request as MISS and calls DB", async () => {
+  let dbCalls = 0;
+  const mockDbStore: GeminiHealthStore = {
+    getModelHealth: (models) => {
+      dbCalls++;
+      return Promise.resolve(
+        models.map((m) => ({ modelName: m, isHealthy: true })),
+      );
+    },
+    recordSuccess: () => Promise.resolve(),
+    recordSystemFailure: () => Promise.resolve(),
+  };
+
+  let currentTime = 1000;
+  const cachedStore = createCachedGeminiHealthStore(mockDbStore, {
+    cacheTtlMs: 30_000,
+    now: () => currentTime,
+  });
+
+  // First call at t = 1000: MISS -> calls DB
+  await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  assert.equal(dbCalls, 1);
+
+  // Advance time beyond 30s TTL (e.g. +30_001 ms -> t = 31_001)
+  currentTime += 30_001;
+
+  // Next call: MISS because TTL expired -> calls DB again
+  await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  assert.equal(dbCalls, 2);
+});
+
+test("health cache: successful request on previously unhealthy model invalidates cache immediately", async () => {
+  let dbCalls = 0;
+  let modelHealthState = false; // Initially unhealthy in DB
+
+  const mockDbStore: GeminiHealthStore = {
+    getModelHealth: (models) => {
+      dbCalls++;
+      return Promise.resolve(
+        models.map((m) => ({ modelName: m, isHealthy: modelHealthState })),
+      );
+    },
+    recordSuccess: (_model) => {
+      modelHealthState = true; // DB marked healthy
+      return Promise.resolve();
+    },
+    recordSystemFailure: () => Promise.resolve(),
+  };
+
+  let currentTime = 1000;
+  const cachedStore = createCachedGeminiHealthStore(mockDbStore, {
+    cacheTtlMs: 30_000,
+    now: () => currentTime,
+  });
+
+  // 1. Initial read: MISS -> loads unhealthy state into cache
+  const firstRead = await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  assert.equal(dbCalls, 1);
+  assert.equal(firstRead[0].isHealthy, false);
+
+  // 2. Model recovers: recordSuccess is called
+  await cachedStore.recordSuccess("gemini-3.5-flash-lite");
+
+  // 3. Next read within TTL: cache was invalidated immediately on recordSuccess, so it MUST call DB (dbCalls = 2) and get fresh healthy state
+  const nextRead = await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  assert.equal(dbCalls, 2);
+  assert.equal(nextRead[0].isHealthy, true);
 });

@@ -1,6 +1,7 @@
 import type { GeminiHealthStore, GeminiModelHealth } from "./gemini_client.ts";
 
-const HEALTH_REQUEST_TIMEOUT_MS = 1_500;
+export const HEALTH_REQUEST_TIMEOUT_MS = 1_500;
+export const HEALTH_CACHE_TTL_MS = 30_000;
 
 type Fetcher = (
   input: string | URL | Request,
@@ -12,14 +13,73 @@ interface GeminiModelHealthRow {
   is_healthy?: unknown;
 }
 
-export interface SupabaseGeminiHealthStoreOptions {
+export interface CachedHealthStoreOptions {
+  cacheTtlMs?: number;
+  now?: () => number;
+}
+
+export interface SupabaseGeminiHealthStoreOptions
+  extends CachedHealthStoreOptions {
   supabaseUrl: string;
   serviceRoleKey: string;
   fetcher?: Fetcher;
   requestTimeoutMs?: number;
 }
 
-export function createSupabaseGeminiHealthStore(
+export function createCachedGeminiHealthStore(
+  innerStore: GeminiHealthStore,
+  options?: CachedHealthStoreOptions,
+): GeminiHealthStore {
+  const ttlMs = options?.cacheTtlMs ?? HEALTH_CACHE_TTL_MS;
+  const now = options?.now ?? (() => Date.now());
+  const cache = new Map<string, { isHealthy: boolean; expiresAt: number }>();
+
+  return {
+    async getModelHealth(
+      modelNames: readonly string[],
+    ): Promise<readonly GeminiModelHealth[]> {
+      const currentTime = now();
+      const allCached = modelNames.length > 0 &&
+        modelNames.every((name) => {
+          const entry = cache.get(name);
+          return entry !== undefined && entry.expiresAt > currentTime;
+        });
+
+      if (allCached) {
+        return modelNames.flatMap((name) => {
+          const entry = cache.get(name);
+          return entry !== undefined
+            ? [{ modelName: name, isHealthy: entry.isHealthy }]
+            : [];
+        });
+      }
+
+      const freshHealth = await innerStore.getModelHealth(modelNames);
+      for (const item of freshHealth) {
+        cache.set(item.modelName, {
+          isHealthy: item.isHealthy,
+          expiresAt: currentTime + ttlMs,
+        });
+      }
+      return freshHealth;
+    },
+
+    async recordSuccess(modelName: string): Promise<void> {
+      const cached = cache.get(modelName);
+      if (cached && !cached.isHealthy) {
+        cache.delete(modelName);
+      }
+      await innerStore.recordSuccess(modelName);
+    },
+
+    async recordSystemFailure(modelName: string): Promise<void> {
+      cache.delete(modelName);
+      await innerStore.recordSystemFailure(modelName);
+    },
+  };
+}
+
+export function createRawSupabaseGeminiHealthStore(
   options: SupabaseGeminiHealthStoreOptions,
 ): GeminiHealthStore {
   const baseUrl = options.supabaseUrl.replace(/\/+$/, "");
@@ -105,4 +165,14 @@ export function createSupabaseGeminiHealthStore(
       return recordOutcome(modelName, "system_failure");
     },
   };
+}
+
+export function createSupabaseGeminiHealthStore(
+  options: SupabaseGeminiHealthStoreOptions,
+): GeminiHealthStore {
+  const rawStore = createRawSupabaseGeminiHealthStore(options);
+  return createCachedGeminiHealthStore(rawStore, {
+    cacheTtlMs: options.cacheTtlMs ?? HEALTH_CACHE_TTL_MS,
+    now: options.now,
+  });
 }
