@@ -23,7 +23,18 @@ const _fixedBadgeHeight = 16.0;
 const _fixedBadgeCardOverlap = 8.0;
 const _fixedLabelLineSpacing = 0.0;
 const _fixedLabelTextHeight = 1.0;
+const _fontFamilyFallback = [
+  'Nunito',
+  'Roboto',
+  'Noto Sans',
+  'Segoe UI',
+  'Arial',
+  'sans-serif',
+];
+
 const _fixedBadgeTextStyle = TextStyle(
+  fontFamily: 'Nunito',
+  fontFamilyFallback: _fontFamilyFallback,
   color: _darkBrown,
   fontSize: 8,
   fontWeight: FontWeight.w700,
@@ -38,18 +49,24 @@ const _fullLabelStyleConfig = LabelStyleConfig(
   badgeWidth: _fixedBadgeWidth,
   badgeHeight: _fixedBadgeHeight,
   wordStyle: TextStyle(
+    fontFamily: 'Nunito',
+    fontFamilyFallback: _fontFamilyFallback,
     color: _darkBrown,
     fontSize: 7.5,
     fontWeight: FontWeight.w700,
     height: _fixedLabelTextHeight,
   ),
   phoneticStyle: TextStyle(
+    fontFamily: 'Nunito',
+    fontFamilyFallback: _fontFamilyFallback,
     color: _darkBrown,
     fontSize: 6.2,
     fontStyle: FontStyle.italic,
     height: _fixedLabelTextHeight,
   ),
   meaningStyle: TextStyle(
+    fontFamily: 'Nunito',
+    fontFamilyFallback: _fontFamilyFallback,
     color: _meaningRed,
     fontSize: 8,
     fontWeight: FontWeight.w700,
@@ -70,18 +87,24 @@ const _compactLabelStyleConfig = LabelStyleConfig(
   badgeWidth: _fixedBadgeWidth,
   badgeHeight: _fixedBadgeHeight,
   wordStyle: TextStyle(
+    fontFamily: 'Nunito',
+    fontFamilyFallback: _fontFamilyFallback,
     color: _darkBrown,
     fontSize: 6.2,
     fontWeight: FontWeight.w700,
     height: _fixedLabelTextHeight,
   ),
   phoneticStyle: TextStyle(
+    fontFamily: 'Nunito',
+    fontFamilyFallback: _fontFamilyFallback,
     color: _darkBrown,
     fontSize: 5.5,
     fontStyle: FontStyle.italic,
     height: _fixedLabelTextHeight,
   ),
   meaningStyle: TextStyle(
+    fontFamily: 'Nunito',
+    fontFamilyFallback: _fontFamilyFallback,
     color: _meaningRed,
     fontSize: 6.5,
     fontWeight: FontWeight.w700,

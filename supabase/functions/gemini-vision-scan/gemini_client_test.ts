@@ -54,7 +54,8 @@ class InMemoryHealthStore implements GeminiHealthStore {
 
 test("uses the production Free Tier model order", () => {
   assert.deepEqual(MODEL_CHAIN, [
-    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
     "gemini-3.6-flash",
   ]);
 });
@@ -168,17 +169,17 @@ test("does not switch model for request, auth, or payload errors", async () => {
 
 test("uses model-compatible thinking config with shared schema and token limit", () => {
   const schema = { type: "OBJECT" };
-  const flashLite35 = buildGenerationConfig("gemini-3.5-flash-lite", schema);
   const flash36 = buildGenerationConfig("gemini-3.6-flash", schema);
+  const flash35 = buildGenerationConfig("gemini-3.5-flash", schema);
 
-  assert.deepEqual(flashLite35.thinkingConfig, { thinkingLevel: "low" });
   assert.deepEqual(flash36.thinkingConfig, { thinkingLevel: "low" });
-  assert.equal(flashLite35.responseSchema, schema);
+  assert.deepEqual(flash35.thinkingConfig, { thinkingLevel: "low" });
   assert.equal(flash36.responseSchema, schema);
-  assert.equal(flashLite35.maxOutputTokens, 8192);
+  assert.equal(flash35.responseSchema, schema);
   assert.equal(flash36.maxOutputTokens, 8192);
-  assert.equal("temperature" in flashLite35, false);
+  assert.equal(flash35.maxOutputTokens, 8192);
   assert.equal("temperature" in flash36, false);
+  assert.equal("temperature" in flash35, false);
 });
 
 test("deprioritizes a model on the scan after three system failures", async () => {
@@ -311,8 +312,8 @@ test("health cache: cache MISS calls DB once and populates cache", async () => {
   });
 
   const result = await cachedStore.getModelHealth([
-    "gemini-3.5-flash-lite",
     "gemini-3.6-flash",
+    "gemini-3.5-flash",
   ]);
   assert.equal(dbCalls, 1);
   assert.equal(result.length, 2);
@@ -341,8 +342,8 @@ test("health cache: cache HIT does not call DB when within 30s TTL", async () =>
 
   // First call: MISS -> calls DB
   await cachedStore.getModelHealth([
-    "gemini-3.5-flash-lite",
     "gemini-3.6-flash",
+    "gemini-3.5-flash",
   ]);
   assert.equal(dbCalls, 1);
 
@@ -351,8 +352,8 @@ test("health cache: cache HIT does not call DB when within 30s TTL", async () =>
 
   // Second call: HIT -> does NOT call DB
   const cachedResult = await cachedStore.getModelHealth([
-    "gemini-3.5-flash-lite",
     "gemini-3.6-flash",
+    "gemini-3.5-flash",
   ]);
   assert.equal(dbCalls, 1);
   assert.equal(cachedResult.length, 2);
@@ -378,14 +379,14 @@ test("health cache: after 30s TTL expires, cache treats request as MISS and call
   });
 
   // First call at t = 1000: MISS -> calls DB
-  await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  await cachedStore.getModelHealth(["gemini-3.5-flash"]);
   assert.equal(dbCalls, 1);
 
   // Advance time beyond 30s TTL (e.g. +30_001 ms -> t = 31_001)
   currentTime += 30_001;
 
   // Next call: MISS because TTL expired -> calls DB again
-  await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  await cachedStore.getModelHealth(["gemini-3.5-flash"]);
   assert.equal(dbCalls, 2);
 });
 
@@ -414,15 +415,16 @@ test("health cache: successful request on previously unhealthy model invalidates
   });
 
   // 1. Initial read: MISS -> loads unhealthy state into cache
-  const firstRead = await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  const firstRead = await cachedStore.getModelHealth(["gemini-3.5-flash"]);
   assert.equal(dbCalls, 1);
   assert.equal(firstRead[0].isHealthy, false);
 
   // 2. Model recovers: recordSuccess is called
-  await cachedStore.recordSuccess("gemini-3.5-flash-lite");
+  await cachedStore.recordSuccess("gemini-3.5-flash");
 
   // 3. Next read within TTL: cache was invalidated immediately on recordSuccess, so it MUST call DB (dbCalls = 2) and get fresh healthy state
-  const nextRead = await cachedStore.getModelHealth(["gemini-3.5-flash-lite"]);
+  const nextRead = await cachedStore.getModelHealth(["gemini-3.5-flash"]);
   assert.equal(dbCalls, 2);
   assert.equal(nextRead[0].isHealthy, true);
 });
+

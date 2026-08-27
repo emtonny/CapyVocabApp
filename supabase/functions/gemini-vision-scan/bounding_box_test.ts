@@ -7,24 +7,24 @@ import {
 } from "./bounding_box.ts";
 
 test("shrinks both dimensions by the default ratio while preserving center", () => {
-  assert.equal(DEFAULT_BOUNDING_BOX_RATIO, 0.5);
+  assert.equal(DEFAULT_BOUNDING_BOX_RATIO, 0.25);
   assert.deepEqual(
     shrinkBoundingBox({ x: 100, y: 200, w: 400, h: 200 }),
-    { x: 200, y: 250, w: 200, h: 100 },
+    { x: 250, y: 275, w: 100, h: 50 },
   );
 });
 
-test("shrinks a full-image box to the centered middle quarter", () => {
+test("shrinks a full-image box to the centered middle area", () => {
   assert.deepEqual(
     shrinkBoundingBox({ x: 0, y: 0, w: 1000, h: 1000 }),
-    { x: 250, y: 250, w: 500, h: 500 },
+    { x: 375, y: 375, w: 250, h: 250 },
   );
 });
 
 test("keeps a box touching the bottom-right edges within image bounds", () => {
   assert.deepEqual(
     shrinkBoundingBox({ x: 900, y: 800, w: 100, h: 200 }),
-    { x: 925, y: 850, w: 50, h: 100 },
+    { x: 938, y: 875, w: 25, h: 50 },
   );
 });
 
@@ -37,15 +37,15 @@ test("keeps the minimum one-unit size for a tiny edge object", () => {
 
 test("supports a custom ratio without changing the default", () => {
   assert.deepEqual(
-    shrinkBoundingBox({ x: 100, y: 100, w: 400, h: 200 }, 0.25),
-    { x: 250, y: 175, w: 100, h: 50 },
+    shrinkBoundingBox({ x: 100, y: 100, w: 400, h: 200 }, 0.5),
+    { x: 200, y: 150, w: 200, h: 100 },
   );
 });
 
 test("clamps a malformed full box before shrinking it", () => {
   assert.deepEqual(
     shrinkBoundingBox({ x: 950, y: 950, w: 100, h: 100 }),
-    { x: 963, y: 963, w: 25, h: 25 },
+    { x: 969, y: 969, w: 13, h: 13 },
   );
 });
 

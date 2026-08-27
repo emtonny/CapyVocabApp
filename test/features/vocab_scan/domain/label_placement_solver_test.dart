@@ -79,7 +79,7 @@ void main() {
       words: words,
       labelSizes: const [
         LabelSize(width: 280, height: 300),
-        LabelSize(width: 40, height: 20),
+        LabelSize(width: 280, height: 300),
       ],
       anchorBoxes: [
         Rect.fromCenter(
@@ -304,6 +304,34 @@ void main() {
     expect(
       result.map((placed) => placed.anchorBox),
       anchorBoxes,
+    );
+  });
+
+  test(
+      'MRV tie-break prefers smaller labelArea first when candidate counts are equal',
+      () {
+    final words = [_word('large-card'), _word('small-card')];
+    const anchorBoxes = [
+      Rect.fromLTWH(200, 200, 20, 20),
+      Rect.fromLTWH(600, 600, 20, 20),
+    ];
+
+    final result = solve(
+      words: words,
+      labelSizes: const [
+        LabelSize(width: 50, height: 20),
+        LabelSize(width: 20, height: 10),
+      ],
+      anchorBoxes: anchorBoxes,
+      forbiddenZones: const [],
+      canvasSize: const Size(1000, 1000),
+      measurer: measurer,
+      compactStyleConfig: _tinyCompactStyle,
+    );
+
+    expect(
+      result.map((placed) => placed.word.word),
+      ['small-card', 'large-card'],
     );
   });
 
@@ -897,9 +925,9 @@ void main() {
     );
     // MRV owns the placement order, while both tested center-bias weights
     // preserve the same safe result for this constrained fixture.
-    expect(_qualityCounts(task11), [9, 0, 2, 1]);
-    expect(_qualityCounts(conservative), [9, 0, 2, 1]);
-    expect(_qualityCounts(strong), [9, 0, 2, 1]);
+    expect(_qualityCounts(task11), [9, 0, 3, 0]);
+    expect(_qualityCounts(conservative), [9, 0, 3, 0]);
+    expect(_qualityCounts(strong), [9, 0, 3, 0]);
     expect(_strictConnectorCrossings(scenario, conservative), 0);
     expect(_strictConnectorCrossings(scenario, strong), 0);
   });

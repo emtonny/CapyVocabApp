@@ -9,6 +9,8 @@ import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
 import {
   type BoundingBox,
   DEFAULT_BOUNDING_BOX_RATIO,
+  normalizeBoundingBox,
+  rankWordsByBoxArea,
   shrinkBoundingBox,
 } from "./bounding_box.ts";
 
@@ -41,18 +43,16 @@ const RESPONSE_SCHEMA = {
           word: { type: "STRING" },
           phonetic: { type: "STRING" },
           meaning_vi: { type: "STRING" },
-          box: {
-            type: "OBJECT",
-            properties: {
-              x: { type: "INTEGER", minimum: 0, maximum: 1000 },
-              y: { type: "INTEGER", minimum: 0, maximum: 1000 },
-              w: { type: "INTEGER", minimum: 1, maximum: 1000 },
-              h: { type: "INTEGER", minimum: 1, maximum: 1000 },
-            },
-            required: ["x", "y", "w", "h"],
+          box_2d: {
+            type: "ARRAY",
+            items: { type: "INTEGER" },
+            minItems: 4,
+            maxItems: 4,
+            description:
+              "Bounding box coordinates [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000.",
           },
         },
-        required: ["number", "word", "phonetic", "meaning_vi", "box"],
+        required: ["number", "word", "phonetic", "meaning_vi", "box_2d"],
       },
     },
   },
@@ -60,27 +60,33 @@ const RESPONSE_SCHEMA = {
 };
 
 const PROMPT =
-  `Identify up to ${MAX_WORDS} of the clearest, most common, and most useful objects for vocabulary learning in the image. Prioritize objects that are larger, visually clear, and easy to recognize. If multiple objects of the same type are present, select only the single clearest representative. Do not return duplicate vocabulary items.
+  `Identify up to ${MAX_WORDS} of the clearest, most distinct, and most useful primary objects for vocabulary learning in the image.
+
+Accurately identify the true, complete root object (vật thể gốc) itself. Focus on concrete, standalone real-world objects rather than vague background surfaces, walls, floors, reflections, shadows, decorative patterns, textures, or disconnected sub-fragments.
+
+If multiple objects of the same type are present, select only the single clearest representative. Do not return duplicate vocabulary items.
 
 Assign each selected object a unique sequential number using the field \`number\`, starting from \`1\` and continuing in order (\`1, 2, 3, ...\`) with no duplicates or skipped numbers.
 
-For each object, return: its \`number\`; a natural and accurate English name, lowercase and normally singular; its IPA pronunciation; an accurate, natural Vietnamese meaning that closely matches the actual object shown; and its bounding box.
+For each object, return: its \`number\`; a natural and accurate English name for the root object, lowercase and normally singular; its IPA pronunciation; an accurate, natural Vietnamese meaning that strictly matches the actual root object shown; and its 2D bounding box in \`box_2d\`.
 
 Use the most specific object name supported by the visual evidence, but do not infer or guess any subtype, brand, function, or characteristic that is not clearly visible in the image.
 
-Bounding box coordinates must be INTEGERS from 0 to 1000, not decimal values from 0.0 to 1.0. \`x/y\` represent the top-left corner, and \`w/h\` represent the width and height relative to the full image dimensions.
+Bounding box coordinates in \`box_2d\` must be an array of 4 INTEGERS [ymin, xmin, ymax, xmax] normalized from 0 to 1000 relative to the full image height and width (0 is top/left, 1000 is bottom/right).
 
-Return the FULL and PIXEL-TIGHT bounding box of the entire visible object.
-
-Each side of the box must closely follow the object's outermost visible pixels:
-- left x: the object's leftmost visible point;
-- right edge: the object's rightmost visible point;
-- top y: the object's highest visible point;
-- bottom edge: the object's lowest visible point.
+Return the FULL and PIXEL-TIGHT bounding box of the entire visible root object:
+- ymin: highest visible point of the object (top edge, 0-1000)
+- xmin: leftmost visible point of the object (left edge, 0-1000)
+- ymax: lowest visible point of the object (bottom edge, 0-1000)
+- xmax: rightmost visible point of the object (right edge, 0-1000)
 
 Include the smallest possible amount of margin or background. Do not enlarge the box to include nearby, overlapping, or visually related objects. For transparent, hollow, or irregularly shaped objects, include only the object's own visible structure and full silhouette; do not treat objects visible through or behind it as part of the object.
 
-Before returning each box, independently verify all four edges. Moving any edge inward must crop the target object, while moving it outward would add unnecessary background.
+Before returning each box, independently verify all four edges:
+- ymin must touch the uppermost pixel of the object.
+- xmin must touch the leftmost pixel of the object.
+- ymax must touch the lowest pixel of the object.
+- xmax must touch the rightmost pixel of the object.
 
 Return valid JSON only, with no additional explanation, and never return more than ${MAX_WORDS} elements in the \`words\` array.`;
 
@@ -115,25 +121,6 @@ function logSuspiciousBoxes(words: unknown[], scanId: string) {
   });
 }
 
-function rankWordsByBoxArea(words: unknown[]): unknown[] {
-  return words
-    .map((word, index) => ({ word, index, area: readBoxArea(word) }))
-    .sort((first, second) =>
-      second.area - first.area || first.index - second.index
-    )
-    .map(({ word }) => word);
-}
-
-function readBoxArea(word: unknown): number {
-  if (!word || typeof word !== "object") return -1;
-  const box = (word as { box?: unknown }).box;
-  if (!box || typeof box !== "object") return -1;
-  const { w, h } = box as { w?: unknown; h?: unknown };
-  if (typeof w !== "number" || typeof h !== "number") return -1;
-  if (!Number.isFinite(w) || !Number.isFinite(h)) return -1;
-  return w >= 0 && h >= 0 ? w * h : -1;
-}
-
 function deduplicateWords(words: unknown[]): unknown[] {
   const seenWords = new Set<string>();
 
@@ -151,28 +138,14 @@ function deduplicateWords(words: unknown[]): unknown[] {
 
 function shrinkDetectedWordBox(word: unknown): unknown {
   if (!word || typeof word !== "object") return word;
-  const record = word as { box?: unknown };
-  if (!record.box || typeof record.box !== "object") return word;
+  const box = normalizeBoundingBox(word);
+  if (!box) return word;
 
-  const box = record.box as Partial<BoundingBox>;
-  if (
-    typeof box.x !== "number" ||
-    typeof box.y !== "number" ||
-    typeof box.w !== "number" ||
-    typeof box.h !== "number"
-  ) {
-    return word;
-  }
-
-  const shrunkBox = shrinkBoundingBox({
-    x: box.x,
-    y: box.y,
-    w: box.w,
-    h: box.h,
-  });
+  const shrunkBox = shrinkBoundingBox(box);
+  const { box_2d: _, ...rest } = word as Record<string, unknown>;
 
   return {
-    ...record,
+    ...rest,
     box: shrunkBox,
   };
 }

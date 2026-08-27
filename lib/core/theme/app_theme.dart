@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
 
 class _NoTransitionsBuilder extends PageTransitionsBuilder {
@@ -28,6 +29,7 @@ class AppTheme {
 
   static ThemeData get light => ThemeData(
         useMaterial3: true,
+        fontFamily: GoogleFonts.nunito().fontFamily,
         brightness: Brightness.light,
         colorSchemeSeed: AppColors.duoGreen,
         scaffoldBackgroundColor: AppColors.creamyYuzu,
@@ -36,10 +38,10 @@ class AppTheme {
 
   static ThemeData get dark => ThemeData(
         useMaterial3: true,
+        fontFamily: GoogleFonts.nunito().fontFamily,
         brightness: Brightness.dark,
         colorSchemeSeed: AppColors.duoGreen,
         scaffoldBackgroundColor: AppColors.darkBackground,
         pageTransitionsTheme: _noTransitionsTheme,
       );
 }
-

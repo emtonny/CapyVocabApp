@@ -133,16 +133,16 @@ void main() {
 
     expect(result.sceneDetections, hasLength(4));
     expect(result.words, hasLength(2));
-    expect(result.words.first.word, 'leaf');
-    final apple = result.words.last;
+    final apple = result.words.first;
     expect(apple.word, ' Apple ');
     expect(apple.x, 0.5);
     expect(apple.y, 0.365);
     expect(apple.w, 0.117);
     expect(apple.h, 0.185);
+    expect(result.words.last.word, 'leaf');
   });
 
-  test('top 15 luôn giữ object có diện tích lớn nhất bất kể response order',
+  test('top 15 luôn giữ object có diện tích nhỏ nhất bất kể response order',
       () {
     Map<String, dynamic> word(int index) => {
           'word': 'object-$index',
@@ -167,10 +167,10 @@ void main() {
         .map((detection) => detection.w * detection.h)
         .toList(growable: false);
     for (var index = 1; index < keptAreas.length; index++) {
-      expect(keptAreas[index - 1], greaterThanOrEqualTo(keptAreas[index]));
+      expect(keptAreas[index - 1], lessThanOrEqualTo(keptAreas[index]));
     }
-    expect(result.words.map((word) => word.word), isNot(contains('object-0')));
-    expect(result.words.map((word) => word.word), isNot(contains('object-1')));
+    expect(result.words.map((word) => word.word), isNot(contains('object-15')));
+    expect(result.words.map((word) => word.word), isNot(contains('object-16')));
   });
 
   test('response cũ thiếu number được đánh số lại sau khi xếp hạng', () {
@@ -195,17 +195,17 @@ void main() {
     expect(result.toJson()['words'], [
       {
         'number': 1,
-        'word': 'desk lamp',
-        'phonetic': '/desk læmp/',
-        'meaning_vi': 'đèn bàn',
-        'box': {'x': 300, 'y': 100, 'w': 100, 'h': 200},
-      },
-      {
-        'number': 2,
         'word': 'apple',
         'phonetic': '/ˈæp.əl/',
         'meaning_vi': 'quả táo',
         'box': {'x': 100, 'y': 100, 'w': 100, 'h': 100},
+      },
+      {
+        'number': 2,
+        'word': 'desk lamp',
+        'phonetic': '/desk læmp/',
+        'meaning_vi': 'đèn bàn',
+        'box': {'x': 300, 'y': 100, 'w': 100, 'h': 200},
       },
     ]);
   });

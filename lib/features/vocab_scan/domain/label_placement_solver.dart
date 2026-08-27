@@ -117,7 +117,7 @@ List<PlacedLabel> solve({
         second.candidateCount,
       );
       if (byCandidateCount != 0) return byCandidateCount;
-      final byLabelArea = second.labelArea.compareTo(first.labelArea);
+      final byLabelArea = first.labelArea.compareTo(second.labelArea);
       return byLabelArea != 0
           ? byLabelArea
           : first.index.compareTo(second.index);
@@ -735,7 +735,7 @@ bool _connectorAvoidsPlacementGeometry({
     // A connector whose target is nested inside another detection must enter
     // that containing zone. Treating it as avoidable would force every strict
     // candidate into a relaxed tier and also waive avoidable label/connector
-    // conflicts. Candidate labels still cannot overlap any forbidden zone.
+    // conflicts.
     if (zoneIndex == ignoredForbiddenZoneIndex ||
         (allowTargetContainingZoneIntersection &&
             _containsRect(zone, anchorBox))) {

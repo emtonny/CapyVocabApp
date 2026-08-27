@@ -266,7 +266,7 @@ List<VocabDetection> rankDetectionsByBoxArea(
 ) {
   final ranked = detections.toList(growable: false)
     ..sort((first, second) {
-      final byArea = (second.w * second.h).compareTo(first.w * first.h);
+      final byArea = (first.w * first.h).compareTo(second.w * second.h);
       if (byArea != 0) return byArea;
 
       final byWord = first.word
