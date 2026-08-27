@@ -1,7 +1,13 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-const List<double> _defaultRingFactors = [1.0, 1.5, 2.0, 2.8, 3.6];
+const double _candidateGap = 6;
+const double _softRadiusRatio = 0.20;
+const double _hardRadiusRatio = 0.30;
+const double _radiusStepRatio = 0.03;
+const double _minimumRadiusStep = 8;
+const double _maximumRadiusStep = 16;
+const double _geometryEpsilon = 1e-9;
 const List<double> defaultCandidateAngleDegrees = [
   0,
   45,
@@ -13,6 +19,8 @@ const List<double> defaultCandidateAngleDegrees = [
   315,
 ];
 const List<double> _recoveryAngleOffsets = [-15, 15, -30, 30];
+
+enum CandidateRadiusTier { soft, hard }
 
 /// Adds only the unique ±15° and ±30° directions around [baseAngles].
 ///
@@ -33,7 +41,7 @@ List<double> generateRecoveryAngleDegrees(List<double> baseAngles) {
   return List.unmodifiable(recoveryAngles);
 }
 
-/// Generates in-bounds label top-left positions, preserving ring-first order.
+/// Generates in-bounds label top-left positions in nearest-radius-first order.
 ///
 /// Angles use Flutter canvas coordinates: +x points right, +y points down, so
 /// positive angles increase clockwise.
@@ -50,34 +58,50 @@ List<double> generateRecoveryAngleDegrees(List<double> baseAngles) {
 ///                       90° (down, dy +)
 /// ```
 ///
-/// Every returned [Offset] is the label's top-left corner. The label center is
-/// placed at `anchorBox.center + radius * (cos(angle), sin(angle))`, where
-/// `radius = anchorBox.longestSide * ringFactor`.
+/// The search starts where the label clears the anchor by [_candidateGap], then
+/// advances by a canvas-relative step. The soft tier ends at 20% of the
+/// canvas's shorter side; the hard tier continues from there to 30%.
 List<Offset> generateCandidates({
   required Rect anchorBox,
   required Size labelSize,
   required Size canvasSize,
-  List<double>? ringFactors,
   List<double>? angleDegrees,
+  CandidateRadiusTier radiusTier = CandidateRadiusTier.soft,
 }) {
   _validateGeometry(anchorBox, labelSize, canvasSize);
-  final rings = ringFactors ?? _defaultRingFactors;
   final angles = angleDegrees ?? defaultCandidateAngleDegrees;
-  _validateValues(rings, 'ringFactors', allowNegative: false);
   _validateValues(angles, 'angleDegrees', allowNegative: true);
 
-  final candidates = <Offset>[];
+  final shorterCanvasSide = math.min(canvasSize.width, canvasSize.height);
+  final softRadius = shorterCanvasSide * _softRadiusRatio;
+  final hardRadius = shorterCanvasSide * _hardRadiusRatio;
+  final radiusStep = (shorterCanvasSide * _radiusStepRatio).clamp(
+    _minimumRadiusStep,
+    _maximumRadiusStep,
+  );
   final canvasRect = Offset.zero & canvasSize;
   final labelCenterOffset = Offset(labelSize.width / 2, labelSize.height / 2);
+  final candidates = <({Offset topLeft, double radius, int angleRank})>[];
 
-  for (final ringFactor in rings) {
-    final radius = anchorBox.longestSide * ringFactor;
-    for (final degrees in angles) {
-      final radians = degrees * math.pi / 180;
-      final direction = Offset(
-        _zeroNearOrigin(math.cos(radians)),
-        _zeroNearOrigin(math.sin(radians)),
-      );
+  for (final (angleRank, degrees) in angles.indexed) {
+    final radians = degrees * math.pi / 180;
+    final direction = Offset(
+      _zeroNearOrigin(math.cos(radians)),
+      _zeroNearOrigin(math.sin(radians)),
+    );
+    final touchRadius = _touchRadius(
+      anchorBox: anchorBox,
+      labelSize: labelSize,
+      direction: direction,
+    );
+    final radii = _radiiForTier(
+      touchRadius: touchRadius,
+      step: radiusStep,
+      softRadius: softRadius,
+      hardRadius: hardRadius,
+      tier: radiusTier,
+    );
+    for (final radius in radii) {
       final candidateCenter = anchorBox.center + direction * radius;
       final topLeft = candidateCenter - labelCenterOffset;
       final candidateRect = Rect.fromLTWH(
@@ -88,12 +112,62 @@ List<Offset> generateCandidates({
       );
 
       if (_isFullyInside(candidateRect, canvasRect)) {
-        candidates.add(topLeft);
+        candidates
+            .add((topLeft: topLeft, radius: radius, angleRank: angleRank));
       }
     }
   }
 
-  return List.unmodifiable(candidates);
+  candidates.sort((first, second) {
+    final byRadius = first.radius.compareTo(second.radius);
+    return byRadius != 0
+        ? byRadius
+        : first.angleRank.compareTo(second.angleRank);
+  });
+  return List.unmodifiable(candidates.map((candidate) => candidate.topLeft));
+}
+
+double _touchRadius({
+  required Rect anchorBox,
+  required Size labelSize,
+  required Offset direction,
+}) {
+  final clearX = (anchorBox.width + labelSize.width) / 2 + _candidateGap;
+  final clearY = (anchorBox.height + labelSize.height) / 2 + _candidateGap;
+  final radiusX = direction.dx.abs() <= _geometryEpsilon
+      ? double.infinity
+      : clearX / direction.dx.abs();
+  final radiusY = direction.dy.abs() <= _geometryEpsilon
+      ? double.infinity
+      : clearY / direction.dy.abs();
+  return math.min(radiusX, radiusY);
+}
+
+List<double> _radiiForTier({
+  required double touchRadius,
+  required double step,
+  required double softRadius,
+  required double hardRadius,
+  required CandidateRadiusTier tier,
+}) {
+  final limit = tier == CandidateRadiusTier.soft ? softRadius : hardRadius;
+  if (touchRadius > limit + _geometryEpsilon) return const [];
+
+  final radii = <double>[];
+  for (var radius = touchRadius;
+      radius <= limit + _geometryEpsilon;
+      radius += step) {
+    final belongsToTier = tier == CandidateRadiusTier.soft
+        ? radius <= softRadius + _geometryEpsilon
+        : radius > softRadius + _geometryEpsilon;
+    if (belongsToTier) radii.add(radius);
+  }
+  if (limit >= touchRadius &&
+      (tier == CandidateRadiusTier.soft || limit > softRadius) &&
+      (radii.isEmpty || (radii.last - limit).abs() > _geometryEpsilon)) {
+    radii.add(limit);
+  }
+  return radii;
 }
 
 bool _isFullyInside(Rect candidate, Rect canvas) {

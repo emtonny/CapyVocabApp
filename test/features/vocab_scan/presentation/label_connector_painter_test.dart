@@ -88,7 +88,23 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(440, 840));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final placedLabels = _solveWardrobeDemo();
+    final solvedLabels = _solveWardrobeDemo();
+    // Adaptive radius places this fixture entirely in the ideal tier. Mark one
+    // immutable test copy as fallbackEdge so the painter keeps deterministic
+    // dashed-line coverage without requiring the solver to fail placement.
+    final first = solvedLabels.first;
+    final placedLabels = [
+      PlacedLabel(
+        word: first.word,
+        labelRect: first.labelRect,
+        anchorBox: first.anchorBox,
+        quality: PlacementQuality.fallbackEdge,
+        overlapsForbiddenZone: first.overlapsForbiddenZone,
+        overlapsPlacedLabel: first.overlapsPlacedLabel,
+        collisionGeometry: first.collisionGeometry,
+      ),
+      ...solvedLabels.skip(1),
+    ];
     expect(placedLabels, hasLength(12));
     expect(
       placedLabels.any(

@@ -9,6 +9,8 @@ import 'label_connector_geometry.dart';
 import 'label_size_measurer.dart';
 import 'label_unit_geometry.dart';
 
+const double _candidateDistanceTieEpsilon = 1e-9;
+
 enum PlacementQuality {
   ideal,
   fallbackSmallerFont,
@@ -415,40 +417,46 @@ List<Rect> _validCandidatesWithAngularRecovery({
   required List<double> angleDegrees,
   bool allowTargetContainingZoneIntersection = false,
 }) {
-  final baseCandidates = _validCandidates(
-    anchorBox: anchorBox,
-    labelSize: labelSize,
-    candidateCollisionGeometry: candidateCollisionGeometry,
-    canvasSize: canvasSize,
-    canvasRect: canvasRect,
-    forbiddenZones: forbiddenZones,
-    placedLabels: placedLabels,
-    maximumOverlapRatio: maximumOverlapRatio,
-    ignoredForbiddenZoneIndex: ignoredForbiddenZoneIndex,
-    avoidConnectorIntersections: avoidConnectorIntersections,
-    angleDegrees: angleDegrees,
-    allowTargetContainingZoneIntersection:
-        allowTargetContainingZoneIntersection,
-  );
-  if (baseCandidates.isNotEmpty) return baseCandidates;
-
   final recoveryAngles = generateRecoveryAngleDegrees(angleDegrees);
-  if (recoveryAngles.isEmpty) return baseCandidates;
-  return _validCandidates(
-    anchorBox: anchorBox,
-    labelSize: labelSize,
-    candidateCollisionGeometry: candidateCollisionGeometry,
-    canvasSize: canvasSize,
-    canvasRect: canvasRect,
-    forbiddenZones: forbiddenZones,
-    placedLabels: placedLabels,
-    maximumOverlapRatio: maximumOverlapRatio,
-    ignoredForbiddenZoneIndex: ignoredForbiddenZoneIndex,
-    avoidConnectorIntersections: avoidConnectorIntersections,
-    angleDegrees: recoveryAngles,
-    allowTargetContainingZoneIntersection:
-        allowTargetContainingZoneIntersection,
-  );
+  for (final radiusTier in CandidateRadiusTier.values) {
+    final baseCandidates = _validCandidates(
+      anchorBox: anchorBox,
+      labelSize: labelSize,
+      candidateCollisionGeometry: candidateCollisionGeometry,
+      canvasSize: canvasSize,
+      canvasRect: canvasRect,
+      forbiddenZones: forbiddenZones,
+      placedLabels: placedLabels,
+      maximumOverlapRatio: maximumOverlapRatio,
+      ignoredForbiddenZoneIndex: ignoredForbiddenZoneIndex,
+      avoidConnectorIntersections: avoidConnectorIntersections,
+      angleDegrees: angleDegrees,
+      radiusTier: radiusTier,
+      allowTargetContainingZoneIntersection:
+          allowTargetContainingZoneIntersection,
+    );
+    if (baseCandidates.isNotEmpty) return baseCandidates;
+    if (recoveryAngles.isEmpty) continue;
+
+    final recoveryCandidates = _validCandidates(
+      anchorBox: anchorBox,
+      labelSize: labelSize,
+      candidateCollisionGeometry: candidateCollisionGeometry,
+      canvasSize: canvasSize,
+      canvasRect: canvasRect,
+      forbiddenZones: forbiddenZones,
+      placedLabels: placedLabels,
+      maximumOverlapRatio: maximumOverlapRatio,
+      ignoredForbiddenZoneIndex: ignoredForbiddenZoneIndex,
+      avoidConnectorIntersections: avoidConnectorIntersections,
+      angleDegrees: recoveryAngles,
+      radiusTier: radiusTier,
+      allowTargetContainingZoneIntersection:
+          allowTargetContainingZoneIntersection,
+    );
+    if (recoveryCandidates.isNotEmpty) return recoveryCandidates;
+  }
+  return const [];
 }
 
 List<Rect> _validCandidates({
@@ -463,6 +471,7 @@ List<Rect> _validCandidates({
   required int? ignoredForbiddenZoneIndex,
   required bool avoidConnectorIntersections,
   required List<double> angleDegrees,
+  required CandidateRadiusTier radiusTier,
   bool allowTargetContainingZoneIntersection = false,
 }) {
   final candidates = generateCandidates(
@@ -470,9 +479,11 @@ List<Rect> _validCandidates({
     labelSize: labelSize,
     canvasSize: canvasSize,
     angleDegrees: angleDegrees,
+    radiusTier: radiusTier,
   );
-  final validCandidates = <Rect>[];
-  for (final topLeft in candidates) {
+  final validCandidates =
+      <({Rect rect, double distance, int angleRank, int order})>[];
+  for (final (order, topLeft) in candidates.indexed) {
     final candidate = topLeft & labelSize;
     if (!_isFullyInside(candidate, canvasRect) ||
         anyOverlap(candidate, forbiddenZones) ||
@@ -499,9 +510,54 @@ List<Rect> _validCandidates({
       return _overlapRatio(candidate, placed.labelRect) <=
           maximumOverlapRatio + 1e-12;
     });
-    if (respectsPlacedLabels) validCandidates.add(candidate);
+    if (respectsPlacedLabels) {
+      final connector = computeConnectorPath(
+        labelRect: candidate,
+        targetBox: anchorBox,
+      );
+      validCandidates.add((
+        rect: candidate,
+        distance: (connector.to - connector.from).distance,
+        angleRank: _candidateAngleRank(
+          candidateCenter: candidate.center,
+          anchorCenter: anchorBox.center,
+          rankedAngleDegrees: angleDegrees,
+        ),
+        order: order,
+      ));
+    }
   }
-  return validCandidates;
+  validCandidates.sort((first, second) {
+    final distanceDifference = first.distance - second.distance;
+    if (distanceDifference.abs() > _candidateDistanceTieEpsilon) {
+      return distanceDifference.sign.toInt();
+    }
+    final byAngleRank = first.angleRank.compareTo(second.angleRank);
+    return byAngleRank != 0 ? byAngleRank : first.order.compareTo(second.order);
+  });
+  return validCandidates.map((candidate) => candidate.rect).toList();
+}
+
+int _candidateAngleRank({
+  required Offset candidateCenter,
+  required Offset anchorCenter,
+  required List<double> rankedAngleDegrees,
+}) {
+  final direction = candidateCenter - anchorCenter;
+  final rawDegrees = math.atan2(direction.dy, direction.dx) * 180 / math.pi;
+  final candidateDegrees = rawDegrees < 0 ? rawDegrees + 360 : rawDegrees;
+  var closestRank = 0;
+  var closestDifference = double.infinity;
+  for (final (rank, degrees) in rankedAngleDegrees.indexed) {
+    final normalizedDegrees = (degrees % 360 + 360) % 360;
+    final difference = (candidateDegrees - normalizedDegrees).abs();
+    final circularDifference = math.min(difference, 360 - difference);
+    if (circularDifference < closestDifference) {
+      closestDifference = circularDifference;
+      closestRank = rank;
+    }
+  }
+  return closestRank;
 }
 
 class _CandidateAssessment {

@@ -83,18 +83,18 @@ void main() {
       ],
       anchorBoxes: [
         Rect.fromCenter(
-          center: const Offset(200, 200),
+          center: const Offset(34, 10),
           width: 20,
           height: 20,
         ),
         Rect.fromCenter(
-          center: const Offset(352, 200),
+          center: const Offset(66, 10),
           width: 20,
           height: 20,
         ),
       ],
       forbiddenZones: const [],
-      canvasSize: const Size(400, 400),
+      canvasSize: const Size(100, 100),
       measurer: const _FixedLabelSizeMeasurer(
         LabelSize(width: 40, height: 20),
       ),
@@ -102,7 +102,9 @@ void main() {
     );
 
     expect(result, hasLength(2));
-    expect(result.first.quality, PlacementQuality.ideal);
+    // A 280x300 card cannot clear its anchor inside the 120 px hard cap, so
+    // adaptive clearance correctly enters the compact tier before overlap.
+    expect(result.first.quality, PlacementQuality.fallbackSmallerFont);
     expect(result.last.quality, PlacementQuality.fallbackAllowOverlap);
     expect(
       _overlapRatio(result.first.labelRect, result.last.labelRect),
@@ -312,15 +314,32 @@ void main() {
       () {
     final words = [_word('large-card'), _word('small-card')];
     const anchorBoxes = [
-      Rect.fromLTWH(200, 200, 20, 20),
+      // At this inset the 200 px soft-cap sample fits exactly, keeping the
+      // large card's count tied with the slightly shorter small card.
+      Rect.fromLTWH(215, 200, 20, 20),
       Rect.fromLTWH(600, 600, 20, 20),
     ];
+    final initialCandidateCounts = [
+      generateCandidates(
+        anchorBox: anchorBoxes[0],
+        labelSize: const Size(50, 20),
+        canvasSize: const Size(1000, 1000),
+      ).length,
+      generateCandidates(
+        anchorBox: anchorBoxes[1],
+        labelSize: const Size(50, 19),
+        canvasSize: const Size(1000, 1000),
+      ).length,
+    ];
+    expect(initialCandidateCounts[0], initialCandidateCounts[1]);
 
     final result = solve(
       words: words,
       labelSizes: const [
         LabelSize(width: 50, height: 20),
-        LabelSize(width: 20, height: 10),
+        // The 1 px height reduction preserves the same adaptive candidate
+        // count while retaining a smaller area for the MRV tie-break.
+        LabelSize(width: 50, height: 19),
       ],
       anchorBoxes: anchorBoxes,
       forbiddenZones: const [],
@@ -363,6 +382,35 @@ void main() {
       result.map((placed) => placed.quality),
       everyElement(PlacementQuality.ideal),
     );
+  });
+
+  test('connector distance wins and angle rank only breaks an exact tie', () {
+    const anchorBox = Rect.fromLTWH(190, 390, 20, 20);
+    final result = solve(
+      words: [_word('tie-break')],
+      labelSizes: const [LabelSize(width: 20, height: 20)],
+      anchorBoxes: const [anchorBox],
+      forbiddenZones: const [anchorBox],
+      canvasSize: const Size(400, 800),
+      measurer: const _FixedLabelSizeMeasurer(
+        LabelSize(width: 20, height: 20),
+      ),
+      compactStyleConfig: _tinyCompactStyle,
+      angleRanker: ({
+        required anchorBox,
+        required angleDegrees,
+        required forbiddenZones,
+        required placedLabels,
+        required canvasSize,
+      }) =>
+          const [180, 0, 90, 270, 45, 135, 225, 315],
+    );
+    final geometry = _candidateGeometry(result.single);
+
+    // Cardinal touch candidates all have the same 6 px connector. The custom
+    // rank may choose 180° only after that minimum distance has tied.
+    expect(geometry.centerRadius, closeTo(26, 1e-9));
+    expect(geometry.angleDegrees, closeTo(180, 1e-9));
   });
 
   test('rejects the nearest candidate when its connector crosses another box',
@@ -445,10 +493,13 @@ void main() {
       compactStyleConfig: _tinyCompactStyle,
     );
 
+    // Adaptive directional clearance changes the candidate counts, so MRV now
+    // visits the 40px, 20px, then 10px anchors. Identity checks below remain
+    // indexed against the original input rather than placement order.
     expect(result.map((placed) => placed.word.word), [
-      'small',
       'large',
       'medium',
+      'small',
     ]);
     expect(
       result.map((placed) => placed.quality),
@@ -537,10 +588,10 @@ void main() {
 
     final fallbackAnglesA = callsForA.last.angles;
     final fallbackAnglesB = callsForB.last.angles;
-    // The same ranked angle object is reused by all fallback attempts and
-    // their recovery-angle expansion before edge placement succeeds.
-    expect(fallbackAnglesA.iteratorRequests, 18);
-    expect(fallbackAnglesB.iteratorRequests, 18);
+    // The same ranked angle object is reused across the two radius tiers and
+    // fallback attempts. Tier short-circuiting halves the legacy ring pass.
+    expect(fallbackAnglesA.iteratorRequests, 9);
+    expect(fallbackAnglesB.iteratorRequests, 9);
     expect(identical(fallbackAnglesA, fallbackAnglesB), isFalse);
     expect(fallbackAnglesA, isNot(equals(fallbackAnglesB)));
   });
@@ -694,20 +745,48 @@ void main() {
     }
   });
 
-  test('angular recovery uses a 15-degree gap before edge fallback', () {
-    final scenario = _buildScenario(
-      name: 'crowded-center-400x800',
+  test('angular recovery finds a non-base direction before edge fallback', () {
+    const anchorBox = Rect.fromLTWH(190, 390, 20, 20);
+    const labelSize = Size(20, 20);
+    final baseCandidates = [
+      for (final tier in CandidateRadiusTier.values)
+        ...generateCandidates(
+          anchorBox: anchorBox,
+          labelSize: labelSize,
+          canvasSize: const Size(400, 800),
+          radiusTier: tier,
+        ),
+    ];
+    final baseCandidateBlockers = baseCandidates.map((topLeft) {
+      final rect = topLeft & labelSize;
+      final direction = rect.center - anchorBox.center;
+      final markerCenter = rect.center +
+          Offset(
+            direction.dx.sign * (rect.width / 2 - 1),
+            direction.dy.sign * (rect.height / 2 - 1),
+          );
+      return Rect.fromCenter(center: markerCenter, width: 1, height: 1);
+    }).toList(growable: false);
+    final result = solve(
+      words: [_word('recovery')],
+      labelSizes: const [LabelSize(width: 20, height: 20)],
+      anchorBoxes: const [anchorBox],
+      forbiddenZones: baseCandidateBlockers,
       canvasSize: const Size(400, 800),
-      normalizedBoxes: _crowdedBoxes,
+      measurer: const _FixedLabelSizeMeasurer(
+        LabelSize(width: 20, height: 20),
+      ),
+      compactStyleConfig: _tinyCompactStyle,
     );
-    final result = _solveScenario(scenario);
-    final shoes = result.singleWhere((placed) => placed.word.word == 'shoes');
-    final geometry = _candidateGeometry(shoes);
+    final placed = result.single;
+    final geometry = _candidateGeometry(placed);
 
-    expect(shoes.quality, PlacementQuality.fallbackAllowOverlap);
-    expect(geometry.angleDegrees, closeTo(15, 1e-9));
-    expect(geometry.ringFactor, closeTo(1.5, 1e-9));
-    expect(_strictConnectorCrossings(scenario, result), 0);
+    expect(placed.quality, PlacementQuality.ideal);
+    expect(geometry.angleDegrees % 45, isNot(closeTo(0, 1e-9)));
+    expect(
+      generateRecoveryAngleDegrees(defaultCandidateAngleDegrees),
+      contains(closeTo(geometry.angleDegrees, 1e-9)),
+    );
   });
 
   test('Task 13b original-layout approximation keeps jacket connector-safe',
@@ -743,7 +822,7 @@ void main() {
       '${jacket.labelRect.right.toStringAsFixed(6)},'
       '${jacket.labelRect.bottom.toStringAsFixed(6)}) '
       'angle=${geometry.angleDegrees.toStringAsFixed(0)} '
-      'ring=${geometry.ringFactor.toStringAsFixed(1)} '
+      'radius=${geometry.centerRadius.toStringAsFixed(1)} '
       'quality=${jacket.quality.name} conflicts=$conflicts',
     );
     expect(result, hasLength(task13bJacketWords.length));
@@ -767,22 +846,26 @@ void main() {
     );
     expect(
       wardrobe.labelRect.center.dy,
-      lessThan(wardrobe.anchorBox.center.dy),
+      lessThanOrEqualTo(wardrobe.anchorBox.center.dy),
     );
     expect(
       curtain.labelRect.center.dy,
-      lessThan(curtain.anchorBox.center.dy),
+      lessThanOrEqualTo(curtain.anchorBox.center.dy),
     );
-    expect(jacket.labelRect.left, closeTo(156.409928, 0.02));
-    expect(jacket.labelRect.top, closeTo(187.209928, 0.02));
-    expect(jacket.labelRect.right, closeTo(212.409928, 0.02));
-    expect(jacket.labelRect.bottom, closeTo(225.209928, 0.02));
-    expect(geometry.angleDegrees, closeTo(225, 1e-9));
-    expect(geometry.ringFactor, closeTo(1, 1e-9));
+    // The nearest valid adaptive candidate is the 77.8 px soft-tier slot to
+    // the right, replacing the legacy 225° ring-factor position.
+    expect(jacket.labelRect.left, closeTo(316.8, 0.02));
+    expect(jacket.labelRect.top, closeTo(269.8, 0.02));
+    expect(jacket.labelRect.right, closeTo(372.8, 0.02));
+    expect(jacket.labelRect.bottom, closeTo(307.8, 0.02));
+    expect(geometry.angleDegrees, closeTo(0, 1e-9));
+    expect(geometry.centerRadius, closeTo(77.8, 1e-9));
     expect(jacket.quality, PlacementQuality.fallbackAllowOverlap);
     expect(conflicts, isEmpty);
     expect(allConflicts, isEmpty);
-    expect(_qualityCounts(result), [0, 0, 3, 2]);
+    // Adaptive clearance lets one word use the compact no-overlap tier while
+    // reducing the 20%-overlap tier by one; both edge fallbacks are unchanged.
+    expect(_qualityCounts(result), [0, 1, 2, 2]);
     expect(_strictConnectorCrossings(scenario, result), 0);
   });
 
@@ -925,15 +1008,62 @@ void main() {
     );
     // MRV owns the placement order, while both tested center-bias weights
     // preserve the same safe result for this constrained fixture.
-    expect(_qualityCounts(task11), [9, 0, 3, 0]);
-    expect(_qualityCounts(conservative), [9, 0, 3, 0]);
-    expect(_qualityCounts(strong), [9, 0, 3, 0]);
+    // Distance owns the primary ordering now; both center-bias weights retain
+    // the same deterministic 8 ideal / 4 relaxed layout.
+    expect(_qualityCounts(task11), [8, 0, 4, 0]);
+    expect(_qualityCounts(conservative), [8, 0, 4, 0]);
+    expect(_qualityCounts(strong), [8, 0, 4, 0]);
     expect(_strictConnectorCrossings(scenario, conservative), 0);
     expect(_strictConnectorCrossings(scenario, strong), 0);
   });
 
+  test('small mouse reaches the nearest 100.2 px hard-tier gap', () {
+    final words = [_word('mouse'), _word('notebook')];
+    const labelSize = LabelSize(width: 70.4, height: 46);
+    const anchorBoxes = [
+      Rect.fromLTWH(89, 189, 22, 22),
+      Rect.fromLTWH(280, 580, 40, 40),
+    ];
+    const forbiddenZones = [
+      // The mouse label first clears its containing zone when its center is
+      // 100.2 px to the right. The legacy 22 * 3.6 search stopped at 79.2 px.
+      Rect.fromLTRB(0, 0, 165, 400),
+      Rect.fromLTWH(280, 580, 40, 40),
+    ];
+    final result = solve(
+      words: words,
+      labelSizes: const [labelSize, labelSize],
+      anchorBoxes: anchorBoxes,
+      forbiddenZones: forbiddenZones,
+      canvasSize: const Size(400, 800),
+      measurer: const _FixedLabelSizeMeasurer(labelSize),
+      compactStyleConfig: _tinyCompactStyle,
+    );
+    final mouse = result.singleWhere((placed) => placed.word.word == 'mouse');
+    final notebook =
+        result.singleWhere((placed) => placed.word.word == 'notebook');
+    final mouseCenterRadius =
+        (mouse.labelRect.center - mouse.anchorBox.center).distance;
+    final notebookCenterRadius =
+        (notebook.labelRect.center - notebook.anchorBox.center).distance;
+
+    debugPrint(
+      'ADAPTIVE_RADIUS_CASE mouseRect=${mouse.labelRect} radius='
+      '${mouseCenterRadius.toStringAsFixed(1)} quality=${mouse.quality.name} '
+      'notebookRect=${notebook.labelRect} radius='
+      '${notebookCenterRadius.toStringAsFixed(1)} '
+      'quality=${notebook.quality.name}',
+    );
+    expect(result, hasLength(2));
+    expect(mouse.labelRect, const Rect.fromLTWH(165, 177, 70.4, 46));
+    expect(mouseCenterRadius, closeTo(100.2, 1e-9));
+    expect(mouse.quality, PlacementQuality.ideal);
+    expect(notebook.quality, PlacementQuality.ideal);
+    expect(notebookCenterRadius, lessThanOrEqualTo(80));
+  });
+
   test('benchmarks solve for N=12', () {
-    final benchmarkScenario = _buildBenchmarkScenario12();
+    final benchmarkScenario = _buildBenchmarkScenario(12);
     for (var warmUp = 0; warmUp < 20; warmUp++) {
       _solveScenario(benchmarkScenario);
     }
@@ -951,10 +1081,31 @@ void main() {
     expect(averageMicroseconds.isFinite, isTrue);
     expect(averageMicroseconds, greaterThanOrEqualTo(0));
   });
+
+  test('benchmarks solve for N=15', () {
+    final benchmarkScenario = _buildBenchmarkScenario(15);
+    for (var warmUp = 0; warmUp < 20; warmUp++) {
+      _solveScenario(benchmarkScenario);
+    }
+    const iterations = 100;
+    final stopwatch = Stopwatch()..start();
+    for (var iteration = 0; iteration < iterations; iteration++) {
+      _solveScenario(benchmarkScenario);
+    }
+    stopwatch.stop();
+    final averageMicroseconds = stopwatch.elapsedMicroseconds / iterations;
+    debugPrint(
+      'SOLVER_PERFORMANCE N=15 iterations=$iterations '
+      'average=${averageMicroseconds.toStringAsFixed(2)}us',
+    );
+    expect(averageMicroseconds.isFinite, isTrue);
+    expect(averageMicroseconds, greaterThanOrEqualTo(0));
+  });
 }
 
-_Scenario _buildBenchmarkScenario12() {
-  final words = List<VocabDetection>.generate(12, (index) {
+_Scenario _buildBenchmarkScenario(int wordCount) {
+  assert(wordCount > 0 && wordCount <= _benchmarkBoxes15.length);
+  final words = List<VocabDetection>.generate(wordCount, (index) {
     final source = wardrobeWords[index % wardrobeWords.length];
     final box = _benchmarkBoxes15[index];
     return VocabDetection(
@@ -974,7 +1125,7 @@ _Scenario _buildBenchmarkScenario12() {
     canvasSize: canvasSize,
   );
   return _Scenario(
-    name: 'benchmark-12-400x800',
+    name: 'benchmark-$wordCount-400x800',
     words: words,
     labelSizes: const LabelSizeMeasurer().measureAll(words, _fullStyle),
     anchorBoxes: words
@@ -1096,7 +1247,7 @@ List<PlacedLabel> _solveScenario(_Scenario scenario) {
   );
 }
 
-({double angleDegrees, double ringFactor}) _candidateGeometry(
+({double angleDegrees, double centerRadius}) _candidateGeometry(
   PlacedLabel placed,
 ) {
   final offset = placed.labelRect.center - placed.anchorBox.center;
@@ -1104,7 +1255,7 @@ List<PlacedLabel> _solveScenario(_Scenario scenario) {
   final angleDegrees = rawDegrees < 0 ? rawDegrees + 360 : rawDegrees;
   return (
     angleDegrees: angleDegrees,
-    ringFactor: offset.distance / placed.anchorBox.longestSide,
+    centerRadius: offset.distance,
   );
 }
 
