@@ -48,14 +48,13 @@ flutter test test/features/ai_scan test/features/vocab_scan `
 10. Lưu record kết quả vào SQLite trên native hoặc RAM trên web.
 11. Vẽ bounding box, connector và card từ vựng trực tiếp trong bottom sheet.
 12. Cho phép mở fullscreen và zoom/pan toàn bộ ảnh + overlay.
+13. Chọn style label Mặc định, Tối giản hoặc Tự thiết kế; style được áp dụng
+    đồng nhất cho preview và fullscreen.
 
 ### 1.2 Phần có source nhưng chưa nối vào flow chính
 
 - `ScanFlowController.scanAndNavigate()` và route `/scan-overlay` tồn tại,
   nhưng `PhotoScanBottomSheet` hiện gọi `scan()` và render kết quả inline.
-- Chọn mẫu note chỉ thay đổi `_selectedTemplateIndex`; không thay đổi painter,
-  data hoặc output. `subtitle` được truyền vào builder nhưng không được render.
-- `NoteTemplateSelector` riêng vẫn là widget rỗng/TODO.
 - `VocabCanvasOverlay` nhận `ttsService` và `onLabelTap`, nhưng caller hiện tại
   không truyền callback; chạm label và phát âm chưa hoạt động trong flow chính.
 - `sceneWords` được giữ để tương thích nhưng placement hiện chỉ dùng `words`.
@@ -456,7 +455,9 @@ trên mỗi word.
 
 ```text
 1. gemini-3.5-flash-lite
-2. gemini-3.6-flash
+2. gemini-3.7-flash
+3. gemini-3.5-flash
+4. gemini-3.6-flash
 ```
 
 Config chung:
@@ -922,6 +923,10 @@ Các path `data/...` trong bảng trên nằm dưới `lib/features/ai_scan/`.
 | File | Trách nhiệm |
 | --- | --- |
 | `lib/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart` | Image load/cache/composition/painter/hit-test |
+| `lib/features/ai_scan/presentation/label_visual_style.dart` | Preset Mặc định/Tối giản; style độc lập cho box label, badge, connector, bounding box và trang trí |
+| `lib/features/ai_scan/presentation/label_template_store.dart` | Lưu/đọc mẫu custom bằng SharedPreferences và cập nhật khi trùng tên |
+| `lib/features/ai_scan/presentation/widgets/note_template_selector.dart` | Adaptive grid gồm hai preset, các mẫu đã lưu và card Tự thiết kế luôn ở cuối; Free được tạo một mẫu, Pro được tạo thêm qua entitlement hook |
+| `lib/features/ai_scan/presentation/widgets/custom_label_style_editor.dart` | Preview trước/sau, năm nhóm đóng mở và luồng đặt tên → lưu → áp dụng mẫu |
 | `lib/features/vocab_scan/domain/image_rect_calculator.dart` | contain-fit và normalized box transform |
 | `lib/features/vocab_scan/domain/forbidden_zone_builder.dart` | Inflated object exclusion zones |
 | `lib/features/vocab_scan/domain/label_size_measurer.dart` | Text/card/badge footprint measurement |
@@ -930,13 +935,12 @@ Các path `data/...` trong bảng trên nằm dưới `lib/features/ai_scan/`.
 | `lib/features/vocab_scan/domain/label_angle_ranker.dart` | Openness + center bias |
 | `lib/features/vocab_scan/domain/label_placement_solver.dart` | MRV + fallback tiers |
 | `lib/features/vocab_scan/domain/label_connector_geometry.dart` | Connector route/collision math |
-| `lib/features/vocab_scan/presentation/label_connector_painter.dart` | Dashed curves/arrows |
+| `lib/features/vocab_scan/presentation/label_connector_painter.dart` | Nét liền/đứt, ba độ dày, ba đầu mũi tên và halo tuỳ chọn |
 
 ### 16.5 Placeholder/dead-end source
 
 | File | Hiện trạng |
 | --- | --- |
-| `presentation/widgets/note_template_selector.dart` | `SizedBox.shrink`, TODO |
 | `presentation/screens/storage_album_screen.dart` | Coming soon UI |
 | `presentation/screens/selected_vocab_screen.dart` | Placeholder text |
 | `domain/entities/vocab_entity.dart` | Empty entity |
@@ -1061,6 +1065,16 @@ Trước khi sửa:
 - Resize/zoom không recompute placement không cần thiết.
 - Solver lỗi fallback bbox-only, không crash.
 - Fullscreen biến đổi ảnh và overlay cùng nhau.
+- Mẫu Tối giản áp dụng chữ/viền/mũi tên đen trắng và bỏ trang trí ở preview
+  lẫn fullscreen.
+- Custom editor không overflow ở viewport rộng 320 px; năm nhóm đóng mở cập
+  nhật box label, badge độc lập, connector, bounding box và trang trí.
+- Preview Tự thiết kế hiển thị so sánh trước/sau; connector có đủ nét liền/đứt,
+  ba đầu mũi tên và trạng thái tắt halo; bounding box có thể tắt hoàn toàn.
+- Mẫu custom được đặt tên và lưu local; tên trùng không phân biệt hoa/thường sẽ
+  cập nhật mẫu cũ thay vì tạo bản sao. Card mẫu đã lưu nằm trước Tự thiết kế,
+  có thể chạm để áp dụng mà không mở editor. Gói Free chỉ tạo một mẫu; lần tạo
+  tiếp theo hiển thị feature gate Pro và gọi upgrade hook khi đã được nối.
 - Web camera dispose media tracks khi đóng.
 - Error dialog giữ đúng message chuyên biệt.
 - Không tuyên bố album/TTS/template hoạt động khi chưa nối end-to-end.
@@ -1075,11 +1089,10 @@ thay đổi sản phẩm**:
 3. Bổ sung query/migration/delete/retention cho album local.
 4. Xử lý orphan JPEG và atomicity giữa file/result record.
 5. Thiết kế web persistence nếu Thư viện phải hoạt động trên web.
-6. Nối template selection vào style config hoặc loại bỏ UI giả.
-7. Nối label tap/TTS theo quyết định UX/accessibility.
-8. Thêm cancellation hoặc khóa dismiss trong phase xử lý.
-9. Xác nhận JWT enforcement khi deploy Edge Function.
-10. Cập nhật README/comment model để không còn mô tả Gemini 1.5 cũ.
+6. Nối label tap/TTS theo quyết định UX/accessibility.
+7. Thêm cancellation hoặc khóa dismiss trong phase xử lý.
+8. Xác nhận JWT enforcement khi deploy Edge Function.
+9. Cập nhật README/comment model để không còn mô tả Gemini 1.5 cũ.
 
 Mỗi mục trên có thể thay đổi behavior/data/security và phải được người dùng hoặc
 spec phê duyệt trước khi implementation.

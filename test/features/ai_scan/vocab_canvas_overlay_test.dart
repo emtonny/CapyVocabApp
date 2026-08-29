@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:capy_vocab/core/services/gemini_vision_service.dart';
+import 'package:capy_vocab/features/ai_scan/presentation/label_visual_style.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
 import 'package:capy_vocab/features/vocab_scan/domain/label_placement_solver.dart';
 import 'package:capy_vocab/features/vocab_scan/domain/label_size_measurer.dart';
@@ -157,6 +158,83 @@ void main() {
     expect(_pixelAlpha(bytes, image.width, const Offset(20, 20)), 0);
 
     image.dispose();
+  });
+
+  test('custom style can hide the object bounding box', () async {
+    const canvasSize = Size(300, 240);
+    final painter = VocabOverlayPainter(
+      words: const [_appleWord],
+      imageRect: Offset.zero & canvasSize,
+      visualStyle: LabelVisualStyle.customDefault.copyWith(
+        showBoundingBox: false,
+      ),
+    );
+    final recorder = ui.PictureRecorder();
+    painter.paint(Canvas(recorder), canvasSize);
+    final image = await recorder.endRecording().toImage(
+          canvasSize.width.toInt(),
+          canvasSize.height.toInt(),
+        );
+    final bytes = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+
+    expect(painter.boxes, hasLength(1));
+    expect(_pixelAlpha(bytes, image.width, painter.boxes.single.center), 0);
+    image.dispose();
+  });
+
+  test('custom decorations keep reserved label geometry', () {
+    final painter = VocabOverlayPainter(
+      words: const [],
+      imageRect: Rect.zero,
+      visualStyle: LabelVisualStyle.customDefault.copyWith(
+        sticker: LabelSticker.capybara,
+        cornerIcon: LabelCornerIcon.heart,
+      ),
+    );
+
+    expect(painter.visualStyle.sticker, LabelSticker.capybara);
+    expect(painter.visualStyle.cornerIcon, LabelCornerIcon.heart);
+    expect(painter.fullStyleConfig.deerStickerSize, isNot(Size.zero));
+    expect(painter.fullStyleConfig.cookieIconSize, isNot(Size.zero));
+  });
+
+  testWidgets('badge text style is independent from label text style',
+      (tester) async {
+    final imageProvider = MemoryImage(_testImageBytes());
+    final style = LabelVisualStyle.customDefault.copyWith(
+      textColor: Colors.black,
+      badgeTextColor: const Color(0xFF1565C0),
+      badgeColor: const Color(0xFFEAF8EE),
+      badgeShape: LabelBadgeShape.soft,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox.square(
+          dimension: 300,
+          child: VocabCanvasOverlay(
+            imageProvider: imageProvider,
+            words: const [_appleWord],
+            visualStyle: style,
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => precacheImage(
+        imageProvider,
+        tester.element(find.byType(VocabCanvasOverlay)),
+      ),
+    );
+    await tester.pump();
+    final painter = _overlayPainter(tester);
+
+    expect(painter.fullStyleConfig.wordStyle.color, Colors.black);
+    expect(
+      painter.fullStyleConfig.badgeTextStyle.color,
+      const Color(0xFF1565C0),
+    );
+    expect(painter.visualStyle.badgeColor, const Color(0xFFEAF8EE));
+    expect(painter.visualStyle.badgeShape, LabelBadgeShape.soft);
   });
 
   test('card and badge borders paint completely inside solver footprint',

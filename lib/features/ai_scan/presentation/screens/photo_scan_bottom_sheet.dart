@@ -13,8 +13,10 @@ import '../../data/services/scan_image_compressor.dart';
 import '../../data/services/scan_image_picker.dart';
 import '../../data/services/scan_image_storage.dart';
 import '../controllers/scan_flow_controller.dart';
+import '../label_visual_style.dart';
 import '../providers/scan_provider.dart';
 import '../widgets/camera_capture_view.dart';
+import '../widgets/note_template_selector.dart';
 import '../widgets/scan_loading_overlay.dart';
 import '../widgets/vocab_canvas_overlay.dart';
 
@@ -55,28 +57,14 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
   ScanResultRecord? _scanRecord;
   bool _isProcessing = false;
   String _processingStatus = 'Đang chuẩn bị ảnh...';
-  int _selectedTemplateIndex = 0; // 0: Mặc định, 1: Tối giản, 2: Tự thiết kế
+  NoteLabelTemplate _selectedTemplate = NoteLabelTemplate.standard;
+  LabelVisualStyle _customLabelStyle = LabelVisualStyle.customDefault;
 
-  final List<Map<String, dynamic>> _noteTemplates = [
-    {
-      'title': 'Mặc định',
-      'subtitle': 'Khung chuẩn',
-      'icon': Icons.push_pin_rounded,
-      'color': const Color(0xFFE57373),
-    },
-    {
-      'title': 'Tối giản',
-      'subtitle': 'Gọn gàng',
-      'icon': Icons.notes_rounded,
-      'color': const Color(0xFF64B5F6),
-    },
-    {
-      'title': 'Tự thiết kế',
-      'subtitle': 'Tùy biến',
-      'icon': Icons.palette_outlined,
-      'color': const Color(0xFFBA68C8),
-    },
-  ];
+  LabelVisualStyle get _selectedLabelStyle => switch (_selectedTemplate) {
+        NoteLabelTemplate.standard => LabelVisualStyle.standard,
+        NoteLabelTemplate.minimal => LabelVisualStyle.minimal,
+        NoteLabelTemplate.custom => _customLabelStyle,
+      };
 
   void _updateImageDimensions(Uint8List bytes) {
     ui.instantiateImageCodec(bytes).then((codec) {
@@ -277,6 +265,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                           imageProvider: MemoryImage(bytes),
                           words: words,
                           sceneWords: sceneWords,
+                          visualStyle: _selectedLabelStyle,
                         )
                       : Image.memory(
                           bytes,
@@ -339,6 +328,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                       imageProvider: MemoryImage(bytes),
                       words: words,
                       sceneWords: sceneWords,
+                      visualStyle: _selectedLabelStyle,
                     )
                   : Image.memory(
                       bytes,
@@ -538,56 +528,15 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                           ),
                           const SizedBox(height: 24),
 
-                          // Section Header: "CHỌN MẪU NOTE GHIM 🦫"
-                          const Row(
-                            children: [
-                              Text(
-                                'CHỌN MẪU NOTE GHIM',
-                                style: TextStyle(
-                                  fontFamily: 'Fredoka',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF9E8F85),
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              SizedBox(width: 6),
-                              Text(
-                                '🦫',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Fit all 3 template cards neatly in 1 horizontal row
-                          Row(
-                            children:
-                                List.generate(_noteTemplates.length, (index) {
-                              final template = _noteTemplates[index];
-                              final isSelected =
-                                  _selectedTemplateIndex == index;
-                              return Expanded(
-                                child: Padding(
-                                  padding: EdgeInsets.only(
-                                    right: index < _noteTemplates.length - 1
-                                        ? 8.0
-                                        : 0.0,
-                                  ),
-                                  child: _buildTemplateCard(
-                                    title: template['title'] as String,
-                                    subtitle: template['subtitle'] as String,
-                                    icon: template['icon'] as IconData,
-                                    color: template['color'] as Color,
-                                    isSelected: isSelected,
-                                    onTap: () {
-                                      setState(
-                                          () => _selectedTemplateIndex = index);
-                                    },
-                                  ),
-                                ),
-                              );
-                            }),
+                          NoteTemplateSelector(
+                            selectedTemplate: _selectedTemplate,
+                            customStyle: _customLabelStyle,
+                            onTemplateChanged: (template) {
+                              setState(() => _selectedTemplate = template);
+                            },
+                            onCustomStyleChanged: (style) {
+                              setState(() => _customLabelStyle = style);
+                            },
                           ),
                         ],
                       ),
@@ -645,80 +594,6 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF3C2A21),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTemplateCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-          decoration: BoxDecoration(
-            color:
-                isSelected ? const Color(0xFFFFF9F2) : const Color(0xFFFAF6F0),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? const Color(0xFF7CB342)
-                  : const Color(0xFFEFE6D8),
-              width: isSelected ? 2 : 1.5,
-            ),
-            boxShadow: isSelected
-                ? [
-                    const BoxShadow(
-                      color: Color(0x337CB342),
-                      blurRadius: 6,
-                      offset: Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  icon,
-                  size: 15,
-                  color: color,
-                ),
-              ),
-              const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: 'Fredoka',
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold,
-                    color: isSelected
-                        ? const Color(0xFF3C2A21)
-                        : const Color(0xFF6D5D53),
-                  ),
                 ),
               ),
             ],

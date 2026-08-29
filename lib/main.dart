@@ -1,11 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_player_win/video_player_win_plugin.dart';
 import 'core/services/supabase_service.dart';
 import 'app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    WindowsVideoPlayer.registerWith();
+  }
 
   try {
     await dotenv.load(fileName: '.env');

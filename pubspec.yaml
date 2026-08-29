@@ -47,6 +47,7 @@ dependencies:
 
   # Video player cho animation CapyLogin
   video_player: ^2.8.6
+  video_player_win: ^3.2.2
   web: ^1.1.1
 
 dev_dependencies:

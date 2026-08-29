@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:typed_data';
 
 import 'package:capy_vocab/core/services/gemini_vision_service.dart';
 import 'package:capy_vocab/features/vocab_scan/domain/forbidden_zone_builder.dart';
@@ -80,6 +81,45 @@ void main() {
     expect(footprintPath.from.dx, placed.labelRect.right);
     expect(cardPath.from.dx, cardRect.right);
     expect(cardPath.from.dx, lessThan(footprintPath.from.dx));
+  });
+
+  test('all configurable line and arrow styles paint visible pixels', () async {
+    const canvasSize = Size(120, 80);
+    const connector = ConnectorPath(
+      from: Offset(15, 40),
+      to: Offset(105, 40),
+    );
+
+    for (final lineStyle in [
+      ConnectorLineStyle.solid,
+      ConnectorLineStyle.dashed,
+    ]) {
+      for (final arrowStyle in ConnectorArrowStyle.values) {
+        final recorder = ui.PictureRecorder();
+        paintConnector(
+          Canvas(recorder),
+          connector,
+          color: Colors.black,
+          strokeWidth: 2.6,
+          lineStyle: lineStyle,
+          arrowStyle: arrowStyle,
+          showHalo: false,
+        );
+        final image = await recorder.endRecording().toImage(
+              canvasSize.width.toInt(),
+              canvasSize.height.toInt(),
+            );
+        final bytes =
+            await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+
+        expect(
+          _paintedPixelCount(bytes!, image.width, image.height),
+          greaterThan(0),
+          reason: '$lineStyle with $arrowStyle must remain visible',
+        );
+        image.dispose();
+      }
+    }
   });
 
   testWidgets(
@@ -333,3 +373,13 @@ const _compactStyle = LabelStyleConfig(
   mode: LabelCardMode.compact,
   lineSpacing: 0,
 );
+
+int _paintedPixelCount(ByteData bytes, int width, int height) {
+  var count = 0;
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      if (bytes.getUint8((y * width + x) * 4 + 3) > 0) count++;
+    }
+  }
+  return count;
+}

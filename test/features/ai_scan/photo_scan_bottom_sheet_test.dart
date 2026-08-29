@@ -7,6 +7,7 @@ import 'package:capy_vocab/features/ai_scan/data/datasources/scan_result_local_d
 import 'package:capy_vocab/features/ai_scan/data/services/scan_image_compressor.dart';
 import 'package:capy_vocab/features/ai_scan/data/services/scan_image_picker.dart';
 import 'package:capy_vocab/features/ai_scan/data/services/scan_image_storage.dart';
+import 'package:capy_vocab/features/ai_scan/presentation/label_visual_style.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/providers/scan_provider.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
@@ -255,8 +256,7 @@ void main() {
     expect(visionCallCount, 0);
   });
 
-  testWidgets('fullscreen zoom biến đổi ảnh và toàn bộ vocab overlay cùng nhau',
-      (
+  testWidgets('mẫu tối giản áp dụng cho preview và fullscreen overlay', (
     tester,
   ) async {
     final bytes = _testImageBytes();
@@ -306,6 +306,11 @@ void main() {
     await tester.tap(find.byKey(const Key('pick-gallery-button')));
     await tester.pumpAndSettle();
 
+    final minimalTemplate = find.byKey(const Key('label-template-minimal'));
+    await tester.ensureVisible(minimalTemplate);
+    await tester.tap(minimalTemplate);
+    await tester.pumpAndSettle();
+
     final previewOverlay = find.byKey(const Key('scan-image-preview'));
     final previewPaint = find.descendant(
       of: previewOverlay,
@@ -316,7 +321,14 @@ void main() {
     );
     final previewPainter = tester.widget<CustomPaint>(previewPaint).painter!
         as VocabOverlayPainter;
+    expect(previewPainter.visualStyle, LabelVisualStyle.minimal);
+    expect(previewPainter.visualStyle.connectorHaloColor, Colors.white);
+    expect(previewPainter.fullStyleConfig.wordStyle.color, Colors.black);
+    expect(previewPainter.fullStyleConfig.meaningStyle.color, Colors.black);
+    expect(previewPainter.fullStyleConfig.deerStickerSize, Size.zero);
+    expect(previewPainter.fullStyleConfig.cookieIconSize, Size.zero);
 
+    await tester.ensureVisible(find.byKey(const Key('zoom-image-button')));
     await tester.tap(find.byKey(const Key('zoom-image-button')));
     await tester.pumpAndSettle();
 
@@ -350,6 +362,7 @@ void main() {
     final fullscreenPainter = tester
         .widget<CustomPaint>(fullscreenPaint)
         .painter! as VocabOverlayPainter;
+    expect(fullscreenPainter.visualStyle, LabelVisualStyle.minimal);
     expect(fullscreenPainter.boxes, hasLength(previewPainter.boxes.length));
     for (var index = 0; index < previewPainter.boxes.length; index++) {
       expect(

@@ -29,6 +29,16 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
     _initVideo();
   }
 
+  @override
+  void didUpdateWidget(covariant CapyVideoHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoPath != widget.videoPath) {
+      _controller?.dispose();
+      setState(() => _isInitialized = false);
+      _initVideo();
+    }
+  }
+
   Future<void> _initVideo() async {
     try {
       final controller = VideoPlayerController.asset(widget.videoPath);
@@ -43,6 +53,9 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
       }
     } catch (error) {
       debugPrint('Deer login video init error: $error');
+      if (mounted) {
+        setState(() => _isInitialized = false);
+      }
     }
   }
 

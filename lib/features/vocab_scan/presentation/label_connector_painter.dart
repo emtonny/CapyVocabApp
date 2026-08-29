@@ -5,17 +5,29 @@ import '../domain/label_placement_solver.dart';
 
 typedef PlacedLabelRectResolver = Rect Function(PlacedLabel placedLabel);
 
+enum ConnectorLineStyle { adaptive, solid, dashed }
+
+enum ConnectorArrowStyle { pointed, rounded, dot }
+
 void paintConnector(
   Canvas canvas,
   ConnectorPath path, {
   Color color = const Color(0xFFD85B24),
   double strokeWidth = 1.7,
+  Color haloColor = const Color(0xFFFFFCF5),
+  ConnectorLineStyle lineStyle = ConnectorLineStyle.solid,
+  ConnectorArrowStyle arrowStyle = ConnectorArrowStyle.rounded,
+  bool showHalo = true,
 }) {
   paintConnectorRoute(
     canvas,
     connectorRouteFromPath(path),
     color: color,
     strokeWidth: strokeWidth,
+    haloColor: haloColor,
+    lineStyle: lineStyle,
+    arrowStyle: arrowStyle,
+    showHalo: showHalo,
   );
 }
 
@@ -24,19 +36,29 @@ void paintConnectorRoute(
   ConnectorRoute route, {
   Color color = const Color(0xFFD85B24),
   double strokeWidth = 1.7,
+  Color haloColor = const Color(0xFFFFFCF5),
+  ConnectorLineStyle lineStyle = ConnectorLineStyle.solid,
+  ConnectorArrowStyle arrowStyle = ConnectorArrowStyle.rounded,
+  bool showHalo = true,
 }) {
   final path = route.toPath();
-  canvas
-    ..drawPath(path, _connectorHaloPaint(strokeWidth))
-    ..drawPath(
-      path,
-      _connectorPaint(color: color, strokeWidth: strokeWidth),
-    );
+  _paintConnectorPath(
+    canvas,
+    path,
+    lineStyle: lineStyle,
+    color: color,
+    strokeWidth: strokeWidth,
+    haloColor: haloColor,
+    showHalo: showHalo,
+  );
   _paintArrowHead(
     canvas,
     route,
     color: color,
     strokeWidth: strokeWidth,
+    haloColor: haloColor,
+    style: arrowStyle,
+    showHalo: showHalo,
   );
 }
 
@@ -45,6 +67,12 @@ void paintAllConnectors(
   List<PlacedLabel> placedLabels, {
   PlacedLabelRectResolver? labelRectResolver,
   Size? canvasSize,
+  Color color = const Color(0xFFD85B24),
+  Color haloColor = const Color(0xFFFFFCF5),
+  double strokeWidth = 1.7,
+  ConnectorLineStyle lineStyle = ConnectorLineStyle.adaptive,
+  ConnectorArrowStyle arrowStyle = ConnectorArrowStyle.rounded,
+  bool showHalo = true,
 }) {
   final labelRects = placedLabels
       .map(
@@ -66,11 +94,21 @@ void paintAllConnectors(
       canvasRect: canvasSize == null ? null : Offset.zero & canvasSize,
     );
     routes.add(route);
-    if (placed.quality == PlacementQuality.fallbackEdge) {
-      _paintDashedConnector(canvas, route);
-    } else {
-      paintConnectorRoute(canvas, route);
-    }
+    final effectiveLineStyle = lineStyle == ConnectorLineStyle.adaptive
+        ? placed.quality == PlacementQuality.fallbackEdge
+            ? ConnectorLineStyle.dashed
+            : ConnectorLineStyle.solid
+        : lineStyle;
+    paintConnectorRoute(
+      canvas,
+      route,
+      color: color,
+      haloColor: haloColor,
+      strokeWidth: strokeWidth,
+      lineStyle: effectiveLineStyle,
+      arrowStyle: arrowStyle,
+      showHalo: showHalo,
+    );
   }
 }
 
@@ -84,35 +122,43 @@ ConnectorPath connectorPathForPlacedLabel(
   );
 }
 
-void _paintDashedConnector(
+void _paintConnectorPath(
   Canvas canvas,
-  ConnectorRoute route, {
-  Color color = const Color(0xFFD85B24),
-  double strokeWidth = 1.7,
+  Path path, {
+  required ConnectorLineStyle lineStyle,
+  required Color color,
+  required double strokeWidth,
+  required Color haloColor,
+  required bool showHalo,
   double dashLength = 6,
   double gapLength = 4,
 }) {
-  final path = route.toPath();
+  if (lineStyle != ConnectorLineStyle.dashed) {
+    if (showHalo) {
+      canvas.drawPath(path, _connectorHaloPaint(strokeWidth, haloColor));
+    }
+    canvas.drawPath(
+      path,
+      _connectorPaint(color: color, strokeWidth: strokeWidth),
+    );
+    return;
+  }
+
   for (final metric in path.computeMetrics()) {
     var distance = 0.0;
     while (distance < metric.length) {
       final endDistance = (distance + dashLength).clamp(0.0, metric.length);
       final dash = metric.extractPath(distance, endDistance);
-      canvas
-        ..drawPath(dash, _connectorHaloPaint(strokeWidth))
-        ..drawPath(
-          dash,
-          _connectorPaint(color: color, strokeWidth: strokeWidth),
-        );
+      if (showHalo) {
+        canvas.drawPath(dash, _connectorHaloPaint(strokeWidth, haloColor));
+      }
+      canvas.drawPath(
+        dash,
+        _connectorPaint(color: color, strokeWidth: strokeWidth),
+      );
       distance += dashLength + gapLength;
     }
   }
-  _paintArrowHead(
-    canvas,
-    route,
-    color: color,
-    strokeWidth: strokeWidth,
-  );
 }
 
 void _paintArrowHead(
@@ -120,6 +166,9 @@ void _paintArrowHead(
   ConnectorRoute route, {
   required Color color,
   required double strokeWidth,
+  required Color haloColor,
+  required ConnectorArrowStyle style,
+  required bool showHalo,
 }) {
   final tangent = route.endTangent;
   final tangentLength = tangent.distance;
@@ -131,6 +180,20 @@ void _paintArrowHead(
   final wingHalfWidth = 2.9 * headScale;
   final direction = tangent / tangentLength;
   final normal = Offset(-direction.dy, direction.dx);
+
+  if (style == ConnectorArrowStyle.dot) {
+    final radius = 2.6 * headScale + strokeWidth * 0.35;
+    if (showHalo) {
+      canvas.drawCircle(
+        route.to,
+        radius + 1.3,
+        Paint()..color = haloColor,
+      );
+    }
+    canvas.drawCircle(route.to, radius, Paint()..color = color);
+    return;
+  }
+
   final base = route.to - direction * headLength;
   final arrowHead = Path()
     ..moveTo(
@@ -142,16 +205,33 @@ void _paintArrowHead(
       base.dx - normal.dx * wingHalfWidth,
       base.dy - normal.dy * wingHalfWidth,
     );
-  canvas
-    ..drawPath(arrowHead, _connectorHaloPaint(strokeWidth))
-    ..drawPath(
-      arrowHead,
-      _connectorPaint(color: color, strokeWidth: strokeWidth),
-    );
+  if (style == ConnectorArrowStyle.pointed) {
+    arrowHead.close();
+    if (showHalo) {
+      canvas.drawPath(
+        arrowHead,
+        Paint()
+          ..color = haloColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth + 2.6
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+    canvas.drawPath(arrowHead, Paint()..color = color);
+    return;
+  }
+
+  if (showHalo) {
+    canvas.drawPath(arrowHead, _connectorHaloPaint(strokeWidth, haloColor));
+  }
+  canvas.drawPath(
+    arrowHead,
+    _connectorPaint(color: color, strokeWidth: strokeWidth),
+  );
 }
 
-Paint _connectorHaloPaint(double strokeWidth) => _connectorPaint(
-      color: const Color(0xFFFFFCF5),
+Paint _connectorHaloPaint(double strokeWidth, Color color) => _connectorPaint(
+      color: color,
       strokeWidth: strokeWidth + 2.6,
     );
 

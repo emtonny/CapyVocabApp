@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/gemini_vision_service.dart';
 import '../../../../core/services/tts_service.dart';
 import '../../../vocab_scan/domain/forbidden_zone_builder.dart';
@@ -12,10 +11,10 @@ import '../../../vocab_scan/domain/label_placement_solver.dart';
 import '../../../vocab_scan/domain/label_size_measurer.dart';
 import '../../../vocab_scan/domain/label_unit_geometry.dart';
 import '../../../vocab_scan/presentation/label_connector_painter.dart';
+import '../label_visual_style.dart';
 
 const _darkBrown = Color(0xFF8F6E50);
 const _meaningRed = Color(0xFFB00000);
-const _warmWhite = Color(0xFFFFFEFA);
 const _cacheDoubleEpsilon = 0.000001;
 const _deerBadgeMinimumGap = 2.0;
 const _fixedBadgeWidth = 26.0;
@@ -129,6 +128,7 @@ class VocabCanvasOverlay extends StatefulWidget {
     this.sceneWords,
     this.ttsService,
     this.onLabelTap,
+    this.visualStyle = LabelVisualStyle.standard,
     super.key,
   });
 
@@ -139,6 +139,7 @@ class VocabCanvasOverlay extends StatefulWidget {
   // speech remains caller-owned through [onLabelTap].
   final List<VocabDetection>? sceneWords;
   final TtsService? ttsService;
+  final LabelVisualStyle visualStyle;
 
   /// Reports the label selected by hit-testing; audio playback stays with the
   /// caller and is intentionally outside this widget.
@@ -242,11 +243,19 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
           canvasSize: canvasSize,
         );
         final referenceCanvasSize = _calculateReferenceCanvasSize(sourceSize);
+        final fullStyleConfig = _resolveVisualStyle(
+          _fullLabelStyleConfig,
+          widget.visualStyle,
+        );
+        final compactStyleConfig = _resolveVisualStyle(
+          _compactLabelStyleConfig,
+          widget.visualStyle,
+        );
         final placedLabels = _placementCache.resolve(
           words: widget.words,
           sourceImageSize: sourceSize,
-          fullStyleConfig: _fullLabelStyleConfig,
-          compactStyleConfig: _compactLabelStyleConfig,
+          fullStyleConfig: fullStyleConfig,
+          compactStyleConfig: compactStyleConfig,
         );
         final customPaint = CustomPaint(
           painter: VocabOverlayPainter(
@@ -254,8 +263,9 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
             imageRect: imageRect,
             placedLabels: placedLabels,
             referenceCanvasSize: referenceCanvasSize,
-            fullStyleConfig: _fullLabelStyleConfig,
-            compactStyleConfig: _compactLabelStyleConfig,
+            fullStyleConfig: fullStyleConfig,
+            compactStyleConfig: compactStyleConfig,
+            visualStyle: widget.visualStyle,
             solveInvocationCount: _placementCache.solveInvocationCount,
           ),
         );
@@ -268,6 +278,8 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
                   imageRect: imageRect,
                   referenceCanvasSize: referenceCanvasSize,
                   placedLabels: placedLabels,
+                  fullStyleConfig: fullStyleConfig,
+                  compactStyleConfig: compactStyleConfig,
                 ),
                 child: customPaint,
               );
@@ -299,6 +311,8 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
     required Rect imageRect,
     required Size referenceCanvasSize,
     required List<PlacedLabel> placedLabels,
+    required LabelStyleConfig fullStyleConfig,
+    required LabelStyleConfig compactStyleConfig,
   }) {
     final callback = widget.onLabelTap;
     if (callback == null) return;
@@ -314,13 +328,13 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
     for (final placedLabel in placedLabels.reversed) {
       final config = _styleForQuality(
         placedLabel.quality,
-        fullStyleConfig: _fullLabelStyleConfig,
-        compactStyleConfig: _compactLabelStyleConfig,
+        fullStyleConfig: fullStyleConfig,
+        compactStyleConfig: compactStyleConfig,
       );
       final geometry = _resolvePlacedGeometry(
         placedLabel,
-        fullStyleConfig: _fullLabelStyleConfig,
-        compactStyleConfig: _compactLabelStyleConfig,
+        fullStyleConfig: fullStyleConfig,
+        compactStyleConfig: compactStyleConfig,
       );
       if (geometry.containsVisiblePoint(
         referencePosition,
@@ -358,6 +372,7 @@ class VocabOverlayPainter extends CustomPainter {
     this.referenceCanvasSize,
     this.fullStyleConfig = _fullLabelStyleConfig,
     this.compactStyleConfig = _compactLabelStyleConfig,
+    this.visualStyle = LabelVisualStyle.standard,
     this.solveInvocationCount = 0,
   });
 
@@ -371,6 +386,7 @@ class VocabOverlayPainter extends CustomPainter {
   final Size? referenceCanvasSize;
   final LabelStyleConfig fullStyleConfig;
   final LabelStyleConfig compactStyleConfig;
+  final LabelVisualStyle visualStyle;
 
   /// Exposed for regression tests; incremented immediately before [solve].
   /// Placement is computed by widget state, never from [paint].
@@ -441,20 +457,25 @@ class VocabOverlayPainter extends CustomPainter {
     List<Rect> boxesToPaint, {
     required Size canvasSize,
   }) {
-    final fillPaint = Paint()..color = Colors.amber.withValues(alpha: 0.22);
+    final fillPaint = Paint()
+      ..color = visualStyle.objectFillColor.withValues(
+        alpha: visualStyle.objectFillOpacity,
+      );
     final borderPaint = Paint()
-      ..color = Colors.deepOrange
+      ..color = visualStyle.objectBorderColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 
-    for (final box in boxesToPaint) {
-      final roundedBox = RRect.fromRectAndRadius(
-        box,
-        const Radius.circular(4),
-      );
-      canvas
-        ..drawRRect(roundedBox, fillPaint)
-        ..drawRRect(roundedBox, borderPaint);
+    if (visualStyle.showBoundingBox) {
+      for (final box in boxesToPaint) {
+        final roundedBox = RRect.fromRectAndRadius(
+          box,
+          const Radius.circular(4),
+        );
+        canvas
+          ..drawRRect(roundedBox, fillPaint)
+          ..drawRRect(roundedBox, borderPaint);
+      }
     }
 
     paintAllConnectors(
@@ -462,6 +483,12 @@ class VocabOverlayPainter extends CustomPainter {
       placedLabels,
       labelRectResolver: (placed) => geometryFor(placed).cardRect,
       canvasSize: canvasSize,
+      color: visualStyle.connectorColor,
+      haloColor: visualStyle.connectorHaloColor,
+      strokeWidth: visualStyle.connectorThickness.value,
+      lineStyle: visualStyle.connectorLineStyle,
+      arrowStyle: visualStyle.connectorArrowStyle,
+      showHalo: visualStyle.showConnectorHalo,
     );
     for (final placedLabel in placedLabels) {
       _paintLabelCard(canvas, placedLabel);
@@ -498,21 +525,28 @@ class VocabOverlayPainter extends CustomPainter {
     final geometry = geometryFor(placedLabel);
     canvas.save();
     canvas.clipRect(geometry.footprintRect, doAntiAlias: false);
-    const borderColor = AppColors.capyBrown;
-    const borderWidth = 1.25;
-    final cardRadius = geometry.cardRect.height * 0.28;
+    final borderColor = visualStyle.borderColor;
+    final borderWidth = visualStyle.borderThickness.value;
+    final cardRadius = switch (visualStyle.cornerStyle) {
+      LabelCornerStyle.square => 0.0,
+      LabelCornerStyle.soft => geometry.cardRect.height * 0.28,
+      LabelCornerStyle.round => geometry.cardRect.height / 2,
+    };
     final roundedCard = RRect.fromRectAndRadius(
       geometry.cardRect,
       Radius.circular(cardRadius),
     );
-    final fillPaint = Paint()..color = _warmWhite;
+    final fillPaint = Paint()
+      ..color = visualStyle.cardColor.withValues(
+        alpha: visualStyle.cardOpacity,
+      );
     final borderPaint = Paint()
       ..color = borderColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = borderWidth;
     final insetCardBorder = RRect.fromRectAndRadius(
       geometry.cardRect.deflate(borderWidth / 2),
-      Radius.circular(cardRadius - borderWidth / 2),
+      Radius.circular(math.max(0, cardRadius - borderWidth / 2)),
     );
 
     canvas
@@ -526,8 +560,6 @@ class VocabOverlayPainter extends CustomPainter {
       geometry.badgeRect,
       number: placedLabel.word.number,
       config: config,
-      borderColor: borderColor,
-      borderWidth: borderWidth,
     );
 
     final deerStickerRect = geometry.deerStickerRect;
@@ -537,11 +569,11 @@ class VocabOverlayPainter extends CustomPainter {
           config: config,
           geometry: geometry,
         )) {
-      _paintDeerSticker(canvas, deerStickerRect);
+      _paintSticker(canvas, deerStickerRect);
     }
     final cookieIconRect = geometry.cookieIconRect;
     if (cookieIconRect != null) {
-      _paintCookieIcon(canvas, cookieIconRect);
+      _paintCornerIcon(canvas, cookieIconRect);
     }
 
     final contentLeft = geometry.cardRect.left + config.padding.horizontal;
@@ -596,21 +628,25 @@ class VocabOverlayPainter extends CustomPainter {
     Rect badgeRect, {
     required int number,
     required LabelStyleConfig config,
-    required Color borderColor,
-    required double borderWidth,
   }) {
-    final fillPaint = Paint()..color = _warmWhite;
+    final borderWidth = visualStyle.badgeBorderThickness.value;
+    final fillPaint = Paint()..color = visualStyle.badgeColor;
     final borderPaint = Paint()
-      ..color = borderColor
+      ..color = visualStyle.badgeBorderColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = borderWidth;
+    final radius = switch (visualStyle.badgeShape) {
+      LabelBadgeShape.square => 0.0,
+      LabelBadgeShape.soft => badgeRect.height * 0.25,
+      LabelBadgeShape.pill => badgeRect.height / 2,
+    };
     final badge = RRect.fromRectAndRadius(
       badgeRect,
-      Radius.circular(badgeRect.height / 2),
+      Radius.circular(radius),
     );
     final insetBadgeBorder = RRect.fromRectAndRadius(
       badgeRect.deflate(borderWidth / 2),
-      Radius.circular(badgeRect.height / 2 - borderWidth / 2),
+      Radius.circular(math.max(0, radius - borderWidth / 2)),
     );
     canvas
       ..drawRRect(badge, fillPaint)
@@ -628,6 +664,34 @@ class VocabOverlayPainter extends CustomPainter {
             Offset(numberPainter.width / 2, numberPainter.height / 2),
       )
       ..dispose();
+  }
+
+  void _paintSticker(Canvas canvas, Rect targetRect) {
+    switch (visualStyle.sticker) {
+      case LabelSticker.none:
+        return;
+      case LabelSticker.deer:
+        _paintDeerSticker(canvas, targetRect);
+      case LabelSticker.capybara:
+        _paintCapybaraSticker(canvas, targetRect);
+      case LabelSticker.star:
+        _paintStarSticker(canvas, targetRect);
+      case LabelSticker.book:
+        _paintBookSticker(canvas, targetRect);
+    }
+  }
+
+  void _paintCornerIcon(Canvas canvas, Rect targetRect) {
+    switch (visualStyle.cornerIcon) {
+      case LabelCornerIcon.none:
+        return;
+      case LabelCornerIcon.cookie:
+        _paintCookieIcon(canvas, targetRect);
+      case LabelCornerIcon.pin:
+        _paintPinIcon(canvas, targetRect);
+      case LabelCornerIcon.heart:
+        _paintHeartIcon(canvas, targetRect);
+    }
   }
 
   void _paintDeerSticker(Canvas canvas, Rect targetRect) {
@@ -745,6 +809,154 @@ class VocabOverlayPainter extends CustomPainter {
     canvas.restore();
   }
 
+  void _paintCapybaraSticker(Canvas canvas, Rect targetRect) {
+    _paintInDecorationSpace(canvas, targetRect, (canvas) {
+      final outline = Paint()
+        ..color = const Color(0xFF5A3927)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2;
+      final fur = Paint()..color = const Color(0xFFA96F45);
+      final muzzle = Paint()..color = const Color(0xFFD9A875);
+      final dark = Paint()..color = const Color(0xFF3B281F);
+      canvas
+        ..drawOval(const Rect.fromLTWH(5, 9, 17, 11), fur)
+        ..drawOval(const Rect.fromLTWH(5, 9, 17, 11), outline)
+        ..drawOval(const Rect.fromLTWH(2, 5, 11, 12), fur)
+        ..drawOval(const Rect.fromLTWH(2, 5, 11, 12), outline)
+        ..drawCircle(const Offset(5.2, 5.2), 1.7, fur)
+        ..drawCircle(const Offset(10.1, 5.5), 1.5, fur)
+        ..drawOval(const Rect.fromLTWH(1, 10, 7, 4.5), muzzle)
+        ..drawCircle(const Offset(3.1, 11.8), 0.7, dark)
+        ..drawCircle(const Offset(7.5, 8.7), 0.65, dark)
+        ..drawLine(const Offset(9, 19), const Offset(8.5, 22), outline)
+        ..drawLine(const Offset(18, 19), const Offset(18.5, 22), outline);
+    });
+  }
+
+  void _paintStarSticker(Canvas canvas, Rect targetRect) {
+    _paintInDecorationSpace(canvas, targetRect, (canvas) {
+      final star = Path();
+      for (var index = 0; index < 10; index++) {
+        final radius = index.isEven ? 10.5 : 4.8;
+        final angle = -math.pi / 2 + index * math.pi / 5;
+        final point = Offset(
+          12 + math.cos(angle) * radius,
+          12 + math.sin(angle) * radius,
+        );
+        if (index == 0) {
+          star.moveTo(point.dx, point.dy);
+        } else {
+          star.lineTo(point.dx, point.dy);
+        }
+      }
+      star.close();
+      canvas
+        ..drawPath(star, Paint()..color = const Color(0xFFFFC928))
+        ..drawPath(
+          star,
+          Paint()
+            ..color = const Color(0xFFC98600)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..strokeJoin = StrokeJoin.round,
+        );
+    });
+  }
+
+  void _paintBookSticker(Canvas canvas, Rect targetRect) {
+    _paintInDecorationSpace(canvas, targetRect, (canvas) {
+      final cover = Paint()..color = const Color(0xFF5B8FC9);
+      final pages = Paint()..color = const Color(0xFFFFF7DF);
+      final outline = Paint()
+        ..color = const Color(0xFF315A84)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..strokeJoin = StrokeJoin.round;
+      final leftPage = Path()
+        ..moveTo(2, 5)
+        ..quadraticBezierTo(7, 3, 11.5, 6)
+        ..lineTo(11.5, 20)
+        ..quadraticBezierTo(7, 17, 2, 19)
+        ..close();
+      final rightPage = Path()
+        ..moveTo(22, 5)
+        ..quadraticBezierTo(17, 3, 12.5, 6)
+        ..lineTo(12.5, 20)
+        ..quadraticBezierTo(17, 17, 22, 19)
+        ..close();
+      canvas
+        ..drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(1, 4, 22, 17),
+            const Radius.circular(2),
+          ),
+          cover,
+        )
+        ..drawPath(leftPage, pages)
+        ..drawPath(rightPage, pages)
+        ..drawPath(leftPage, outline)
+        ..drawPath(rightPage, outline)
+        ..drawLine(const Offset(12, 6), const Offset(12, 20), outline);
+    });
+  }
+
+  void _paintPinIcon(Canvas canvas, Rect targetRect) {
+    _paintInDecorationSpace(canvas, targetRect, (canvas) {
+      final pin = Paint()..color = const Color(0xFFE25555);
+      final outline = Paint()
+        ..color = const Color(0xFF8F3030)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2;
+      canvas
+        ..drawCircle(const Offset(12, 8), 5.2, pin)
+        ..drawCircle(const Offset(12, 8), 5.2, outline)
+        ..drawLine(const Offset(12, 13), const Offset(12, 22), outline)
+        ..drawLine(const Offset(9, 17), const Offset(15, 17), outline);
+    });
+  }
+
+  void _paintHeartIcon(Canvas canvas, Rect targetRect) {
+    _paintInDecorationSpace(canvas, targetRect, (canvas) {
+      final heart = Path()
+        ..moveTo(12, 21)
+        ..cubicTo(9, 17, 3, 13, 3, 8)
+        ..cubicTo(3, 3, 9, 2, 12, 6)
+        ..cubicTo(15, 2, 21, 3, 21, 8)
+        ..cubicTo(21, 13, 15, 17, 12, 21)
+        ..close();
+      canvas
+        ..drawPath(heart, Paint()..color = const Color(0xFFF06B81))
+        ..drawPath(
+          heart,
+          Paint()
+            ..color = const Color(0xFFA83E55)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2,
+        );
+    });
+  }
+
+  void _paintInDecorationSpace(
+    Canvas canvas,
+    Rect targetRect,
+    void Function(Canvas canvas) paint,
+  ) {
+    const designSize = 24.0;
+    final scale = math.min(
+      targetRect.width / designSize,
+      targetRect.height / designSize,
+    );
+    canvas.save();
+    canvas.clipRect(targetRect, doAntiAlias: false);
+    canvas.translate(
+      targetRect.left + (targetRect.width - designSize * scale) / 2,
+      targetRect.top + (targetRect.height - designSize * scale) / 2,
+    );
+    canvas.scale(scale);
+    paint(canvas);
+    canvas.restore();
+  }
+
   TextPainter _createLinePainter({
     required String text,
     required TextStyle style,
@@ -765,8 +977,26 @@ class VocabOverlayPainter extends CustomPainter {
         oldDelegate.placedLabels != placedLabels ||
         oldDelegate.referenceCanvasSize != referenceCanvasSize ||
         oldDelegate.fullStyleConfig != fullStyleConfig ||
-        oldDelegate.compactStyleConfig != compactStyleConfig;
+        oldDelegate.compactStyleConfig != compactStyleConfig ||
+        oldDelegate.visualStyle != visualStyle;
   }
+}
+
+LabelStyleConfig _resolveVisualStyle(
+  LabelStyleConfig base,
+  LabelVisualStyle visualStyle,
+) {
+  return base.copyWith(
+    badgeTextStyle:
+        base.badgeTextStyle.copyWith(color: visualStyle.badgeTextColor),
+    wordStyle: base.wordStyle.copyWith(color: visualStyle.textColor),
+    phoneticStyle: base.phoneticStyle.copyWith(color: visualStyle.textColor),
+    meaningStyle: base.meaningStyle.copyWith(color: visualStyle.meaningColor),
+    deerStickerSize:
+        visualStyle.showDeerSticker ? base.deerStickerSize : Size.zero,
+    cookieIconSize:
+        visualStyle.showCookieIcon ? base.cookieIconSize : Size.zero,
+  );
 }
 
 LabelStyleConfig _styleForQuality(

@@ -62,6 +62,9 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
       }
     } catch (error) {
       debugPrint('Deer onboarding video init error: $error');
+      if (mounted) {
+        setState(() => _isInitialized = false);
+      }
     }
   }
 
