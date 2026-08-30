@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('custom editor responsive, lưu mẫu và cập nhật đủ năm nhóm', (
+  testWidgets('custom editor responsive, lưu mẫu và cập nhật đủ các nhóm', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -49,6 +49,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('before-style-preview')), findsOneWidget);
     expect(find.byKey(const Key('after-style-preview')), findsOneWidget);
+    final presetColorCenter =
+        tester.getCenter(find.byKey(const Key('border-color-0')));
+    final customColorCenter = tester.getCenter(
+      find.byKey(const Key('border-color-custom-picker')),
+    );
+    expect(
+      presetColorCenter.dy,
+      customColorCenter.dy,
+      reason: 'Tự chọn màu phải nằm cùng hàng với bảng màu ở viewport 320px',
+    );
 
     await _tapVisible(tester, const Key('corner-style-2'));
     await _tapVisible(tester, const Key('border-thickness-2'));
@@ -83,22 +93,10 @@ void main() {
     expect(customStyle.connectorArrowStyle, ConnectorArrowStyle.dot);
     expect(customStyle.showConnectorHalo, isFalse);
 
-    await _expandSection(tester, 'Khung nhận diện vật thể');
-    await _tapVisible(tester, const Key('bbox-border-color-1'));
-    await _tapVisible(tester, const Key('bbox-fill-color-4'));
-    final boxOpacity = tester.widget<Slider>(
-      find.byKey(const Key('bbox-opacity-slider')),
-    );
-    boxOpacity.onChanged!(0.6);
-    await tester.pump();
-    await _tapVisible(tester, const Key('toggle-bounding-box'));
-    expect(customStyle.objectBorderColor, Colors.black);
-    expect(customStyle.objectFillColor, const Color(0xFFF48FB1));
-    expect(customStyle.objectFillOpacity, 0.6);
-    expect(customStyle.showBoundingBox, isFalse);
-
     await _expandSection(tester, 'Trang trí');
+    await _tapVisible(tester, const Key('sticker-picker-button'));
     await _tapVisible(tester, const Key('sticker-1'));
+    await _tapVisible(tester, const Key('corner-icon-picker-button'));
     await _tapVisible(tester, const Key('corner-icon-2'));
     expect(customStyle.sticker, LabelSticker.capybara);
     expect(customStyle.cornerIcon, LabelCornerIcon.heart);

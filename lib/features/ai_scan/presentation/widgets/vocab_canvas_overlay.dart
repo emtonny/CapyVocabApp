@@ -667,9 +667,13 @@ class VocabOverlayPainter extends CustomPainter {
   }
 
   void _paintSticker(Canvas canvas, Rect targetRect) {
+    final emoji = visualStyle.effectiveStickerEmoji;
+    if (emoji.isEmpty) return;
+    if (visualStyle.customStickerEmoji != null) {
+      _paintEmoji(canvas, targetRect, visualStyle.customStickerEmoji!);
+      return;
+    }
     switch (visualStyle.sticker) {
-      case LabelSticker.none:
-        return;
       case LabelSticker.deer:
         _paintDeerSticker(canvas, targetRect);
       case LabelSticker.capybara:
@@ -678,20 +682,46 @@ class VocabOverlayPainter extends CustomPainter {
         _paintStarSticker(canvas, targetRect);
       case LabelSticker.book:
         _paintBookSticker(canvas, targetRect);
+      default:
+        _paintEmoji(canvas, targetRect, emoji);
     }
   }
 
   void _paintCornerIcon(Canvas canvas, Rect targetRect) {
+    final emoji = visualStyle.effectiveCornerIconEmoji;
+    if (emoji.isEmpty) return;
+    if (visualStyle.customCornerIconEmoji != null) {
+      _paintEmoji(canvas, targetRect, visualStyle.customCornerIconEmoji!);
+      return;
+    }
     switch (visualStyle.cornerIcon) {
-      case LabelCornerIcon.none:
-        return;
       case LabelCornerIcon.cookie:
         _paintCookieIcon(canvas, targetRect);
       case LabelCornerIcon.pin:
         _paintPinIcon(canvas, targetRect);
       case LabelCornerIcon.heart:
         _paintHeartIcon(canvas, targetRect);
+      default:
+        _paintEmoji(canvas, targetRect, emoji);
     }
+  }
+
+  void _paintEmoji(Canvas canvas, Rect targetRect, String emoji) {
+    if (emoji.isEmpty) return;
+    final fontSize = targetRect.height * 0.85;
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: emoji,
+        style: TextStyle(fontSize: fontSize),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final offset = Offset(
+      targetRect.left + (targetRect.width - textPainter.width) / 2,
+      targetRect.top + (targetRect.height - textPainter.height) / 2,
+    );
+    textPainter.paint(canvas, offset);
+    textPainter.dispose();
   }
 
   void _paintDeerSticker(Canvas canvas, Rect targetRect) {

@@ -7,10 +7,23 @@ import '../../vocab_scan/presentation/label_connector_painter.dart';
 import 'label_visual_style.dart';
 
 class SavedLabelTemplate {
-  const SavedLabelTemplate({required this.name, required this.style});
+  const SavedLabelTemplate({
+    required this.name,
+    required this.style,
+    this.iconEmoji,
+  });
 
   final String name;
   final LabelVisualStyle style;
+  final String? iconEmoji;
+
+  String get effectiveEmoji {
+    if (iconEmoji != null && iconEmoji!.isNotEmpty) return iconEmoji!;
+    if (style.showDeerSticker && style.effectiveStickerEmoji.isNotEmpty) {
+      return style.effectiveStickerEmoji;
+    }
+    return '🏷️';
+  }
 }
 
 class LabelTemplateStore {
@@ -38,6 +51,7 @@ class LabelTemplateStore {
   Future<List<SavedLabelTemplate>> save({
     required String name,
     required LabelVisualStyle style,
+    String? iconEmoji,
   }) async {
     final normalizedName = name.trim();
     if (normalizedName.isEmpty) {
@@ -48,7 +62,11 @@ class LabelTemplateStore {
     final duplicateIndex = templates.indexWhere(
       (template) => template.name.toLowerCase() == normalizedName.toLowerCase(),
     );
-    final saved = SavedLabelTemplate(name: normalizedName, style: style);
+    final saved = SavedLabelTemplate(
+      name: normalizedName,
+      style: style,
+      iconEmoji: iconEmoji,
+    );
     if (duplicateIndex == -1) {
       templates.add(saved);
     } else {
@@ -79,19 +97,25 @@ class LabelTemplateStore {
 Map<String, Object> _encodeTemplate(SavedLabelTemplate template) => {
       'name': template.name,
       'style': _encodeStyle(template.style),
+      if (template.iconEmoji != null) 'iconEmoji': template.iconEmoji!,
     };
 
 SavedLabelTemplate? _decodeTemplate(Object? value) {
   if (value is! Map<String, dynamic>) return null;
   final name = value['name'];
   final style = value['style'];
+  final iconEmoji = value['iconEmoji'] as String?;
   if (name is! String ||
       name.trim().isEmpty ||
       style is! Map<String, dynamic>) {
     return null;
   }
   try {
-    return SavedLabelTemplate(name: name.trim(), style: _decodeStyle(style));
+    return SavedLabelTemplate(
+      name: name.trim(),
+      style: _decodeStyle(style),
+      iconEmoji: iconEmoji,
+    );
   } on FormatException {
     return null;
   }
@@ -122,6 +146,10 @@ Map<String, Object> _encodeStyle(LabelVisualStyle style) => {
       'objectFillOpacity': style.objectFillOpacity,
       'sticker': style.sticker.name,
       'cornerIcon': style.cornerIcon.name,
+      if (style.customStickerEmoji != null)
+        'customStickerEmoji': style.customStickerEmoji!,
+      if (style.customCornerIconEmoji != null)
+        'customCornerIconEmoji': style.customCornerIconEmoji!,
     };
 
 LabelVisualStyle _decodeStyle(Map<String, dynamic> json) => LabelVisualStyle(
@@ -157,6 +185,8 @@ LabelVisualStyle _decodeStyle(Map<String, dynamic> json) => LabelVisualStyle(
       objectFillOpacity: _double(json, 'objectFillOpacity'),
       sticker: _enum(json, 'sticker', LabelSticker.values),
       cornerIcon: _enum(json, 'cornerIcon', LabelCornerIcon.values),
+      customStickerEmoji: json['customStickerEmoji'] as String?,
+      customCornerIconEmoji: json['customCornerIconEmoji'] as String?,
     );
 
 Color _color(Map<String, dynamic> json, String key) {

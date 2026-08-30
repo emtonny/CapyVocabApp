@@ -13,9 +13,219 @@ enum LabelBorderThickness { thin, medium, bold }
 
 enum ConnectorThickness { thin, medium, bold }
 
-enum LabelSticker { none, deer, capybara, star, book }
+enum LabelSticker {
+  none,
+  deer,
+  capybara,
+  star,
+  book,
+  dog,
+  cat,
+  rabbit,
+  bear,
+  panda,
+  koala,
+  fox,
+  lion,
+  tiger,
+  cow,
+  pig,
+  frog,
+  monkey,
+  paw,
+  strawberry,
+  avocado,
+  apple,
+  pizza,
+  cupcake,
+  donut,
+  cake,
+  chocolate,
+  candy,
+  coffee,
+  milkTea,
+  heart,
+  ribbon,
+  crown,
+  balloon,
+  teddyBear,
+  clover,
+  cherryBlossom,
+  rainbow,
+  fire,
+  lightning,
+  notebook,
+  pencil,
+  pin,
+  palette,
+  tag,
+  bulb,
+  target,
+  rocket,
+}
 
-enum LabelCornerIcon { none, cookie, pin, heart }
+enum LabelCornerIcon {
+  none,
+  cookie,
+  pin,
+  heart,
+  star,
+  sparkles,
+  paw,
+  flower,
+  clover,
+  fire,
+  crown,
+  ribbon,
+  strawberry,
+  coffee,
+  book,
+  bulb,
+}
+
+extension LabelStickerData on LabelSticker {
+  String get emoji => switch (this) {
+        LabelSticker.none => '',
+        LabelSticker.deer => '🦌',
+        LabelSticker.capybara => '🦫',
+        LabelSticker.star => '⭐',
+        LabelSticker.book => '📚',
+        LabelSticker.dog => '🐶',
+        LabelSticker.cat => '🐱',
+        LabelSticker.rabbit => '🐰',
+        LabelSticker.bear => '🐻',
+        LabelSticker.panda => '🐼',
+        LabelSticker.koala => '🐨',
+        LabelSticker.fox => '🦊',
+        LabelSticker.lion => '🦁',
+        LabelSticker.tiger => '🐯',
+        LabelSticker.cow => '🐮',
+        LabelSticker.pig => '🐷',
+        LabelSticker.frog => '🐸',
+        LabelSticker.monkey => '🐵',
+        LabelSticker.paw => '🐾',
+        LabelSticker.strawberry => '🍓',
+        LabelSticker.avocado => '🥑',
+        LabelSticker.apple => '🍎',
+        LabelSticker.pizza => '🍕',
+        LabelSticker.cupcake => '🧁',
+        LabelSticker.donut => '🍩',
+        LabelSticker.cake => '🍰',
+        LabelSticker.chocolate => '🍫',
+        LabelSticker.candy => '🍬',
+        LabelSticker.coffee => '☕',
+        LabelSticker.milkTea => '🧋',
+        LabelSticker.heart => '💖',
+        LabelSticker.ribbon => '🎀',
+        LabelSticker.crown => '👑',
+        LabelSticker.balloon => '🎈',
+        LabelSticker.teddyBear => '🧸',
+        LabelSticker.clover => '🍀',
+        LabelSticker.cherryBlossom => '🌸',
+        LabelSticker.rainbow => '🌈',
+        LabelSticker.fire => '🔥',
+        LabelSticker.lightning => '⚡',
+        LabelSticker.notebook => '📖',
+        LabelSticker.pencil => '✏️',
+        LabelSticker.pin => '📌',
+        LabelSticker.palette => '🎨',
+        LabelSticker.tag => '🏷️',
+        LabelSticker.bulb => '💡',
+        LabelSticker.target => '🎯',
+        LabelSticker.rocket => '🚀',
+      };
+
+  String get label => switch (this) {
+        LabelSticker.none => 'Không dùng',
+        LabelSticker.deer => 'Hươu',
+        LabelSticker.capybara => 'Capybara',
+        LabelSticker.star => 'Ngôi sao',
+        LabelSticker.book => 'Sách vở',
+        LabelSticker.dog => 'Cún con',
+        LabelSticker.cat => 'Mèo con',
+        LabelSticker.rabbit => 'Thỏ trắng',
+        LabelSticker.bear => 'Gấu nâu',
+        LabelSticker.panda => 'Gấu trúc',
+        LabelSticker.koala => 'Koala',
+        LabelSticker.fox => 'Cáo đỏ',
+        LabelSticker.lion => 'Sư tử',
+        LabelSticker.tiger => 'Hổ con',
+        LabelSticker.cow => 'Bò sữa',
+        LabelSticker.pig => 'Heo hồng',
+        LabelSticker.frog => 'Ếch xanh',
+        LabelSticker.monkey => 'Khỉ con',
+        LabelSticker.paw => 'Dấu chân',
+        LabelSticker.strawberry => 'Dâu tây',
+        LabelSticker.avocado => 'Quả bơ',
+        LabelSticker.apple => 'Táo đỏ',
+        LabelSticker.pizza => 'Pizza',
+        LabelSticker.cupcake => 'Cupcake',
+        LabelSticker.donut => 'Donut',
+        LabelSticker.cake => 'Bánh kem',
+        LabelSticker.chocolate => 'Socola',
+        LabelSticker.candy => 'Kẹo ngọt',
+        LabelSticker.coffee => 'Cà phê',
+        LabelSticker.milkTea => 'Trà sữa',
+        LabelSticker.heart => 'Trái tim',
+        LabelSticker.ribbon => 'Nơ hồng',
+        LabelSticker.crown => 'Vương miện',
+        LabelSticker.balloon => 'Bóng bay',
+        LabelSticker.teddyBear => 'Gấu bông',
+        LabelSticker.clover => 'Cỏ 4 lá',
+        LabelSticker.cherryBlossom => 'Hoa anh đào',
+        LabelSticker.rainbow => 'Cầu vồng',
+        LabelSticker.fire => 'Lửa cháy',
+        LabelSticker.lightning => 'Tia chớp',
+        LabelSticker.notebook => 'Sách mở',
+        LabelSticker.pencil => 'Bút chì',
+        LabelSticker.pin => 'Ghim đỏ',
+        LabelSticker.palette => 'Bảng vẽ',
+        LabelSticker.tag => 'Thẻ tag',
+        LabelSticker.bulb => 'Bóng đèn',
+        LabelSticker.target => 'Mục tiêu',
+        LabelSticker.rocket => 'Tên lửa',
+      };
+}
+
+extension LabelCornerIconData on LabelCornerIcon {
+  String get emoji => switch (this) {
+        LabelCornerIcon.none => '',
+        LabelCornerIcon.cookie => '🍪',
+        LabelCornerIcon.pin => '📌',
+        LabelCornerIcon.heart => '💖',
+        LabelCornerIcon.star => '⭐',
+        LabelCornerIcon.sparkles => '✨',
+        LabelCornerIcon.paw => '🐾',
+        LabelCornerIcon.flower => '🌸',
+        LabelCornerIcon.clover => '🍀',
+        LabelCornerIcon.fire => '🔥',
+        LabelCornerIcon.crown => '👑',
+        LabelCornerIcon.ribbon => '🎀',
+        LabelCornerIcon.strawberry => '🍓',
+        LabelCornerIcon.coffee => '☕',
+        LabelCornerIcon.book => '📚',
+        LabelCornerIcon.bulb => '💡',
+      };
+
+  String get label => switch (this) {
+        LabelCornerIcon.none => 'Không dùng',
+        LabelCornerIcon.cookie => 'Bánh quy',
+        LabelCornerIcon.pin => 'Ghim',
+        LabelCornerIcon.heart => 'Trái tim',
+        LabelCornerIcon.star => 'Ngôi sao',
+        LabelCornerIcon.sparkles => 'Lấp lánh',
+        LabelCornerIcon.paw => 'Dấu chân',
+        LabelCornerIcon.flower => 'Bông hoa',
+        LabelCornerIcon.clover => 'Cỏ 4 lá',
+        LabelCornerIcon.fire => 'Lửa',
+        LabelCornerIcon.crown => 'Vương miện',
+        LabelCornerIcon.ribbon => 'Nơ xinh',
+        LabelCornerIcon.strawberry => 'Dâu tây',
+        LabelCornerIcon.coffee => 'Cà phê',
+        LabelCornerIcon.book => 'Sách vở',
+        LabelCornerIcon.bulb => 'Bóng đèn',
+      };
+}
 
 extension LabelBorderThicknessValue on LabelBorderThickness {
   double get value => switch (this) {
@@ -60,6 +270,8 @@ class LabelVisualStyle {
     required this.objectFillOpacity,
     required this.sticker,
     required this.cornerIcon,
+    this.customStickerEmoji,
+    this.customCornerIconEmoji,
   })  : assert(cardOpacity >= 0 && cardOpacity <= 1),
         assert(objectFillOpacity >= 0 && objectFillOpacity <= 1);
 
@@ -145,9 +357,15 @@ class LabelVisualStyle {
   final double objectFillOpacity;
   final LabelSticker sticker;
   final LabelCornerIcon cornerIcon;
+  final String? customStickerEmoji;
+  final String? customCornerIconEmoji;
 
-  bool get showDeerSticker => sticker != LabelSticker.none;
-  bool get showCookieIcon => cornerIcon != LabelCornerIcon.none;
+  String get effectiveStickerEmoji => customStickerEmoji ?? sticker.emoji;
+  String get effectiveCornerIconEmoji =>
+      customCornerIconEmoji ?? cornerIcon.emoji;
+
+  bool get showDeerSticker => effectiveStickerEmoji.isNotEmpty;
+  bool get showCookieIcon => effectiveCornerIconEmoji.isNotEmpty;
 
   LabelVisualStyle copyWith({
     Color? textColor,
@@ -174,6 +392,10 @@ class LabelVisualStyle {
     double? objectFillOpacity,
     LabelSticker? sticker,
     LabelCornerIcon? cornerIcon,
+    String? customStickerEmoji,
+    String? customCornerIconEmoji,
+    bool clearCustomStickerEmoji = false,
+    bool clearCustomCornerIconEmoji = false,
     bool? showDeerSticker,
     bool? showCookieIcon,
   }) {
@@ -213,6 +435,12 @@ class LabelVisualStyle {
                       this.cornerIcon == LabelCornerIcon.none
                   ? LabelCornerIcon.cookie
                   : this.cornerIcon),
+      customStickerEmoji: clearCustomStickerEmoji
+          ? null
+          : (customStickerEmoji ?? this.customStickerEmoji),
+      customCornerIconEmoji: clearCustomCornerIconEmoji
+          ? null
+          : (customCornerIconEmoji ?? this.customCornerIconEmoji),
     );
   }
 
@@ -243,7 +471,9 @@ class LabelVisualStyle {
             _sameColor(other.objectFillColor, objectFillColor) &&
             other.objectFillOpacity == objectFillOpacity &&
             other.sticker == sticker &&
-            other.cornerIcon == cornerIcon;
+            other.cornerIcon == cornerIcon &&
+            other.customStickerEmoji == customStickerEmoji &&
+            other.customCornerIconEmoji == customCornerIconEmoji;
   }
 
   @override
@@ -272,6 +502,8 @@ class LabelVisualStyle {
         objectFillOpacity,
         sticker,
         cornerIcon,
+        customStickerEmoji,
+        customCornerIconEmoji,
       ]);
 }
 

@@ -4,6 +4,12 @@ import '../../../vocab_scan/domain/label_connector_geometry.dart';
 import '../../../vocab_scan/presentation/label_connector_painter.dart';
 import '../label_template_store.dart';
 import '../label_visual_style.dart';
+import 'emoji_picker_dialog.dart';
+
+const _ink = Color(0xFF3F3028);
+const _mutedInk = Color(0xFF6E5C51);
+const _studioGreen = Color(0xFF6D9F3D);
+const _studioGreenDark = Color(0xFF3F6820);
 
 class CustomLabelStyleEditor extends StatefulWidget {
   const CustomLabelStyleEditor({
@@ -34,7 +40,7 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
       color: const Color(0xFFFFFBF5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        side: const BorderSide(color: Color(0xFFE8D9C7)),
+        side: const BorderSide(color: Color(0xFFE8D9C7), width: 1.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -42,359 +48,281 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
         children: [
           const _EditorHeader(),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
             child: _ComparisonPreview(style: style),
           ),
-          _EditorSection(
-            sectionKey: const Key('section-label-frame'),
-            title: 'Box label',
-            subtitle: 'Nền, hình dáng, viền và chữ',
-            icon: Icons.crop_square_rounded,
-            accent: const Color(0xFFE58A7B),
-            background: const Color(0xFFFFF2EE),
-            initiallyExpanded: true,
-            children: [
-              _ChoiceControl(
-                controlKey: 'corner-style',
-                title: 'Hình dạng',
-                selected: style.cornerStyle,
-                options: const [
-                  _ChoiceOption(LabelCornerStyle.square, 'Góc vuông'),
-                  _ChoiceOption(LabelCornerStyle.soft, 'Bo nhẹ'),
-                  _ChoiceOption(LabelCornerStyle.round, 'Bo tròn'),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(cornerStyle: value)),
-              ),
-              _OpacityControl(
-                sliderKey: const Key('card-opacity-slider'),
-                title: 'Độ trong suốt nền',
-                value: style.cardOpacity,
-                onChanged: (value) =>
-                    onChanged(style.copyWith(cardOpacity: value)),
-              ),
-              _ChoiceControl(
-                controlKey: 'border-thickness',
-                title: 'Độ dày viền',
-                selected: style.borderThickness,
-                options: const [
-                  _ChoiceOption(LabelBorderThickness.thin, 'Mảnh'),
-                  _ChoiceOption(LabelBorderThickness.medium, 'Vừa'),
-                  _ChoiceOption(LabelBorderThickness.bold, 'Đậm'),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(borderThickness: value)),
-              ),
-              _ColorControl(
-                controlKey: 'border-color',
-                title: 'Màu viền',
-                selected: style.borderColor,
-                options: _borderColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(borderColor: color)),
-              ),
-              _ColorControl(
-                controlKey: 'card-color',
-                title: 'Màu nền label',
-                selected: style.cardColor,
-                options: _cardColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(cardColor: color)),
-              ),
-              _ColorControl(
-                controlKey: 'text-color',
-                title: 'Màu chữ',
-                selected: style.textColor,
-                options: _textColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(textColor: color)),
-              ),
-              _ColorControl(
-                controlKey: 'meaning-color',
-                title: 'Màu nghĩa tiếng Việt',
-                selected: style.meaningColor,
-                options: _meaningColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(meaningColor: color)),
-              ),
-            ],
-          ),
-          _EditorSection(
-            sectionKey: const Key('section-badge'),
-            title: 'Badge số',
-            subtitle: 'Thiết kế riêng, không phụ thuộc box label',
-            icon: Icons.looks_one_rounded,
-            accent: const Color(0xFFE3A23B),
-            background: const Color(0xFFFFF6DF),
-            children: [
-              _ChoiceControl(
-                controlKey: 'badge-shape',
-                title: 'Hình dạng badge',
-                selected: style.badgeShape,
-                options: const [
-                  _ChoiceOption(LabelBadgeShape.square, 'Góc vuông'),
-                  _ChoiceOption(LabelBadgeShape.soft, 'Bo nhẹ'),
-                  _ChoiceOption(LabelBadgeShape.pill, 'Viên thuốc'),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(badgeShape: value)),
-              ),
-              _ChoiceControl(
-                controlKey: 'badge-border-thickness',
-                title: 'Độ dày viền badge',
-                selected: style.badgeBorderThickness,
-                options: const [
-                  _ChoiceOption(LabelBorderThickness.thin, 'Mảnh'),
-                  _ChoiceOption(LabelBorderThickness.medium, 'Vừa'),
-                  _ChoiceOption(LabelBorderThickness.bold, 'Đậm'),
-                ],
-                onSelected: (value) => onChanged(
-                  style.copyWith(badgeBorderThickness: value),
-                ),
-              ),
-              _ColorControl(
-                controlKey: 'badge-color',
-                title: 'Màu nền badge',
-                selected: style.badgeColor,
-                options: _cardColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(badgeColor: color)),
-              ),
-              _ColorControl(
-                controlKey: 'badge-text-color',
-                title: 'Màu chữ số',
-                selected: style.badgeTextColor,
-                options: _textColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(badgeTextColor: color)),
-              ),
-              _ColorControl(
-                controlKey: 'badge-border-color',
-                title: 'Màu viền badge',
-                selected: style.badgeBorderColor,
-                options: _borderColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(badgeBorderColor: color)),
-              ),
-            ],
-          ),
-          _EditorSection(
-            sectionKey: const Key('section-connector'),
-            title: 'Đường nối & mũi tên',
-            subtitle: 'Kiểu nét, độ dày và điểm kết thúc',
-            icon: Icons.trending_flat_rounded,
-            accent: const Color(0xFF6D9DC5),
-            background: const Color(0xFFEEF7FF),
-            children: [
-              _ChoiceControl(
-                controlKey: 'connector-line',
-                title: 'Kiểu đường nối',
-                selected: style.connectorLineStyle,
-                options: const [
-                  _ChoiceOption(ConnectorLineStyle.solid, 'Nét liền'),
-                  _ChoiceOption(ConnectorLineStyle.dashed, 'Nét đứt'),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(connectorLineStyle: value)),
-              ),
-              _ChoiceControl(
-                controlKey: 'connector-thickness',
-                title: 'Độ dày',
-                selected: style.connectorThickness,
-                options: const [
-                  _ChoiceOption(ConnectorThickness.thin, 'Mảnh'),
-                  _ChoiceOption(ConnectorThickness.medium, 'Vừa'),
-                  _ChoiceOption(ConnectorThickness.bold, 'Đậm'),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(connectorThickness: value)),
-              ),
-              _ChoiceControl(
-                controlKey: 'arrow-style',
-                title: 'Kiểu đầu mũi tên',
-                selected: style.connectorArrowStyle,
-                options: const [
-                  _ChoiceOption(ConnectorArrowStyle.pointed, 'Nhọn'),
-                  _ChoiceOption(ConnectorArrowStyle.rounded, 'Tròn'),
-                  _ChoiceOption(ConnectorArrowStyle.dot, 'Chấm tròn'),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(connectorArrowStyle: value)),
-              ),
-              _ColorControl(
-                controlKey: 'connector-color',
-                title: 'Màu đường nối',
-                selected: style.connectorColor,
-                options: _connectorColors,
-                onSelected: (color) =>
-                    onChanged(style.copyWith(connectorColor: color)),
-              ),
-              _ToggleControl(
-                toggleKey: const Key('toggle-connector-halo'),
-                title: 'Viền halo trắng',
-                value: style.showConnectorHalo,
-                onChanged: (value) =>
-                    onChanged(style.copyWith(showConnectorHalo: value)),
-              ),
-            ],
-          ),
-          _EditorSection(
-            sectionKey: const Key('section-bounding-box'),
-            title: 'Khung nhận diện vật thể',
-            subtitle: 'Viền và lớp highlight trên ảnh',
-            icon: Icons.center_focus_strong_rounded,
-            accent: const Color(0xFF77A96A),
-            background: const Color(0xFFF0F8EC),
-            children: [
-              _ToggleControl(
-                toggleKey: const Key('toggle-bounding-box'),
-                title: 'Hiển thị bounding box',
-                value: style.showBoundingBox,
-                onChanged: (value) =>
-                    onChanged(style.copyWith(showBoundingBox: value)),
-              ),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                opacity: style.showBoundingBox ? 1 : 0.45,
-                child: IgnorePointer(
-                  ignoring: !style.showBoundingBox,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _ColorControl(
-                        controlKey: 'bbox-border-color',
-                        title: 'Màu khung',
-                        selected: style.objectBorderColor,
-                        options: _boundingBorderColors,
-                        onSelected: (color) => onChanged(
-                          style.copyWith(objectBorderColor: color),
-                        ),
-                      ),
-                      _ColorControl(
-                        controlKey: 'bbox-fill-color',
-                        title: 'Màu nền highlight',
-                        selected: style.objectFillColor,
-                        options: _highlightColors,
-                        onSelected: (color) => onChanged(
-                          style.copyWith(objectFillColor: color),
-                        ),
-                      ),
-                      _OpacityControl(
-                        sliderKey: const Key('bbox-opacity-slider'),
-                        title: 'Độ trong suốt highlight',
-                        value: style.objectFillOpacity,
-                        onChanged: (value) => onChanged(
-                          style.copyWith(objectFillOpacity: value),
-                        ),
-                      ),
+              _EditorSection(
+                sectionKey: const Key('section-label-frame'),
+                title: 'Box label',
+                subtitle: 'Nền, hình dáng, viền và chữ',
+                icon: Icons.crop_square_rounded,
+                accent: const Color(0xFFE58A7B),
+                background: const Color(0xFFFFF2EE),
+                initiallyExpanded: true,
+                children: [
+                  _ChoiceControl(
+                    controlKey: 'corner-style',
+                    title: 'Hình dạng',
+                    selected: style.cornerStyle,
+                    options: const [
+                      _ChoiceOption(LabelCornerStyle.square, 'Góc vuông'),
+                      _ChoiceOption(LabelCornerStyle.soft, 'Bo nhẹ'),
+                      _ChoiceOption(LabelCornerStyle.round, 'Bo tròn'),
                     ],
+                    onSelected: (value) =>
+                        onChanged(style.copyWith(cornerStyle: value)),
                   ),
-                ),
+                  _OpacityControl(
+                    sliderKey: const Key('card-opacity-slider'),
+                    title: 'Độ trong suốt nền',
+                    value: style.cardOpacity,
+                    onChanged: (value) =>
+                        onChanged(style.copyWith(cardOpacity: value)),
+                  ),
+                  _ChoiceControl(
+                    controlKey: 'border-thickness',
+                    title: 'Độ dày viền',
+                    selected: style.borderThickness,
+                    options: const [
+                      _ChoiceOption(LabelBorderThickness.thin, 'Mảnh'),
+                      _ChoiceOption(LabelBorderThickness.medium, 'Vừa'),
+                      _ChoiceOption(LabelBorderThickness.bold, 'Đậm'),
+                    ],
+                    onSelected: (value) =>
+                        onChanged(style.copyWith(borderThickness: value)),
+                  ),
+                  _ColorControl(
+                    controlKey: 'border-color',
+                    title: 'Màu viền',
+                    selected: style.borderColor,
+                    options: _borderColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(borderColor: color)),
+                  ),
+                  _ColorControl(
+                    controlKey: 'card-color',
+                    title: 'Màu nền label',
+                    selected: style.cardColor,
+                    options: _cardColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(cardColor: color)),
+                  ),
+                  _ColorControl(
+                    controlKey: 'text-color',
+                    title: 'Màu chữ',
+                    selected: style.textColor,
+                    options: _textColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(textColor: color)),
+                  ),
+                  _ColorControl(
+                    controlKey: 'meaning-color',
+                    title: 'Màu nghĩa tiếng Việt',
+                    selected: style.meaningColor,
+                    options: _meaningColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(meaningColor: color)),
+                  ),
+                ],
+              ),
+              _EditorSection(
+                sectionKey: const Key('section-badge'),
+                title: 'Badge số',
+                subtitle: 'Thiết kế riêng, không phụ thuộc box label',
+                icon: Icons.looks_one_rounded,
+                accent: const Color(0xFFE3A23B),
+                background: const Color(0xFFFFF6DF),
+                children: [
+                  _ChoiceControl(
+                    controlKey: 'badge-shape',
+                    title: 'Hình dạng badge',
+                    selected: style.badgeShape,
+                    options: const [
+                      _ChoiceOption(LabelBadgeShape.square, 'Góc vuông'),
+                      _ChoiceOption(LabelBadgeShape.soft, 'Bo nhẹ'),
+                      _ChoiceOption(LabelBadgeShape.pill, 'Viên thuốc'),
+                    ],
+                    onSelected: (value) =>
+                        onChanged(style.copyWith(badgeShape: value)),
+                  ),
+                  _ChoiceControl(
+                    controlKey: 'badge-border-thickness',
+                    title: 'Độ dày viền badge',
+                    selected: style.badgeBorderThickness,
+                    options: const [
+                      _ChoiceOption(LabelBorderThickness.thin, 'Mảnh'),
+                      _ChoiceOption(LabelBorderThickness.medium, 'Vừa'),
+                      _ChoiceOption(LabelBorderThickness.bold, 'Đậm'),
+                    ],
+                    onSelected: (value) => onChanged(
+                      style.copyWith(badgeBorderThickness: value),
+                    ),
+                  ),
+                  _ColorControl(
+                    controlKey: 'badge-color',
+                    title: 'Màu nền badge',
+                    selected: style.badgeColor,
+                    options: _cardColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(badgeColor: color)),
+                  ),
+                  _ColorControl(
+                    controlKey: 'badge-text-color',
+                    title: 'Màu chữ số',
+                    selected: style.badgeTextColor,
+                    options: _textColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(badgeTextColor: color)),
+                  ),
+                  _ColorControl(
+                    controlKey: 'badge-border-color',
+                    title: 'Màu viền badge',
+                    selected: style.badgeBorderColor,
+                    options: _borderColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(badgeBorderColor: color)),
+                  ),
+                ],
+              ),
+              _EditorSection(
+                sectionKey: const Key('section-connector'),
+                title: 'Đường nối & mũi tên',
+                subtitle: 'Kiểu nét, độ dày và điểm kết thúc',
+                icon: Icons.trending_flat_rounded,
+                accent: const Color(0xFF6D9DC5),
+                background: const Color(0xFFEEF7FF),
+                children: [
+                  _ChoiceControl(
+                    controlKey: 'connector-line',
+                    title: 'Kiểu đường nối',
+                    selected: style.connectorLineStyle,
+                    options: const [
+                      _ChoiceOption(ConnectorLineStyle.solid, 'Nét liền'),
+                      _ChoiceOption(ConnectorLineStyle.dashed, 'Nét đứt'),
+                    ],
+                    onSelected: (value) =>
+                        onChanged(style.copyWith(connectorLineStyle: value)),
+                  ),
+                  _ChoiceControl(
+                    controlKey: 'connector-thickness',
+                    title: 'Độ dày',
+                    selected: style.connectorThickness,
+                    options: const [
+                      _ChoiceOption(ConnectorThickness.thin, 'Mảnh'),
+                      _ChoiceOption(ConnectorThickness.medium, 'Vừa'),
+                      _ChoiceOption(ConnectorThickness.bold, 'Đậm'),
+                    ],
+                    onSelected: (value) =>
+                        onChanged(style.copyWith(connectorThickness: value)),
+                  ),
+                  _ChoiceControl(
+                    controlKey: 'arrow-style',
+                    title: 'Kiểu đầu mũi tên',
+                    selected: style.connectorArrowStyle,
+                    options: const [
+                      _ChoiceOption(ConnectorArrowStyle.pointed, 'Nhọn'),
+                      _ChoiceOption(ConnectorArrowStyle.rounded, 'Tròn'),
+                      _ChoiceOption(ConnectorArrowStyle.dot, 'Chấm tròn'),
+                    ],
+                    onSelected: (value) =>
+                        onChanged(style.copyWith(connectorArrowStyle: value)),
+                  ),
+                  _ColorControl(
+                    controlKey: 'connector-color',
+                    title: 'Màu đường nối',
+                    selected: style.connectorColor,
+                    options: _connectorColors,
+                    onSelected: (color) =>
+                        onChanged(style.copyWith(connectorColor: color)),
+                  ),
+                  _ToggleControl(
+                    toggleKey: const Key('toggle-connector-halo'),
+                    title: 'Viền halo trắng',
+                    value: style.showConnectorHalo,
+                    onChanged: (value) =>
+                        onChanged(style.copyWith(showConnectorHalo: value)),
+                  ),
+                ],
+              ),
+              _EditorSection(
+                sectionKey: const Key('section-decoration'),
+                title: 'Trang trí',
+                subtitle: 'Sticker và icon góc label',
+                icon: Icons.auto_awesome_outlined,
+                accent: const Color(0xFFAE79B9),
+                background: const Color(0xFFF8EFFA),
+                children: [
+                  _EmojiPickerControl(
+                    controlKey: 'sticker',
+                    title: 'Sticker',
+                    currentEmoji: style.effectiveStickerEmoji,
+                    onEmojiSelected: (emoji) {
+                      if (emoji.isEmpty) {
+                        onChanged(style.copyWith(
+                          sticker: LabelSticker.none,
+                          clearCustomStickerEmoji: true,
+                        ));
+                      } else {
+                        final matching = LabelSticker.values.firstWhere(
+                          (s) => s.emoji == emoji,
+                          orElse: () => LabelSticker.capybara,
+                        );
+                        onChanged(style.copyWith(
+                          sticker: matching,
+                          customStickerEmoji: emoji,
+                        ));
+                      }
+                    },
+                  ),
+                  _EmojiPickerControl(
+                    controlKey: 'corner-icon',
+                    title: 'Icon góc label',
+                    currentEmoji: style.effectiveCornerIconEmoji,
+                    onEmojiSelected: (emoji) {
+                      if (emoji.isEmpty) {
+                        onChanged(style.copyWith(
+                          cornerIcon: LabelCornerIcon.none,
+                          clearCustomCornerIconEmoji: true,
+                        ));
+                      } else {
+                        final matching = LabelCornerIcon.values.firstWhere(
+                          (c) => c.emoji == emoji,
+                          orElse: () => LabelCornerIcon.cookie,
+                        );
+                        onChanged(style.copyWith(
+                          cornerIcon: matching,
+                          customCornerIconEmoji: emoji,
+                        ));
+                      }
+                    },
+                  ),
+                ],
+              ),
+              _SaveTemplateButton(
+                isSaving: _isSaving,
+                onPressed: _isSaving ? null : _saveTemplate,
               ),
             ],
           ),
-          _EditorSection(
-            sectionKey: const Key('section-decoration'),
-            title: 'Trang trí',
-            subtitle: 'Sticker và icon góc label',
-            icon: Icons.auto_awesome_outlined,
-            accent: const Color(0xFFAE79B9),
-            background: const Color(0xFFF8EFFA),
-            children: [
-              _ChoiceControl(
-                controlKey: 'sticker',
-                title: 'Sticker',
-                selected: style.sticker,
-                options: const [
-                  _ChoiceOption(LabelSticker.deer, 'Hươu', Icons.pets_rounded),
-                  _ChoiceOption(
-                    LabelSticker.capybara,
-                    'Capybara',
-                    Icons.cruelty_free_rounded,
-                  ),
-                  _ChoiceOption(LabelSticker.star, 'Ngôi sao', Icons.star),
-                  _ChoiceOption(
-                      LabelSticker.book, 'Quyển sách', Icons.menu_book),
-                  _ChoiceOption(LabelSticker.none, 'Không dùng', Icons.block),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(sticker: value)),
-              ),
-              _ChoiceControl(
-                controlKey: 'corner-icon',
-                title: 'Icon góc label',
-                selected: style.cornerIcon,
-                options: const [
-                  _ChoiceOption(
-                    LabelCornerIcon.cookie,
-                    'Bánh quy',
-                    Icons.cookie_outlined,
-                  ),
-                  _ChoiceOption(
-                    LabelCornerIcon.pin,
-                    'Ghim',
-                    Icons.push_pin_rounded,
-                  ),
-                  _ChoiceOption(
-                    LabelCornerIcon.heart,
-                    'Trái tim',
-                    Icons.favorite_rounded,
-                  ),
-                  _ChoiceOption(
-                      LabelCornerIcon.none, 'Không dùng', Icons.block),
-                ],
-                onSelected: (value) =>
-                    onChanged(style.copyWith(cornerIcon: value)),
-              ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 14),
-            child: FilledButton.icon(
-              key: const Key('save-label-template-button'),
-              onPressed: _isSaving ? null : _saveTemplate,
-              icon: _isSaving
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.bookmark_add_rounded),
-              label: Text(_isSaving ? 'Đang lưu...' : 'Lưu mẫu của tôi'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-                backgroundColor: const Color(0xFF6F9F43),
-                foregroundColor: Colors.white,
-                textStyle: const TextStyle(
-                  fontFamily: 'Nunito',
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
   Future<void> _saveTemplate() async {
-    final name = await _showNameDialog();
-    if (name == null || !mounted) return;
+    final result = await _showNameDialog();
+    if (result == null || !mounted) return;
 
     setState(() => _isSaving = true);
     try {
       final templates = await widget.templateStore.save(
-        name: name,
+        name: result.name,
         style: widget.style,
+        iconEmoji: result.iconEmoji,
       );
       if (!mounted) return;
       widget.onTemplatesChanged(templates);
       widget.onChanged(widget.style);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã lưu và áp dụng mẫu “$name”')),
+        SnackBar(content: Text('Đã lưu và áp dụng mẫu “${result.name}”')),
       );
     } catch (_) {
       if (mounted) {
@@ -407,54 +335,459 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
     }
   }
 
-  Future<String?> _showNameDialog() async {
+  Future<_SaveTemplateResult?> _showNameDialog() async {
     var enteredName = '';
+    var selectedEmoji = widget.style.showDeerSticker
+        ? widget.style.effectiveStickerEmoji
+        : '🏷️';
+    if (selectedEmoji.isEmpty) selectedEmoji = '🏷️';
     String? errorText;
-    return showDialog<String>(
+
+    return showDialog<_SaveTemplateResult>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          icon: const Icon(Icons.bookmark_rounded, color: Color(0xFF6F9F43)),
-          title: const Text('Đặt tên cho mẫu'),
-          content: TextField(
-            key: const Key('label-template-name-field'),
-            autofocus: true,
-            maxLength: 30,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              labelText: 'Tên mẫu',
-              hintText: 'Ví dụ: Capy xanh bạc hà',
-              errorText: errorText,
-              border: const OutlineInputBorder(),
-            ),
-            onChanged: (value) => enteredName = value,
-            onSubmitted: (value) {
-              final name = value.trim();
-              if (name.isEmpty) {
-                setDialogState(() => errorText = 'Hãy nhập tên mẫu');
-              } else {
-                Navigator.of(dialogContext).pop(name);
-              }
-            },
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Huỷ'),
+          contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F4DC),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.bookmark_add_rounded,
+                  color: Color(0xFF4A7227),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Lưu mẫu thiết kế',
+                      style: TextStyle(
+                        fontFamily: 'Fredoka',
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w700,
+                        color: _ink,
+                      ),
+                    ),
+                    Text(
+                      'Đặt tên và chọn icon cho mẫu',
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 11.5,
+                        color: _mutedInk,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded,
+                    size: 20, color: _mutedInk),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => Navigator.of(dialogContext).pop(),
+              ),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 6),
+                  // Hàng chứa Box chọn Icon và Box đặt tên
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Box chọn icon cho mẫu
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Icon',
+                            style: TextStyle(
+                              fontFamily: 'Nunito',
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: _mutedInk,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              key: const Key('template-icon-picker-button'),
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () async {
+                                final newEmoji = await EmojiPickerDialog.show(
+                                  context,
+                                  title: 'Chọn icon mẫu',
+                                  currentEmoji: selectedEmoji,
+                                  controlKey: 'template-icon',
+                                );
+                                if (newEmoji != null && newEmoji.isNotEmpty) {
+                                  setDialogState(
+                                      () => selectedEmoji = newEmoji);
+                                }
+                              },
+                              child: Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFFDFC),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0xFFE2D4C6),
+                                    width: 1.4,
+                                  ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x12000000),
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Text(
+                                      selectedEmoji,
+                                      style: const TextStyle(fontSize: 24),
+                                    ),
+                                    Positioned(
+                                      right: 2,
+                                      bottom: 2,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFE8F4DC),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit_rounded,
+                                          size: 9,
+                                          color: Color(0xFF4A7227),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 10),
+                      // Box đặt tên
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Tên mẫu',
+                              style: TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: _mutedInk,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            TextField(
+                              key: const Key('label-template-name-field'),
+                              autofocus: true,
+                              maxLength: 30,
+                              textCapitalization: TextCapitalization.sentences,
+                              style: const TextStyle(
+                                fontFamily: 'Nunito',
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: _ink,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Ví dụ: Capy bạc hà...',
+                                hintStyle: const TextStyle(
+                                  fontFamily: 'Nunito',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.normal,
+                                  color: Color(0xFF9E8E83),
+                                ),
+                                errorText: errorText,
+                                filled: true,
+                                fillColor: const Color(0xFFFFFDFC),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 11,
+                                ),
+                                counterStyle: const TextStyle(
+                                  fontFamily: 'Nunito',
+                                  fontSize: 10,
+                                  color: _mutedInk,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE2D4C6),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE2D4C6),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF6D9F3D),
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  enteredName = value;
+                                  if (value.trim().isNotEmpty) {
+                                    errorText = null;
+                                  }
+                                });
+                              },
+                              onSubmitted: (value) {
+                                final name = value.trim();
+                                if (name.isEmpty) {
+                                  setDialogState(
+                                      () => errorText = 'Hãy nhập tên mẫu');
+                                } else {
+                                  Navigator.of(dialogContext).pop(
+                                    _SaveTemplateResult(
+                                      name: name,
+                                      iconEmoji: selectedEmoji,
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+
+                  // Xem trước thẻ mẫu nhỏ
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF9F5F0),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFEFE6DC)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Thẻ xem trước:',
+                          style: TextStyle(
+                            fontFamily: 'Nunito',
+                            fontSize: 11,
+                            color: _mutedInk,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 24,
+                          height: 24,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F4DC),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            selectedEmoji,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            enteredName.trim().isEmpty
+                                ? 'Tên mẫu của bạn'
+                                : enteredName.trim(),
+                            style: TextStyle(
+                              fontFamily: 'Fredoka',
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: enteredName.trim().isEmpty
+                                  ? const Color(0xFF9E8E83)
+                                  : _ink,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Nút hành động
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            side: const BorderSide(color: Color(0xFFE2D4C6)),
+                          ),
+                          child: const Text(
+                            'Huỷ',
+                            style: TextStyle(
+                              fontFamily: 'Nunito',
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: _mutedInk,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton.icon(
+                          key: const Key('confirm-save-label-template'),
+                          onPressed: () {
+                            final name = enteredName.trim();
+                            if (name.isEmpty) {
+                              setDialogState(
+                                  () => errorText = 'Hãy nhập tên mẫu');
+                            } else {
+                              Navigator.of(dialogContext).pop(
+                                _SaveTemplateResult(
+                                  name: name,
+                                  iconEmoji: selectedEmoji,
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.check_rounded, size: 17),
+                          label: const Text(
+                            'Lưu & áp dụng',
+                            style: TextStyle(
+                              fontFamily: 'Nunito',
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF4A7227),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            FilledButton(
-              key: const Key('confirm-save-label-template'),
-              onPressed: () {
-                final name = enteredName.trim();
-                if (name.isEmpty) {
-                  setDialogState(() => errorText = 'Hãy nhập tên mẫu');
-                } else {
-                  Navigator.of(dialogContext).pop(name);
-                }
-              },
-              child: const Text('Lưu & áp dụng'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SaveTemplateResult {
+  const _SaveTemplateResult({
+    required this.name,
+    required this.iconEmoji,
+  });
+
+  final String name;
+  final String iconEmoji;
+}
+
+class _SaveTemplateButton extends StatelessWidget {
+  const _SaveTemplateButton({
+    required this.isSaving,
+    required this.onPressed,
+  });
+
+  final bool isSaving;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 16),
+      child: Semantics(
+        button: true,
+        label: isSaving ? 'Đang lưu mẫu' : 'Lưu mẫu của tôi',
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: _studioGreenDark,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: FilledButton.icon(
+              key: const Key('save-label-template-button'),
+              onPressed: onPressed,
+              icon: isSaving
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.bookmark_add_rounded),
+              label: Text(isSaving ? 'Đang cất mẫu...' : 'Lưu mẫu của tôi'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                backgroundColor: _studioGreen,
+                disabledBackgroundColor: const Color(0xFFA8BE91),
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white,
+                textStyle: const TextStyle(
+                  fontFamily: 'Nunito',
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w900,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -469,48 +802,62 @@ class _EditorHeader extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Color(0xFFEAF5DE),
-              shape: BoxShape.circle,
-            ),
-            child: SizedBox.square(
-              dimension: 44,
-              child: Icon(
-                Icons.palette_rounded,
-                color: Color(0xFF5F8E36),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(0xFFFFDDA8),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x249B6B43),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: SizedBox.square(
+                  dimension: 46,
+                  child: Icon(
+                    Icons.palette_rounded,
+                    size: 24,
+                    color: Color(0xFF9A5E2E),
+                  ),
+                ),
               ),
-            ),
+              Positioned(
+                right: -3,
+                top: -4,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0xFFFF85A1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: SizedBox.square(
+                    dimension: 18,
+                    child: Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 11,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Góc sáng tạo của bạn',
-                  textAlign: TextAlign.left,
-                  style: TextStyle(
-                    fontFamily: 'Fredoka',
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF3C2A21),
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Chạm từng thẻ để chỉnh, preview sẽ đổi ngay.',
-                  textAlign: TextAlign.left,
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: 13,
-                    height: 1.35,
-                    color: Color(0xFF66574E),
-                  ),
-                ),
-              ],
+            child: Text(
+              'Thiết kế theo sở thích',
+              style: TextStyle(
+                fontFamily: 'Fredoka',
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: _ink,
+              ),
             ),
           ),
         ],
@@ -549,8 +896,8 @@ class _EditorSection extends StatelessWidget {
         child: Material(
           color: background,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: accent.withValues(alpha: 0.28)),
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: accent.withValues(alpha: 0.34), width: 1.2),
           ),
           clipBehavior: Clip.antiAlias,
           child: ExpansionTile(
@@ -559,16 +906,23 @@ class _EditorSection extends StatelessWidget {
             maintainState: true,
             expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
             expandedAlignment: Alignment.centerLeft,
-            tilePadding: const EdgeInsets.fromLTRB(12, 4, 10, 4),
-            childrenPadding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
+            tilePadding: const EdgeInsets.fromLTRB(10, 5, 8, 5),
+            childrenPadding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
             leading: DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(12),
+                color: Colors.white.withValues(alpha: 0.86),
+                borderRadius: BorderRadius.circular(13),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x12000000),
+                    blurRadius: 5,
+                    offset: Offset(0, 2),
+                  ),
+                ],
               ),
               child: SizedBox.square(
-                dimension: 42,
-                child: Icon(icon, size: 21, color: accent),
+                dimension: 44,
+                child: Icon(icon, size: 22, color: accent),
               ),
             ),
             title: Text(
@@ -576,9 +930,9 @@ class _EditorSection extends StatelessWidget {
               textAlign: TextAlign.left,
               style: const TextStyle(
                 fontFamily: 'Nunito',
-                fontSize: 14,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF3C2A21),
+                color: _ink,
               ),
             ),
             subtitle: Text(
@@ -586,9 +940,9 @@ class _EditorSection extends StatelessWidget {
               textAlign: TextAlign.left,
               style: const TextStyle(
                 fontFamily: 'Nunito',
-                fontSize: 11.5,
-                height: 1.25,
-                color: Color(0xFF6B5C53),
+                fontSize: 12,
+                height: 1.3,
+                color: _mutedInk,
               ),
             ),
             iconColor: accent,
@@ -602,11 +956,19 @@ class _EditorSection extends StatelessWidget {
 }
 
 class _ChoiceOption<T> {
-  const _ChoiceOption(this.value, this.label, [this.icon]);
+  const _ChoiceOption(
+    this.value,
+    this.label, [
+    this.icon,
+    this.emoji,
+    this.category,
+  ]);
 
   final T value;
   final String label;
   final IconData? icon;
+  final String? emoji;
+  final String? category;
 }
 
 class _ChoiceControl<T> extends StatelessWidget {
@@ -643,20 +1005,141 @@ class _ChoiceControl<T> extends StatelessWidget {
               label: Text(option.label),
               labelStyle: const TextStyle(
                 fontFamily: 'Nunito',
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
               ),
-              selectedColor: const Color(0xFFEAF6DF),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              selectedColor: const Color(0xFFE8F4DC),
+              backgroundColor: const Color(0xFFFFFCF8),
+              checkmarkColor: _studioGreenDark,
+              elevation: option.value == selected ? 2 : 0,
+              pressElevation: 1,
+              shadowColor: _studioGreen.withValues(alpha: 0.28),
+              surfaceTintColor: Colors.transparent,
               side: BorderSide(
                 color: option.value == selected
-                    ? const Color(0xFF629E2A)
+                    ? _studioGreen
                     : const Color(0xFFD8CABC),
+                width: option.value == selected ? 1.8 : 1,
               ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              materialTapTargetSize: MaterialTapTargetSize.padded,
               onSelected: (_) => onSelected(option.value),
             ),
         ],
       ),
     );
+  }
+}
+
+class _EmojiPickerControl extends StatelessWidget {
+  const _EmojiPickerControl({
+    required this.controlKey,
+    required this.title,
+    required this.currentEmoji,
+    required this.onEmojiSelected,
+  });
+
+  final String controlKey;
+  final String title;
+  final String currentEmoji;
+  final ValueChanged<String> onEmojiSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasEmoji = currentEmoji.isNotEmpty;
+
+    return _ControlGroup(
+      title: title,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: Key('$controlKey-picker-button'),
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _openEmojiDialog(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFDFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2D4C6), width: 1.2),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3E7DC),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: hasEmoji
+                      ? Text(
+                          currentEmoji,
+                          style: const TextStyle(fontSize: 22),
+                        )
+                      : const Icon(
+                          Icons.block_rounded,
+                          size: 20,
+                          color: Color(0xFF8A4B2A),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hasEmoji
+                            ? 'Biểu tượng: $currentEmoji'
+                            : 'Không dùng biểu tượng',
+                        style: const TextStyle(
+                          fontFamily: 'Nunito',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: _ink,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Chạm để mở bảng emoji tìm kiếm',
+                        style: TextStyle(
+                          fontFamily: 'Nunito',
+                          fontSize: 11.5,
+                          color: _mutedInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 13,
+                  color: Color(0xFF8A7365),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openEmojiDialog(BuildContext context) {
+    EmojiPickerDialog.show(
+      context,
+      title: 'Chọn $title',
+      currentEmoji: currentEmoji,
+      controlKey: controlKey,
+    ).then((selected) {
+      if (selected != null) {
+        onEmojiSelected(selected);
+      }
+    });
   }
 }
 
@@ -669,24 +1152,58 @@ class _ControlGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: SizedBox(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
         width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: const Color(0xFFE5D8CA)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x109B6B43),
+              blurRadius: 7,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              title,
-              textAlign: TextAlign.left,
-              style: const TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF3C2A21),
-              ),
+            Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFE8EE),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 13,
+                    color: Color(0xFFD66A87),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: _ink,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 9),
             Align(
               alignment: Alignment.centerLeft,
               child: child,
@@ -718,24 +1235,40 @@ class _OpacityControl extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Slider(
-              key: sliderKey,
-              value: value,
-              divisions: 10,
-              label: '${(value * 100).round()}%',
-              onChanged: onChanged,
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: _studioGreen,
+                inactiveTrackColor: const Color(0xFFD9E3CE),
+                thumbColor: _studioGreenDark,
+                overlayColor: _studioGreen.withValues(alpha: 0.15),
+                valueIndicatorColor: _studioGreenDark,
+                trackHeight: 5,
+              ),
+              child: Slider(
+                key: sliderKey,
+                value: value,
+                divisions: 10,
+                label: '${(value * 100).round()}%',
+                onChanged: onChanged,
+              ),
             ),
           ),
-          SizedBox(
-            width: 44,
+          Container(
+            width: 50,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.82),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFDCCFC1)),
+            ),
             child: Text(
               '${(value * 100).round()}%',
-              textAlign: TextAlign.end,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: 'Nunito',
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF5F5149),
+                fontWeight: FontWeight.w900,
+                color: _ink,
               ),
             ),
           ),
@@ -760,20 +1293,53 @@ class _ToggleControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SwitchListTile.adaptive(
-      key: toggleKey,
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontFamily: 'Nunito',
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF3C2A21),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: value
+            ? const Color(0xFFF4FAEE)
+            : Colors.white.withValues(alpha: 0.82),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+          side: BorderSide(
+            color: value ? _studioGreen : const Color(0xFFE5D8CA),
+            width: value ? 1.5 : 1,
+          ),
+        ),
+        elevation: value ? 2 : 0,
+        shadowColor: _studioGreen.withValues(alpha: 0.22),
+        clipBehavior: Clip.antiAlias,
+        child: SwitchListTile.adaptive(
+          key: toggleKey,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          secondary: Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: value ? const Color(0xFFE4F2D7) : const Color(0xFFF4ECE4),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              value ? Icons.auto_awesome_rounded : Icons.visibility_off_rounded,
+              size: 18,
+              color: value ? _studioGreenDark : _mutedInk,
+            ),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: _ink,
+            ),
+          ),
+          activeTrackColor: _studioGreen,
+          value: value,
+          onChanged: onChanged,
         ),
       ),
-      value: value,
-      onChanged: onChanged,
     );
   }
 }
@@ -807,119 +1373,137 @@ class _ColorControl extends StatelessWidget {
 
     return _ControlGroup(
       title: title,
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        alignment: WrapAlignment.start,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          for (final (index, option) in options.indexed)
-            Semantics(
-              button: true,
-              selected: option.color == selected,
-              label: '$title: ${option.name}',
-              child: InkResponse(
-                key: Key('$controlKey-$index'),
-                radius: 24,
-                onTap: () => onSelected(option.color),
-                child: SizedBox.square(
-                  dimension: 44,
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: option.color,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: option.color == selected
-                              ? const Color(0xFF629E2A)
-                              : const Color(0xFFB8AA9D),
-                          width: option.color == selected ? 3 : 1,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        child: Row(
+          children: [
+            for (final (index, option) in options.indexed)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Semantics(
+                  button: true,
+                  selected: option.color == selected,
+                  label: '$title: ${option.name}',
+                  child: Tooltip(
+                    message: option.name,
+                    child: InkResponse(
+                      key: Key('$controlKey-$index'),
+                      radius: 24,
+                      onTap: () => onSelected(option.color),
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: Center(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            width: option.color == selected ? 36 : 32,
+                            height: option.color == selected ? 36 : 32,
+                            decoration: BoxDecoration(
+                              color: option.color,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: option.color == selected
+                                    ? _studioGreenDark
+                                    : const Color(0xFFB8AA9D),
+                                width: option.color == selected ? 3 : 1,
+                              ),
+                              boxShadow: option.color == selected
+                                  ? const [
+                                      BoxShadow(
+                                        color: Color(0x306D9F3D),
+                                        blurRadius: 7,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: option.color == selected
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    size: 18,
+                                    color:
+                                        option.color.computeLuminance() > 0.45
+                                            ? Colors.black
+                                            : Colors.white,
+                                  )
+                                : null,
+                          ),
                         ),
                       ),
-                      child: option.color == selected
-                          ? Icon(
-                              Icons.check_rounded,
-                              size: 17,
-                              color: option.color.computeLuminance() > 0.45
-                                  ? Colors.black
-                                  : Colors.white,
-                            )
-                          : null,
                     ),
                   ),
                 ),
               ),
-            ),
-          // Nút tự chọn màu (Lăn màu tự do)
-          Semantics(
-            button: true,
-            selected: isCustomSelected,
-            label: '$title: Tự chọn màu',
-            child: InkResponse(
-              key: Key('$controlKey-custom-picker'),
-              radius: 24,
-              onTap: () => _openCustomPicker(context),
-              child: SizedBox.square(
-                dimension: 44,
-                child: Center(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: isCustomSelected ? selected : null,
-                      shape: BoxShape.circle,
-                      gradient: isCustomSelected
-                          ? null
-                          : const SweepGradient(
-                              colors: [
-                                Color(0xFFFF0000),
-                                Color(0xFFFFFF00),
-                                Color(0xFF00FF00),
-                                Color(0xFF00FFFF),
-                                Color(0xFF0000FF),
-                                Color(0xFFFF00FF),
-                                Color(0xFFFF0000),
-                              ],
-                            ),
-                      border: Border.all(
-                        color: isCustomSelected
-                            ? const Color(0xFF629E2A)
-                            : const Color(0xFFB8AA9D),
-                        width: isCustomSelected ? 3 : 1.5,
-                      ),
-                      boxShadow: isCustomSelected
-                          ? [
-                              BoxShadow(
-                                color: selected.withValues(alpha: 0.35),
-                                blurRadius: 4,
-                                offset: const Offset(0, 1),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: isCustomSelected
-                        ? Icon(
-                            Icons.check_rounded,
-                            size: 17,
-                            color: selected.computeLuminance() > 0.45
-                                ? Colors.black
-                                : Colors.white,
-                          )
-                        : const Icon(
-                            Icons.colorize_rounded,
-                            size: 15,
-                            color: Colors.white,
+            Semantics(
+              button: true,
+              selected: isCustomSelected,
+              label: '$title: Tự chọn màu',
+              child: Tooltip(
+                message: 'Tự chọn màu',
+                child: InkResponse(
+                  key: Key('$controlKey-custom-picker'),
+                  radius: 24,
+                  onTap: () => _openCustomPicker(context),
+                  child: SizedBox.square(
+                    dimension: 48,
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        width: isCustomSelected ? 36 : 32,
+                        height: isCustomSelected ? 36 : 32,
+                        decoration: BoxDecoration(
+                          color: isCustomSelected ? selected : null,
+                          shape: BoxShape.circle,
+                          gradient: isCustomSelected
+                              ? null
+                              : const SweepGradient(
+                                  colors: [
+                                    Color(0xFFFF0000),
+                                    Color(0xFFFFFF00),
+                                    Color(0xFF00FF00),
+                                    Color(0xFF00FFFF),
+                                    Color(0xFF0000FF),
+                                    Color(0xFFFF00FF),
+                                    Color(0xFFFF0000),
+                                  ],
+                                ),
+                          border: Border.all(
+                            color: isCustomSelected
+                                ? _studioGreenDark
+                                : const Color(0xFFB8AA9D),
+                            width: isCustomSelected ? 3 : 1.5,
                           ),
+                          boxShadow: isCustomSelected
+                              ? [
+                                  BoxShadow(
+                                    color: selected.withValues(alpha: 0.35),
+                                    blurRadius: 7,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: isCustomSelected
+                            ? Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: selected.computeLuminance() > 0.45
+                                    ? Colors.black
+                                    : Colors.white,
+                              )
+                            : const Icon(
+                                Icons.colorize_rounded,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1028,13 +1612,12 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
         ],
       ),
       content: SingleChildScrollView(
-        child: SizedBox(
-          width: 320,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Khung preview màu trực tiếp
               Container(
                 height: 56,
                 decoration: BoxDecoration(
@@ -1065,8 +1648,6 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Hue slider (Thanh lăn dải màu cầu vồng)
               _buildSliderSection(
                 title: 'Tông màu (Hue)',
                 valueText: '${_hue.round()}°',
@@ -1105,8 +1686,6 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Saturation slider (Độ đậm màu)
               _buildSliderSection(
                 title: 'Độ đậm màu (Saturation)',
                 valueText: '${(_saturation * 100).round()}%',
@@ -1140,8 +1719,6 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Brightness slider (Độ sáng tối)
               _buildSliderSection(
                 title: 'Độ sáng (Brightness)',
                 valueText: '${(_value * 100).round()}%',
@@ -1175,8 +1752,6 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                 ),
               ),
               const SizedBox(height: 14),
-
-              // Bảng màu gợi ý nhanh
               const Text(
                 'Màu sắc gợi ý',
                 style: TextStyle(
@@ -1201,31 +1776,38 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                           _value = hsv.value.clamp(0.01, 1.0);
                         });
                       },
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: color.toARGB32() == currentColor.toARGB32()
-                                ? const Color(0xFF629E2A)
-                                : const Color(0xFFD4C5B5),
-                            width: color.toARGB32() == currentColor.toARGB32()
-                                ? 2.5
-                                : 1,
+                      borderRadius: BorderRadius.circular(22),
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: Center(
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color:
+                                    color.toARGB32() == currentColor.toARGB32()
+                                        ? _studioGreen
+                                        : const Color(0xFFD4C5B5),
+                                width:
+                                    color.toARGB32() == currentColor.toARGB32()
+                                        ? 2.5
+                                        : 1,
+                              ),
+                            ),
+                            child: color.toARGB32() == currentColor.toARGB32()
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    size: 17,
+                                    color: color.computeLuminance() > 0.45
+                                        ? Colors.black
+                                        : Colors.white,
+                                  )
+                                : null,
                           ),
                         ),
-                        child: color.toARGB32() == currentColor.toARGB32()
-                            ? Icon(
-                                Icons.check_rounded,
-                                size: 16,
-                                color: color.computeLuminance() > 0.45
-                                    ? Colors.black
-                                    : Colors.white,
-                              )
-                            : null,
                       ),
                     ),
                 ],
@@ -1323,27 +1905,103 @@ class _ComparisonPreview extends StatelessWidget {
       image: true,
       child: Container(
         key: const Key('custom-label-preview'),
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF2ECE5),
-          borderRadius: BorderRadius.circular(12),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFF4EADF), Color(0xFFFFF7ED)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE4D2C0)),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Expanded(
-              child: _PreviewPanel(
-                panelKey: Key('before-style-preview'),
-                title: 'Trước',
-                style: LabelVisualStyle.standard,
-              ),
+            const Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: SizedBox.square(
+                    dimension: 32,
+                    child: Icon(
+                      Icons.visibility_rounded,
+                      size: 17,
+                      color: _studioGreenDark,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Xem trước trực tiếp',
+                        style: TextStyle(
+                          fontFamily: 'Fredoka',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: _ink,
+                        ),
+                      ),
+                      Text(
+                        'Mỗi lựa chọn sẽ hiện ngay ở khung bên phải',
+                        style: TextStyle(
+                          fontFamily: 'Nunito',
+                          fontSize: 11,
+                          height: 1.3,
+                          color: _mutedInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0xFFE8F4DC),
+                    borderRadius: BorderRadius.all(Radius.circular(999)),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      'LIVE',
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 9.5,
+                        letterSpacing: 0.7,
+                        fontWeight: FontWeight.w900,
+                        color: _studioGreenDark,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _PreviewPanel(
-                panelKey: const Key('after-style-preview'),
-                title: 'Sau',
-                style: style,
-              ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Expanded(
+                  child: _PreviewPanel(
+                    panelKey: Key('before-style-preview'),
+                    title: 'Mẫu gốc',
+                    style: LabelVisualStyle.standard,
+                    isActive: false,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _PreviewPanel(
+                    panelKey: const Key('after-style-preview'),
+                    title: 'Của bạn',
+                    style: style,
+                    isActive: true,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1357,34 +2015,64 @@ class _PreviewPanel extends StatelessWidget {
     required this.panelKey,
     required this.title,
     required this.style,
+    required this.isActive,
   });
 
   final Key panelKey;
   final String title;
   final LabelVisualStyle style;
+  final bool isActive;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       key: panelKey,
-      height: 132,
+      height: 138,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFDED4CA)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isActive ? _studioGreen : const Color(0xFFDED4CA),
+          width: isActive ? 2 : 1,
+        ),
+        boxShadow: isActive
+            ? const [
+                BoxShadow(
+                  color: Color(0x246D9F3D),
+                  blurRadius: 9,
+                  offset: Offset(0, 3),
+                ),
+              ]
+            : null,
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 5),
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF5F5149),
-              ),
+            padding: const EdgeInsets.fromLTRB(7, 7, 7, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isActive) ...[
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 12,
+                    color: _studioGreenDark,
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Flexible(
+                  child: Text(
+                    title,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                      color: isActive ? _studioGreenDark : _mutedInk,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -1392,24 +2080,22 @@ class _PreviewPanel extends StatelessWidget {
               children: [
                 Positioned.fill(
                     child: CustomPaint(painter: _PreviewPainter(style))),
-                if (style.sticker != LabelSticker.none)
+                if (style.showDeerSticker)
                   Positioned(
                     right: 5,
-                    top: 10,
-                    child: Icon(
-                      _stickerIcon(style.sticker),
-                      size: 15,
-                      color: const Color(0xFF8A4B2A),
+                    top: 8,
+                    child: Text(
+                      style.effectiveStickerEmoji,
+                      style: const TextStyle(fontSize: 15),
                     ),
                   ),
-                if (style.cornerIcon != LabelCornerIcon.none)
+                if (style.showCookieIcon)
                   Positioned(
-                    right: 2,
-                    bottom: 10,
-                    child: Icon(
-                      _cornerIcon(style.cornerIcon),
-                      size: 14,
-                      color: const Color(0xFFA85A40),
+                    right: 3,
+                    bottom: 8,
+                    child: Text(
+                      style.effectiveCornerIconEmoji,
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ),
               ],
@@ -1560,20 +2246,7 @@ class _PreviewPainter extends CustomPainter {
       oldDelegate.style != style;
 }
 
-IconData _stickerIcon(LabelSticker sticker) => switch (sticker) {
-      LabelSticker.deer => Icons.pets_rounded,
-      LabelSticker.capybara => Icons.cruelty_free_rounded,
-      LabelSticker.star => Icons.star_rounded,
-      LabelSticker.book => Icons.menu_book_rounded,
-      LabelSticker.none => Icons.block,
-    };
 
-IconData _cornerIcon(LabelCornerIcon icon) => switch (icon) {
-      LabelCornerIcon.cookie => Icons.cookie_outlined,
-      LabelCornerIcon.pin => Icons.push_pin_rounded,
-      LabelCornerIcon.heart => Icons.favorite_rounded,
-      LabelCornerIcon.none => Icons.block,
-    };
 
 const _textColors = [
   _ColorChoice('Nâu', Color(0xFF8F6E50)),
@@ -1609,18 +2282,4 @@ const _connectorColors = [
   _ColorChoice('Xanh lá', Color(0xFF3E7A45)),
   _ColorChoice('Xanh dương', Color(0xFF3C6E91)),
   _ColorChoice('Tím', Color(0xFF76538D)),
-];
-const _boundingBorderColors = [
-  _ColorChoice('Cam', Colors.deepOrange),
-  _ColorChoice('Đen', Colors.black),
-  _ColorChoice('Xanh lá', Color(0xFF2E7D32)),
-  _ColorChoice('Xanh dương', Color(0xFF1565C0)),
-  _ColorChoice('Tím', Color(0xFF6A1B9A)),
-];
-const _highlightColors = [
-  _ColorChoice('Vàng', Colors.amber),
-  _ColorChoice('Trắng', Colors.white),
-  _ColorChoice('Xanh lá', Color(0xFF81C784)),
-  _ColorChoice('Xanh dương', Color(0xFF64B5F6)),
-  _ColorChoice('Hồng', Color(0xFFF48FB1)),
 ];

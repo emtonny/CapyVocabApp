@@ -82,10 +82,10 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
                 letterSpacing: 0.8,
               ),
             ),
-            SizedBox(width: 6),
+            SizedBox(width: 5),
             Icon(
-              Icons.label_outline_rounded,
-              size: 17,
+              Icons.push_pin_rounded,
+              size: 15,
               color: Color(0xFF8F6E50),
             ),
           ],
@@ -129,6 +129,7 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
                 title: template.name,
                 subtitle: 'Mẫu đã lưu (Giữ để xoá)',
                 icon: Icons.bookmark_rounded,
+                emoji: template.effectiveEmoji,
                 color: _savedTemplateAccent(template.style),
                 isSelected: savedIndex == selectedSavedIndex && !_isEditorOpen,
                 onTap: () {
@@ -205,7 +206,7 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
         icon: const Icon(Icons.delete_outline_rounded,
             color: Color(0xFFE53935), size: 28),
         title: const Text('Xoá mẫu đã lưu?'),
-        content: Text('Bạn có chắc muốn xoá mẫu “${template.name}”?'),
+        content: Text('Bạn có chắc muốn xoá mẫu “${template.name}” không?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -222,18 +223,19 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
       ),
     );
 
-    if (confirmed == true && mounted) {
+    if (confirmed != true || !mounted) return;
+
+    try {
       final updated = await widget.templateStore.delete(template.name);
       if (!mounted) return;
-      setState(() {
-        _savedTemplates = updated;
-        if (widget.customStyle == template.style) {
-          widget.onTemplateChanged(NoteLabelTemplate.standard);
-        }
-      });
+      setState(() => _savedTemplates = updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã xoá mẫu “${template.name}”')),
+      );
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Đã xoá mẫu “${template.name}”')),
+          const SnackBar(content: Text('Không thể xoá mẫu. Vui lòng thử lại.')),
         );
       }
     }
@@ -322,6 +324,7 @@ class _TemplateCard extends StatelessWidget {
     required this.color,
     required this.isSelected,
     required this.onTap,
+    this.emoji,
     this.onLongPress,
   });
 
@@ -332,6 +335,7 @@ class _TemplateCard extends StatelessWidget {
   final Color color;
   final bool isSelected;
   final VoidCallback onTap;
+  final String? emoji;
   final VoidCallback? onLongPress;
 
   @override
@@ -382,7 +386,9 @@ class _TemplateCard extends StatelessWidget {
                     color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, size: 20, color: color),
+                  child: (emoji != null && emoji!.isNotEmpty)
+                      ? Text(emoji!, style: const TextStyle(fontSize: 20))
+                      : Icon(icon, size: 20, color: color),
                 ),
                 const SizedBox(width: 9),
                 Expanded(
