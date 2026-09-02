@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_colors.dart';
+
 class EmojiItem {
   const EmojiItem({
     required this.emoji,
@@ -51,10 +53,9 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
   String _selectedCategory = 'Gợi ý';
   String _searchQuery = '';
 
-  static const _studioGreen = Color(0xFF6D9F3D);
-  static const _studioGreenDark = Color(0xFF4A7227);
-  static const _ink = Color(0xFF33241A);
-  static const _mutedInk = Color(0xFF7A685D);
+  static const _studioGreenDark = AppColors.darkGreen;
+  static const _ink = AppColors.ink;
+  static const _mutedInk = AppColors.mutedInk;
 
   final List<String> _categories = const [
     'Gợi ý',
@@ -62,6 +63,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     'Động vật',
     'Đồ ăn',
     'Học tập',
+    'Quốc kỳ',
     'Biểu tượng',
     'Hoạt động',
     'Du lịch',
@@ -85,8 +87,10 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
 
   String _normalize(String input) {
     var result = input.toLowerCase();
-    const withDia = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
-    const withoutDia = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
+    const withDia =
+        'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+    const withoutDia =
+        'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
     for (var i = 0; i < withDia.length; i++) {
       result = result.replaceAll(withDia[i], withoutDia[i]);
     }
@@ -126,8 +130,12 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     final filteredList = _getFilteredEmojis();
 
     return AlertDialog(
+      backgroundColor: AppColors.softWhite,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: AppColors.ink, width: 2.8),
       ),
       contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
@@ -136,12 +144,13 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8EFFA),
-              borderRadius: BorderRadius.circular(12),
+              color: AppColors.lavender,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.ink, width: 1.8),
             ),
             child: const Icon(
               Icons.sentiment_satisfied_alt_rounded,
-              color: Color(0xFFAE79B9),
+              color: AppColors.ink,
               size: 22,
             ),
           ),
@@ -172,9 +181,15 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.close_rounded, size: 20, color: _mutedInk),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+            icon: const Icon(Icons.close_rounded, size: 22, color: _ink),
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.yellow,
+              minimumSize: const Size.square(48),
+              side: const BorderSide(color: AppColors.ink, width: 1.8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -187,10 +202,11 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
           children: [
             // Ô tìm kiếm iPhone
             Container(
-              height: 42,
+              height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFFF4EFEA),
-                borderRadius: BorderRadius.circular(14),
+                color: AppColors.cream,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.ink, width: 2),
               ),
               child: TextField(
                 controller: _searchController,
@@ -213,11 +229,11 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                           onPressed: () => _searchController.clear(),
                         )
                       : null,
-                  hintText: 'Tìm kiếm: mèo, sách, tim, bơ, sao...',
+                  hintText: 'Tìm kiếm: mèo, cờ vn, sách, tim, bơ, sao...',
                   hintStyle: const TextStyle(
                     fontFamily: 'Nunito',
                     fontSize: 12.5,
-                    color: Color(0xFF9E8E83),
+                    color: AppColors.mutedInk,
                   ),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
@@ -240,8 +256,11 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                         avatar: const Icon(Icons.block_rounded,
                             size: 14, color: Color(0xFFC2410C)),
                         label: const Text('Không dùng'),
-                        backgroundColor: const Color(0xFFFFECE6),
-                        side: const BorderSide(color: Color(0xFFFFCCBD)),
+                        backgroundColor: const Color(0xFFFFE3DB),
+                        side: const BorderSide(
+                          color: AppColors.ink,
+                          width: 1.8,
+                        ),
                         labelStyle: const TextStyle(
                           fontFamily: 'Nunito',
                           fontSize: 11.5,
@@ -249,7 +268,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                           color: Color(0xFFC2410C),
                         ),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         onPressed: () => Navigator.of(context).pop(''),
                       ),
@@ -260,8 +279,8 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                         child: ChoiceChip(
                           label: Text(category),
                           selected: _selectedCategory == category,
-                          selectedColor: const Color(0xFFE8F4DC),
-                          backgroundColor: const Color(0xFFFFFDFC),
+                          selectedColor: AppColors.lime,
+                          backgroundColor: Colors.white,
                           checkmarkColor: _studioGreenDark,
                           labelStyle: TextStyle(
                             fontFamily: 'Nunito',
@@ -274,11 +293,10 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                                 : _ink,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                            borderRadius: BorderRadius.circular(8),
                             side: BorderSide(
-                              color: _selectedCategory == category
-                                  ? _studioGreen
-                                  : const Color(0xFFE4D6C7),
+                              color: AppColors.ink,
+                              width: _selectedCategory == category ? 2 : 1.5,
                             ),
                           ),
                           onSelected: (selected) {
@@ -316,50 +334,51 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                         ),
                       ),
                     )
-                  : GridView.builder(
-                      shrinkWrap: true,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 6,
-                        mainAxisSpacing: 6,
-                        crossAxisSpacing: 6,
-                        childAspectRatio: 1,
-                      ),
-                      itemCount: filteredList.length,
-                      itemBuilder: (context, index) {
-                        final item = filteredList[index];
-                        final isSelected = item.emoji == widget.currentEmoji;
+                  : LayoutBuilder(
+                      builder: (context, constraints) => GridView.builder(
+                        shrinkWrap: true,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: constraints.maxWidth < 232
+                              ? 3
+                              : constraints.maxWidth < 340
+                                  ? 4
+                                  : 6,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 1,
+                        ),
+                        itemCount: filteredList.length,
+                        itemBuilder: (context, index) {
+                          final item = filteredList[index];
+                          final isSelected = item.emoji == widget.currentEmoji;
 
-                        return Tooltip(
-                          message: item.name,
-                          child: Material(
-                            color: isSelected
-                                ? const Color(0xFFE8F4DC)
-                                : const Color(0xFFFFFDFC),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: isSelected
-                                    ? _studioGreen
-                                    : const Color(0xFFEDE4DB),
-                                width: isSelected ? 2 : 1,
+                          return Tooltip(
+                            message: item.name,
+                            child: Material(
+                              color: isSelected ? AppColors.mint : Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(
+                                  color: AppColors.ink,
+                                  width: isSelected ? 2.4 : 1.5,
+                                ),
                               ),
-                            ),
-                            child: InkWell(
-                              key: Key('${widget.controlKey}-$index'),
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () =>
-                                  Navigator.of(context).pop(item.emoji),
-                              child: Center(
-                                child: Text(
-                                  item.emoji,
-                                  style: const TextStyle(fontSize: 24),
+                              child: InkWell(
+                                key: Key('${widget.controlKey}-$index'),
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: () =>
+                                    Navigator.of(context).pop(item.emoji),
+                                child: Center(
+                                  child: Text(
+                                    item.emoji,
+                                    style: const TextStyle(fontSize: 24),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
             ),
           ],
@@ -410,6 +429,11 @@ final List<EmojiItem> _allEmojis = [
   const EmojiItem(emoji: '💡', name: 'Bóng đèn', category: 'Gợi ý', keywords: 'bong den light bulb idea y tuong sang tao'),
   const EmojiItem(emoji: '🎯', name: 'Mục tiêu', category: 'Gợi ý', keywords: 'muc tieu target goal bullseye'),
   const EmojiItem(emoji: '🚀', name: 'Tên lửa', category: 'Gợi ý', keywords: 'ten lua rocket space fly'),
+  const EmojiItem(emoji: '🇻🇳', name: 'Việt Nam', category: 'Gợi ý', keywords: 'viet nam vietnam vn co do sao vang flag cờ'),
+  const EmojiItem(emoji: '🇬🇧', name: 'Vương quốc Anh', category: 'Gợi ý', keywords: 'vuong quoc anh uk england united kingdom english flag cờ'),
+  const EmojiItem(emoji: '🇺🇸', name: 'Hoa Kỳ', category: 'Gợi ý', keywords: 'hoa ky my usa us america flag cờ'),
+  const EmojiItem(emoji: '🇯🇵', name: 'Nhật Bản', category: 'Gợi ý', keywords: 'nhat ban japan japanese jp flag cờ'),
+  const EmojiItem(emoji: '🇰🇷', name: 'Hàn Quốc', category: 'Gợi ý', keywords: 'han quoc korea south korea flag cờ'),
 
   // Mặt cười & Cảm xúc
   const EmojiItem(emoji: '😀', name: 'Cười tươi', category: 'Mặt cười', keywords: 'cuoi grin smile happy vui'),
@@ -453,7 +477,8 @@ final List<EmojiItem> _allEmojis = [
   const EmojiItem(emoji: '🐭', name: 'Chuột nhắt', category: 'Động vật', keywords: 'chuot mouse rat'),
   const EmojiItem(emoji: '🐹', name: 'Hamster', category: 'Động vật', keywords: 'chuot hamster pet'),
   const EmojiItem(emoji: '🐰', name: 'Thỏ con', category: 'Động vật', keywords: 'tho con rabbit bunny'),
-  const EmojiItem(emoji: '🦊', name: 'Cáo', category: 'Động vật', keywords: 'cao fox red'),
+  const EmojiItem(
+      emoji: '🦊', name: 'Cáo', category: 'Động vật', keywords: 'cao fox red'),
   const EmojiItem(emoji: '🐻', name: 'Gấu', category: 'Động vật', keywords: 'gau bear brown'),
   const EmojiItem(emoji: '🐼', name: 'Panda', category: 'Động vật', keywords: 'gau truc panda bear'),
   const EmojiItem(emoji: '🐨', name: 'Koala', category: 'Động vật', keywords: 'koala uc australia'),
@@ -611,4 +636,70 @@ final List<EmojiItem> _allEmojis = [
   const EmojiItem(emoji: '🏝️', name: 'Hòn đảo hoang', category: 'Du lịch', keywords: 'hon dao island tropical ocean'),
   const EmojiItem(emoji: '🏔️', name: 'Núi tuyết', category: 'Du lịch', keywords: 'nui tuyet mountain snow peak climb'),
   const EmojiItem(emoji: '🎡', name: 'Vòng đu quay', category: 'Du lịch', keywords: 'vong du quay ferris wheel park fun'),
+
+  // Quốc kỳ & Cờ các quốc gia (Flags)
+  const EmojiItem(emoji: '🇻🇳', name: 'Việt Nam', category: 'Quốc kỳ', keywords: 'viet nam vietnam vn co do sao vang national flag cờ'),
+  const EmojiItem(
+      emoji: '🇬🇧',
+      name: 'Vương quốc Anh',
+      category: 'Quốc kỳ',
+      keywords:
+          'vuong quoc anh uk great britain england united kingdom english co anh cờ'),
+  const EmojiItem(emoji: '🇺🇸', name: 'Hoa Kỳ / Mỹ', category: 'Quốc kỳ', keywords: 'hoa ky my usa us america united states american co my cờ'),
+  const EmojiItem(emoji: '🇯🇵', name: 'Nhật Bản', category: 'Quốc kỳ', keywords: 'nhat ban japan japanese jp mat troi moc cờ'),
+  const EmojiItem(emoji: '🇰🇷', name: 'Hàn Quốc', category: 'Quốc kỳ', keywords: 'han quoc korea south korea korean kr cờ'),
+  const EmojiItem(emoji: '🇨🇳', name: 'Trung Quốc', category: 'Quốc kỳ', keywords: 'trung quoc china chinese cn cờ'),
+  const EmojiItem(emoji: '🇫🇷', name: 'Pháp', category: 'Quốc kỳ', keywords: 'phap france french fr cờ'),
+  const EmojiItem(emoji: '🇩🇪', name: 'Đức', category: 'Quốc kỳ', keywords: 'duc germany german de cờ'),
+  const EmojiItem(emoji: '🇪🇸', name: 'Tây Ban Nha', category: 'Quốc kỳ', keywords: 'tay ban nha spain spanish es cờ'),
+  const EmojiItem(emoji: '🇮🇹', name: 'Ý / Italia', category: 'Quốc kỳ', keywords: 'y italia italy italian it cờ'),
+  const EmojiItem(emoji: '🇷🇺', name: 'Nga', category: 'Quốc kỳ', keywords: 'nga russia russian ru cờ'),
+  const EmojiItem(emoji: '🇨🇦', name: 'Canada', category: 'Quốc kỳ', keywords: 'canada ca maple leaf la phong cờ'),
+  const EmojiItem(emoji: '🇦🇺', name: 'Úc / Australia', category: 'Quốc kỳ', keywords: 'uc australia aussie au kangaroo cờ'),
+  const EmojiItem(emoji: '🇳🇿', name: 'New Zealand', category: 'Quốc kỳ', keywords: 'new zealand nz kiwi cờ'),
+  const EmojiItem(emoji: '🇸🇬', name: 'Singapore', category: 'Quốc kỳ', keywords: 'singapore sg cờ'),
+  const EmojiItem(emoji: '🇹🇭', name: 'Thái Lan', category: 'Quốc kỳ', keywords: 'thai lan thailand thai th cờ'),
+  const EmojiItem(emoji: '🇱🇦', name: 'Lào', category: 'Quốc kỳ', keywords: 'lao laos la cờ'),
+  const EmojiItem(emoji: '🇰🇭', name: 'Campuchia', category: 'Quốc kỳ', keywords: 'campuchia cambodia kh angkor cờ'),
+  const EmojiItem(emoji: '🇲🇾', name: 'Malaysia', category: 'Quốc kỳ', keywords: 'malaysia my cờ'),
+  const EmojiItem(emoji: '🇮🇩', name: 'Indonesia', category: 'Quốc kỳ', keywords: 'indonesia id cờ'),
+  const EmojiItem(emoji: '🇵🇭', name: 'Philippines', category: 'Quốc kỳ', keywords: 'philippines ph cờ'),
+  const EmojiItem(emoji: '🇮🇳', name: 'Ấn Độ', category: 'Quốc kỳ', keywords: 'an do india indian in cờ'),
+  const EmojiItem(emoji: '🇧🇷', name: 'Brazil', category: 'Quốc kỳ', keywords: 'brazil br samba cờ'),
+  const EmojiItem(emoji: '🇲🇽', name: 'Mexico', category: 'Quốc kỳ', keywords: 'mexico mx cờ'),
+  const EmojiItem(emoji: '🇦🇷', name: 'Argentina', category: 'Quốc kỳ', keywords: 'argentina ar cờ'),
+  const EmojiItem(emoji: '🇨🇭', name: 'Thụy Sĩ', category: 'Quốc kỳ', keywords: 'thuy si switzerland ch cờ'),
+  const EmojiItem(emoji: '🇸🇪', name: 'Thụy Điển', category: 'Quốc kỳ', keywords: 'thuy dien sweden se cờ'),
+  const EmojiItem(emoji: '🇳🇴', name: 'Na Uy', category: 'Quốc kỳ', keywords: 'na uy norway no cờ'),
+  const EmojiItem(emoji: '🇫🇮', name: 'Phần Lan', category: 'Quốc kỳ', keywords: 'phan lan finland fi cờ'),
+  const EmojiItem(emoji: '🇩🇰', name: 'Đan Mạch', category: 'Quốc kỳ', keywords: 'dan mach denmark dk cờ'),
+  const EmojiItem(emoji: '🇳🇱', name: 'Hà Lan', category: 'Quốc kỳ', keywords: 'ha lan netherlands holland nl cờ'),
+  const EmojiItem(emoji: '🇧🇪', name: 'Bỉ', category: 'Quốc kỳ', keywords: 'bi belgium be cờ'),
+  const EmojiItem(emoji: '🇵🇹', name: 'Bồ Đào Nha', category: 'Quốc kỳ', keywords: 'bo dao nha portugal pt cờ'),
+  const EmojiItem(emoji: '🇬🇷', name: 'Hy Lạp', category: 'Quốc kỳ', keywords: 'hy lap greece greek gr cờ'),
+  const EmojiItem(emoji: '🇹🇷', name: 'Thổ Nhĩ Kỳ', category: 'Quốc kỳ', keywords: 'tho nhi ky turkey tr cờ'),
+  const EmojiItem(emoji: '🇪🇬', name: 'Ai Cập', category: 'Quốc kỳ', keywords: 'ai cap egypt eg kim tu thap cờ'),
+  const EmojiItem(emoji: '🇿🇦', name: 'Nam Phi', category: 'Quốc kỳ', keywords: 'nam phi south africa za cờ'),
+  const EmojiItem(emoji: '🇸🇦', name: 'Ả Rập Xê Út', category: 'Quốc kỳ', keywords: 'a rap xe ut saudi arabia sa cờ'),
+  const EmojiItem(emoji: '🇦🇪', name: 'UAE (Các TVQ Ả Rập)', category: 'Quốc kỳ', keywords: 'uae emirates dubai abu dhabi ae cờ'),
+  const EmojiItem(emoji: '🇮🇪', name: 'Ireland', category: 'Quốc kỳ', keywords: 'ireland ie cờ'),
+  const EmojiItem(emoji: '🇵🇱', name: 'Ba Lan', category: 'Quốc kỳ', keywords: 'ba lan poland pl cờ'),
+  const EmojiItem(emoji: '🇺🇦', name: 'Ukraine', category: 'Quốc kỳ', keywords: 'ukraine ua cờ'),
+  const EmojiItem(emoji: '🇨🇿', name: 'Cộng hòa Séc', category: 'Quốc kỳ', keywords: 'sec czech cz cờ'),
+  const EmojiItem(emoji: '🇦🇹', name: 'Áo', category: 'Quốc kỳ', keywords: 'ao austria at cờ'),
+  const EmojiItem(
+      emoji: '🇨🇺', name: 'Cuba', category: 'Quốc kỳ', keywords: 'cuba cu cờ'),
+  const EmojiItem(emoji: '🇹🇼', name: 'Đài Loan', category: 'Quốc kỳ', keywords: 'dai loan taiwan tw cờ'),
+  const EmojiItem(emoji: '🇭🇰', name: 'Hồng Kông', category: 'Quốc kỳ', keywords: 'hong kong hk cờ'),
+  const EmojiItem(emoji: '🇲🇴', name: 'Ma Cao', category: 'Quốc kỳ', keywords: 'ma cao macau mo cờ'),
+  const EmojiItem(emoji: '🇪🇺', name: 'Liên minh Châu Âu (EU)', category: 'Quốc kỳ', keywords: 'lien minh chau au european union eu cờ'),
+  const EmojiItem(emoji: '🇺🇳', name: 'Liên Hợp Quốc (UN)', category: 'Quốc kỳ', keywords: 'lien hop quoc united nations un cờ'),
+  const EmojiItem(emoji: '🏳️‍🌈', name: 'Cờ lục sắc LGBT', category: 'Quốc kỳ', keywords: 'co luc sac rainbow flag pride lgbt cờ'),
+  const EmojiItem(emoji: '🏳️‍⚧️', name: 'Cờ chuyển giới', category: 'Quốc kỳ', keywords: 'co chuyen gioi transgender flag pride cờ'),
+  const EmojiItem(emoji: '🏴‍☠️', name: 'Cờ hải tặc', category: 'Quốc kỳ', keywords: 'co hai tac pirate flag skull cờ'),
+  const EmojiItem(emoji: '🏁', name: 'Cờ ca-rô đua xe', category: 'Quốc kỳ', keywords: 'co ca ro checkered racing flag finish cờ'),
+  const EmojiItem(emoji: '🚩', name: 'Cờ tam giác đỏ', category: 'Quốc kỳ', keywords: 'co tam giac do triangular red flag pin cờ'),
+  const EmojiItem(emoji: '🎌', name: 'Cờ chéo Nhật', category: 'Quốc kỳ', keywords: 'co cheo crossed flags celebration cờ'),
+  const EmojiItem(emoji: '🏳️', name: 'Cờ trắng hòa bình', category: 'Quốc kỳ', keywords: 'co trang white flag peace surrender cờ'),
+  const EmojiItem(emoji: '🏴', name: 'Cờ đen', category: 'Quốc kỳ', keywords: 'co den black flag cờ'),
 ];

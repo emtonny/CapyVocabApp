@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_colors.dart';
 import '../providers/onboarding_provider.dart';
 
 class Step3RoleSelector extends ConsumerWidget {
@@ -16,15 +17,16 @@ class Step3RoleSelector extends ConsumerWidget {
       children: [
         const SizedBox(
           height: 0,
-          child: Text('Bạn sử dụng ứng dụng với vai trò nào?', style: TextStyle(fontSize: 0)),
+          child: Text('Bạn sử dụng ứng dụng với vai trò nào?',
+              style: TextStyle(fontSize: 0)),
         ),
         // Step Title Header
         const Text(
           '3. Bạn sử dụng app với vai trò nào? 👥',
           style: TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3C2A21),
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
             fontFamily: 'Fredoka',
           ),
         ),
@@ -36,7 +38,7 @@ class Step3RoleSelector extends ConsumerWidget {
           title: 'Cá nhân học tập',
           subtitle: 'Tự luyện từ vựng, chơi game & kết bạn',
           icon: Icons.person_rounded,
-          iconColor: const Color(0xFF6B429C),
+          iconBadgeColor: const Color(0xFFDDD6FE),
           selected: state.data.accountRole == 'personal',
           enabled: !state.isBusy,
           onTap: () => notifier.updateAccountRole('personal'),
@@ -50,7 +52,7 @@ class Step3RoleSelector extends ConsumerWidget {
           title: 'Phụ huynh / Giám sát',
           subtitle: 'Theo dõi tiến độ học & nhận báo cáo',
           icon: Icons.groups_rounded,
-          iconColor: const Color(0xFFD97706),
+          iconBadgeColor: AppColors.yellow,
           selected: state.data.accountRole == 'parent',
           enabled: !state.isBusy,
           onTap: () => notifier.updateAccountRole('parent'),
@@ -60,7 +62,11 @@ class Step3RoleSelector extends ConsumerWidget {
           const SizedBox(height: 12),
           Text(
             error,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Nunito',
+            ),
           ),
         ],
       ],
@@ -73,7 +79,7 @@ class _RoleOptionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.icon,
-    required this.iconColor,
+    required this.iconBadgeColor,
     required this.selected,
     required this.enabled,
     required this.onTap,
@@ -83,7 +89,7 @@ class _RoleOptionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
-  final Color iconColor;
+  final Color iconBadgeColor;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
@@ -97,49 +103,46 @@ class _RoleOptionCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFF6DC) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          color: selected ? const Color(0xFFFEF08A) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: selected ? const Color(0xFF58CC02) : const Color(0xFFEADECF),
+            color: AppColors.ink,
             width: selected ? 2.5 : 2.0,
           ),
-          boxShadow: selected
-              ? const [
-                  BoxShadow(
-                    color: Color(0xFF58CC02),
-                    offset: Offset(0, 3),
-                    blurRadius: 0,
-                  ),
-                ]
-              : const [
-                  BoxShadow(
-                    color: Color(0xFFEADECF),
-                    offset: Offset(0, 2),
-                    blurRadius: 0,
-                  ),
-                ],
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.ink,
+              offset:
+                  selected ? const Offset(3.5, 3.5) : const Offset(2.5, 2.5),
+              blurRadius: 0,
+            ),
+          ],
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: enabled ? onTap : null,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(10),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 children: [
-                  // Icon Avatar
+                  // Icon Avatar Badge
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: iconColor.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
+                      color: iconBadgeColor,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppColors.ink,
+                        width: 1.8,
+                      ),
                     ),
                     child: Icon(
                       icon,
-                      size: 28,
-                      color: iconColor,
+                      size: 24,
+                      color: AppColors.ink,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -153,8 +156,8 @@ class _RoleOptionCard extends StatelessWidget {
                           title,
                           style: const TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF3C2A21),
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.ink,
                             fontFamily: 'Fredoka',
                           ),
                         ),
@@ -162,14 +165,32 @@ class _RoleOptionCard extends StatelessWidget {
                         Text(
                           subtitle,
                           style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF786C65),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.mutedInk,
+                            fontFamily: 'Nunito',
                           ),
                         ),
                       ],
                     ),
                   ),
+                  if (selected)
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
+                        color: AppColors.lime,
+                        shape: BoxShape.circle,
+                        border: Border.fromBorderSide(
+                          BorderSide(color: AppColors.ink, width: 1.8),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        size: 15,
+                        color: AppColors.ink,
+                      ),
+                    ),
                 ],
               ),
             ),

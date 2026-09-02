@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_colors.dart';
 import '../providers/onboarding_provider.dart';
 
 class Step5DailyTarget extends ConsumerStatefulWidget {
@@ -46,15 +47,16 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
       children: [
         const SizedBox(
           height: 0,
-          child: Text('Mục tiêu từ vựng mỗi ngày', style: TextStyle(fontSize: 0)),
+          child:
+              Text('Mục tiêu từ vựng mỗi ngày', style: TextStyle(fontSize: 0)),
         ),
         // Step Title Header
         const Text(
           '5. Số lượng từ vựng bạn muốn học mỗi ngày? 📚',
           style: TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3C2A21),
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
             fontFamily: 'Fredoka',
           ),
         ),
@@ -64,8 +66,9 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
           'Tự nhập số lượng từ vựng bạn đặt mục tiêu chinh phục mỗi ngày hoặc chọn nhanh bên dưới:',
           style: TextStyle(
             fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF786C65),
+            fontWeight: FontWeight.w700,
+            color: AppColors.mutedInk,
+            fontFamily: 'Nunito',
             height: 1.3,
           ),
         ),
@@ -76,16 +79,16 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF6DC),
-            borderRadius: BorderRadius.circular(20),
+            color: const Color(0xFFFEF08A),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: const Color(0xFF3C2A21),
+              color: AppColors.ink,
               width: 2.5,
             ),
             boxShadow: const [
               BoxShadow(
-                color: Color(0xFF3C2A21),
-                offset: Offset(0, 4),
+                color: AppColors.ink,
+                offset: Offset(4, 4),
                 blurRadius: 0,
               ),
             ],
@@ -110,7 +113,7 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
                     style: const TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF3C2A21),
+                      color: AppColors.ink,
                       fontFamily: 'Fredoka',
                     ),
                     decoration: const InputDecoration(
@@ -128,8 +131,8 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
                 'từ / ngày',
                 style: TextStyle(
                   fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3C2A21),
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
                   fontFamily: 'Fredoka',
                 ),
               ),
@@ -142,9 +145,10 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
         const Text(
           'Gợi ý chọn nhanh:',
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF786C65),
+            fontSize: 13.5,
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
+            fontFamily: 'Fredoka',
           ),
         ),
         const SizedBox(height: 12),
@@ -182,7 +186,11 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
           const SizedBox(height: 12),
           Text(
             error,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Nunito',
+            ),
           ),
         ],
       ],
@@ -208,16 +216,17 @@ class _PresetChipButton extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFF58CC02) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: isSelected ? AppColors.lime : Colors.white,
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFF3C2A21),
-          width: 2.0,
+          color: AppColors.ink,
+          width: isSelected ? 2.2 : 2.0,
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 3),
+            color: AppColors.ink,
+            offset:
+                isSelected ? const Offset(2.8, 2.8) : const Offset(2.0, 2.0),
             blurRadius: 0,
           ),
         ],
@@ -226,15 +235,15 @@ class _PresetChipButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(10),
           child: Center(
             child: Text(
               label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.bold,
+                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w800,
                 fontFamily: 'Fredoka',
-                color: isSelected ? Colors.white : const Color(0xFF3C2A21),
+                color: AppColors.ink,
               ),
             ),
           ),

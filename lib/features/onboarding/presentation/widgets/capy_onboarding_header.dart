@@ -91,17 +91,19 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
               'Bước ${stepIndex + 1} / 5',
               style: const TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF3C2A21),
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
                 fontFamily: 'Fredoka',
+                letterSpacing: 0.1,
               ),
             ),
             Text(
               '${(progress * 100).round()}%',
               style: const TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF786C65),
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
+                fontFamily: 'Fredoka',
               ),
             ),
           ],
@@ -111,10 +113,10 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
           key: const Key('onboarding-progress-bar'),
           height: 12,
           decoration: BoxDecoration(
-            color: const Color(0xFFEFE8DB),
+            color: AppColors.softWhite,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: const Color(0xFF3C2A21),
+              color: AppColors.ink,
               width: 2.0,
             ),
           ),
@@ -125,7 +127,7 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
               child: FractionallySizedBox(
                 widthFactor: progress,
                 child: Container(
-                  color: AppColors.duoGreen,
+                  color: AppColors.lime,
                 ),
               ),
             ),
@@ -140,15 +142,15 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: const Color(0xFF3C2A21),
-              width: 2.5,
+              color: AppColors.ink,
+              width: 2.8,
             ),
             boxShadow: const [
               BoxShadow(
-                color: Color(0xFF3C2A21),
-                offset: Offset(0, 4),
+                color: AppColors.ink,
+                offset: Offset(6, 6),
                 blurRadius: 0,
               ),
             ],
@@ -160,8 +162,12 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
                 width: 112 * (9 / 16),
                 height: 112,
                 decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.softWhite,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.ink,
+                    width: 2.0,
+                  ),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: _isInitialized && _controller != null
@@ -191,8 +197,8 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
                       prompt['title']!,
                       style: const TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF3C2A21),
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
                         fontFamily: 'Fredoka',
                       ),
                     ),
@@ -201,8 +207,9 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
                       prompt['subtitle']!,
                       style: const TextStyle(
                         fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF786C65),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.mutedInk,
+                        fontFamily: 'Nunito',
                         height: 1.3,
                       ),
                     ),

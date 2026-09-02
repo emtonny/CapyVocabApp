@@ -49,6 +49,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('before-style-preview')), findsOneWidget);
     expect(find.byKey(const Key('after-style-preview')), findsOneWidget);
+
+    await _expandSection(tester, 'Box label');
     final presetColorCenter =
         tester.getCenter(find.byKey(const Key('border-color-0')));
     final customColorCenter = tester.getCenter(
@@ -113,6 +115,8 @@ void main() {
     final customCard = find.byKey(const Key('label-template-custom'));
     expect(savedCard, findsOneWidget);
     expect(find.byKey(const Key('custom-label-editor')), findsNothing);
+    expect(_isTemplateCardSelected(tester, savedCard), isTrue);
+    expect(_isTemplateCardSelected(tester, customCard), isFalse);
     expect(
       tester.getTopLeft(savedCard).dx,
       lessThan(tester.getTopLeft(customCard).dx),
@@ -125,6 +129,8 @@ void main() {
     expect(customStyle, savedStyle);
     expect(selectedTemplate, NoteLabelTemplate.custom);
     expect(find.byKey(const Key('custom-label-editor')), findsNothing);
+    expect(_isTemplateCardSelected(tester, savedCard), isTrue);
+    expect(_isTemplateCardSelected(tester, customCard), isFalse);
 
     await _tapVisible(tester, const Key('label-template-custom'));
     expect(
@@ -186,6 +192,45 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('đóng editor bỏ trạng thái chọn khỏi ô Tự thiết kế', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    var selectedTemplate = NoteLabelTemplate.standard;
+    var customStyle = LabelVisualStyle.customDefault;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => SingleChildScrollView(
+              child: NoteTemplateSelector(
+                selectedTemplate: selectedTemplate,
+                customStyle: customStyle,
+                onTemplateChanged: (template) {
+                  setState(() => selectedTemplate = template);
+                },
+                onCustomStyleChanged: (style) {
+                  setState(() => customStyle = style);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final customCard = find.byKey(const Key('label-template-custom'));
+    await tester.tap(customCard);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('custom-label-editor')), findsOneWidget);
+    expect(_isTemplateCardSelected(tester, customCard), isTrue);
+
+    await _tapVisible(tester, const Key('label-template-custom'));
+    expect(find.byKey(const Key('custom-label-editor')), findsNothing);
+    expect(_isTemplateCardSelected(tester, customCard), isFalse);
+  });
+
   testWidgets('selector survives repeated viewport breakpoint changes',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
@@ -225,7 +270,9 @@ void main() {
     }
   });
 
-  testWidgets('mở selector với NoteLabelTemplate.custom không tự bật editor bảng bên dưới', (
+  testWidgets(
+      'mở selector với NoteLabelTemplate.custom không tự bật editor bảng bên dưới',
+      (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -263,10 +310,15 @@ void main() {
 
     // Editor should not be open by default
     expect(find.byKey(const Key('custom-label-editor')), findsNothing);
-    expect(find.byKey(const Key('saved-label-template-0')), findsOneWidget);
+    final savedCard = find.byKey(const Key('saved-label-template-0'));
+    final customCard = find.byKey(const Key('label-template-custom'));
+    expect(savedCard, findsOneWidget);
+    expect(_isTemplateCardSelected(tester, savedCard), isTrue);
+    expect(_isTemplateCardSelected(tester, customCard), isFalse);
   });
 
-  testWidgets('nhấn giữ mẫu đã lưu cho phép xoá mẫu để tạo mẫu mới trên gói Free', (
+  testWidgets(
+      'nhấn giữ mẫu đã lưu cho phép xoá mẫu để tạo mẫu mới trên gói Free', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -316,10 +368,12 @@ void main() {
     // Free user can now tap "Tự thiết kế" to open editor
     await _tapVisible(tester, const Key('label-template-custom'));
     expect(find.byKey(const Key('custom-label-editor')), findsOneWidget);
-    expect(find.byKey(const Key('label-template-pro-limit-dialog')), findsNothing);
+    expect(
+        find.byKey(const Key('label-template-pro-limit-dialog')), findsNothing);
   });
 
-  testWidgets('mở dialog tự chọn màu, lăn slider đổi màu và áp dụng thành công', (
+  testWidgets('mở dialog tự chọn màu, lăn slider đổi màu và áp dụng thành công',
+      (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -350,12 +404,16 @@ void main() {
     await _tapVisible(tester, const Key('label-template-custom'));
     expect(find.byKey(const Key('custom-label-editor')), findsOneWidget);
 
+    // Expand Box label section
+    await _expandSection(tester, 'Box label');
+
     // Tap custom color picker for border color
     await _tapVisible(tester, const Key('border-color-custom-picker'));
     expect(find.text('Tự chọn Màu viền'), findsOneWidget);
 
     // Adjust Hue slider
-    final hueSlider = tester.widget<Slider>(find.byKey(const Key('color-hue-slider')));
+    final hueSlider =
+        tester.widget<Slider>(find.byKey(const Key('color-hue-slider')));
     hueSlider.onChanged!(180.0);
     await tester.pump();
 
@@ -364,8 +422,70 @@ void main() {
     await tester.pumpAndSettle();
 
     // Color should have updated
-    expect(customStyle.borderColor, isNot(LabelVisualStyle.customDefault.borderColor));
+    expect(customStyle.borderColor,
+        isNot(LabelVisualStyle.customDefault.borderColor));
   });
+
+  testWidgets(
+      'khi mở editor rồi click lại để đóng thì khôi phục chọn về mẫu ban đầu và bỏ chọn ô Tự thiết kế',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var selectedTemplate = NoteLabelTemplate.standard;
+    var customStyle = LabelVisualStyle.customDefault;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => SingleChildScrollView(
+              child: NoteTemplateSelector(
+                selectedTemplate: selectedTemplate,
+                customStyle: customStyle,
+                onTemplateChanged: (template) {
+                  setState(() => selectedTemplate = template);
+                },
+                onCustomStyleChanged: (style) {
+                  setState(() => customStyle = style);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final standardCard = find.byKey(const Key('label-template-standard'));
+    final customCard = find.byKey(const Key('label-template-custom'));
+
+    // Ban đầu Standard được chọn
+    expect(_isTemplateCardSelected(tester, standardCard), isTrue);
+    expect(_isTemplateCardSelected(tester, customCard), isFalse);
+
+    // Mở editor
+    await tester.tap(customCard);
+    await tester.pumpAndSettle();
+    expect(selectedTemplate, NoteLabelTemplate.custom);
+    expect(find.byKey(const Key('custom-label-editor')), findsOneWidget);
+    expect(_isTemplateCardSelected(tester, customCard), isTrue);
+    expect(_isTemplateCardSelected(tester, standardCard), isFalse);
+
+    // Đóng editor bằng cách click lại vào ô Tự thiết kế
+    await tester.tap(customCard);
+    await tester.pumpAndSettle();
+    expect(selectedTemplate, NoteLabelTemplate.standard);
+    expect(find.byKey(const Key('custom-label-editor')), findsNothing);
+    expect(_isTemplateCardSelected(tester, customCard), isFalse);
+    expect(_isTemplateCardSelected(tester, standardCard), isTrue);
+  });
+}
+
+bool? _isTemplateCardSelected(WidgetTester tester, Finder card) {
+  final semantics = find
+      .ancestor(of: card, matching: find.byType(Semantics))
+      .evaluate()
+      .map((element) => element.widget as Semantics)
+      .firstWhere((widget) => widget.properties.button == true);
+  return semantics.properties.selected;
 }
 
 Future<void> _expandSection(WidgetTester tester, String title) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_colors.dart';
+
 enum SocialProvider { google, facebook }
 
 class SocialAuthButton extends StatelessWidget {
@@ -17,23 +19,24 @@ class SocialAuthButton extends StatelessWidget {
     final isGoogle = provider == SocialProvider.google;
 
     final bgColor = isGoogle ? Colors.white : const Color(0xFF1877F2);
-    final textColor = isGoogle ? const Color(0xFF3C2A21) : Colors.white;
+    final textColor = isGoogle ? AppColors.ink : Colors.white;
     final text = isGoogle ? 'Đăng nhập bằng Google' : 'Đăng nhập bằng Facebook';
 
     return Container(
+      key: Key(isGoogle ? 'google-auth-box' : 'facebook-auth-box'),
       width: double.infinity,
       height: 52,
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: const Color(0xFF3C2A21),
-          width: 2.5,
+          color: AppColors.ink,
+          width: 2.4,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 3),
+            color: AppColors.ink,
+            offset: Offset(6, 6),
             blurRadius: 0,
           ),
         ],
@@ -41,43 +44,65 @@ class SocialAuthButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(8),
           onTap: onPressed,
-          child: Stack(
-            alignment: Alignment.center,
+          child: Row(
             children: [
-              // Icon fixed on the left (20px padding) so both buttons align vertically
-              Positioned(
-                left: 20,
-                child: SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: Center(
-                    child: isGoogle
-                        ? const _GoogleIcon()
-                        : const Icon(
-                            Icons.facebook,
-                            color: Colors.white,
-                            size: 26,
-                          ),
+              // Left Icon Box with vertical dividing border
+              Container(
+                width: 52,
+                height: double.infinity,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  border: Border(
+                    right: BorderSide(
+                      color: AppColors.ink,
+                      width: 2.0,
+                    ),
                   ),
                 ),
+                child: isGoogle ? const _GoogleIcon() : const _FacebookIcon(),
               ),
 
-              // Button Text
-              Text(
-                text,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Fredoka',
-                  height: 1.2,
+              // Button Text Centered in remaining space
+              Expanded(
+                child: Text(
+                  text,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Fredoka',
+                    letterSpacing: 0.1,
+                  ),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FacebookIcon extends StatelessWidget {
+  const _FacebookIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Icon(
+        Icons.facebook,
+        color: Color(0xFF1877F2),
+        size: 28,
       ),
     );
   }
@@ -129,25 +154,33 @@ class _GoogleGLogoPainter extends CustomPainter {
     // 1. Red Arc (Top): 220° to 315° (sweep = 95°)
     canvas.drawPath(
       createSegment(220, 95),
-      Paint()..color = const Color(0xFFEA4335)..style = PaintingStyle.fill,
+      Paint()
+        ..color = const Color(0xFFEA4335)
+        ..style = PaintingStyle.fill,
     );
 
     // 2. Yellow Arc (Left): 140° to 220° (sweep = 80°)
     canvas.drawPath(
       createSegment(140, 80),
-      Paint()..color = const Color(0xFFFBBC05)..style = PaintingStyle.fill,
+      Paint()
+        ..color = const Color(0xFFFBBC05)
+        ..style = PaintingStyle.fill,
     );
 
     // 3. Green Arc (Bottom): 45° to 140° (sweep = 95°)
     canvas.drawPath(
       createSegment(45, 95),
-      Paint()..color = const Color(0xFF34A853)..style = PaintingStyle.fill,
+      Paint()
+        ..color = const Color(0xFF34A853)
+        ..style = PaintingStyle.fill,
     );
 
     // 4. Blue Arc (Bottom Right): 0° to 45° (sweep = 45°)
     canvas.drawPath(
       createSegment(0, 45),
-      Paint()..color = const Color(0xFF4285F4)..style = PaintingStyle.fill,
+      Paint()
+        ..color = const Color(0xFF4285F4)
+        ..style = PaintingStyle.fill,
     );
 
     // 5. Blue Horizontal Bar: from (cx, cy - strokeWidth/2) to (cx + outerR, cy + strokeWidth/2)
@@ -160,12 +193,12 @@ class _GoogleGLogoPainter extends CustomPainter {
       ));
     canvas.drawPath(
       barPath,
-      Paint()..color = const Color(0xFF4285F4)..style = PaintingStyle.fill,
+      Paint()
+        ..color = const Color(0xFF4285F4)
+        ..style = PaintingStyle.fill,
     );
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-
-

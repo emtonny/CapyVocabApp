@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_colors.dart';
 import '../providers/onboarding_provider.dart';
 
 class Step4StudyTime extends ConsumerStatefulWidget {
@@ -134,8 +135,8 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
           '4. Khung giờ học hàng ngày của bạn? ⏰',
           style: TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3C2A21),
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
             fontFamily: 'Fredoka',
           ),
         ),
@@ -195,14 +196,22 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
           const SizedBox(height: 12),
           Text(
             error,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Nunito',
+            ),
           ),
         ],
         if (state.fieldErrors['studyEndTime'] case final error?) ...[
           const SizedBox(height: 12),
           Text(
             error,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Nunito',
+            ),
           ),
         ],
       ],
@@ -229,33 +238,26 @@ class _CustomTimeSlotCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFFFF6DC) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        color: isSelected ? const Color(0xFFFEF08A) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isSelected ? const Color(0xFF58CC02) : const Color(0xFFEADECF),
           width: isSelected ? 2.5 : 2.0,
         ),
-        boxShadow: isSelected
-            ? const [
-                BoxShadow(
-                  color: Color(0xFF58CC02),
-                  offset: Offset(0, 3),
-                  blurRadius: 0,
-                ),
-              ]
-            : const [
-                BoxShadow(
-                  color: Color(0xFFEADECF),
-                  offset: Offset(0, 2),
-                  blurRadius: 0,
-                ),
-              ],
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink,
+            offset:
+                isSelected ? const Offset(3.5, 3.5) : const Offset(2.5, 2.5),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
@@ -273,8 +275,8 @@ class _CustomTimeSlotCard extends StatelessWidget {
                         'Tùy chỉnh khung giờ',
                         style: TextStyle(
                           fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3C2A21),
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.ink,
                           fontFamily: 'Fredoka',
                         ),
                       ),
@@ -283,10 +285,10 @@ class _CustomTimeSlotCard extends StatelessWidget {
                         time,
                         style: TextStyle(
                           fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isSelected
-                              ? const Color(0xFF58CC02)
-                              : const Color(0xFF786C65),
+                          fontWeight: FontWeight.w700,
+                          color:
+                              isSelected ? AppColors.ink : AppColors.mutedInk,
+                          fontFamily: 'Nunito',
                         ),
                       ),
                     ],
@@ -294,9 +296,7 @@ class _CustomTimeSlotCard extends StatelessWidget {
                 ),
                 Icon(
                   Icons.edit_calendar_rounded,
-                  color: isSelected
-                      ? const Color(0xFF58CC02)
-                      : const Color(0xFF786C65),
+                  color: isSelected ? AppColors.ink : const Color(0xFF786C65),
                   size: 22,
                 ),
               ],
@@ -331,33 +331,26 @@ class _TimeSlotCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFFFF6DC) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        color: isSelected ? const Color(0xFFFEF08A) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isSelected ? const Color(0xFF58CC02) : const Color(0xFFEADECF),
           width: isSelected ? 2.5 : 2.0,
         ),
-        boxShadow: isSelected
-            ? const [
-                BoxShadow(
-                  color: Color(0xFF58CC02),
-                  offset: Offset(0, 3),
-                  blurRadius: 0,
-                ),
-              ]
-            : const [
-                BoxShadow(
-                  color: Color(0xFFEADECF),
-                  offset: Offset(0, 2),
-                  blurRadius: 0,
-                ),
-              ],
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink,
+            offset:
+                isSelected ? const Offset(3.5, 3.5) : const Offset(2.5, 2.5),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             child: FittedBox(
@@ -374,8 +367,8 @@ class _TimeSlotCard extends StatelessWidget {
                     title,
                     style: const TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF3C2A21),
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
                       fontFamily: 'Fredoka',
                     ),
                   ),
@@ -384,8 +377,9 @@ class _TimeSlotCard extends StatelessWidget {
                     range,
                     style: const TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF786C65),
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.mutedInk,
+                      fontFamily: 'Nunito',
                     ),
                   ),
                 ],
@@ -474,7 +468,19 @@ class __CustomTimePickerBottomSheetState
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+        border: Border(
+          top: BorderSide(color: AppColors.ink, width: 2.8),
+          left: BorderSide(color: AppColors.ink, width: 2.8),
+          right: BorderSide(color: AppColors.ink, width: 2.8),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink,
+            offset: Offset(0, -6),
+            blurRadius: 0,
+          ),
+        ],
       ),
       padding: EdgeInsets.only(
         top: 16,
@@ -488,10 +494,10 @@ class __CustomTimePickerBottomSheetState
           // Top Drag Handle
           Container(
             width: 40,
-            height: 4,
+            height: 5,
             decoration: BoxDecoration(
-              color: const Color(0xFFEADECF),
-              borderRadius: BorderRadius.circular(2),
+              color: AppColors.ink,
+              borderRadius: BorderRadius.circular(3),
             ),
           ),
           const SizedBox(height: 16),
@@ -501,8 +507,8 @@ class __CustomTimePickerBottomSheetState
             'Tùy chỉnh khung giờ học ⏰',
             style: TextStyle(
               fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3C2A21),
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
               fontFamily: 'Fredoka',
             ),
           ),
@@ -510,9 +516,9 @@ class __CustomTimePickerBottomSheetState
 
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F4EF),
+              color: AppColors.softWhite,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFEADECF)),
+              border: Border.all(color: AppColors.ink, width: 2.0),
             ),
             padding: const EdgeInsets.all(4),
             child: Row(
@@ -557,23 +563,35 @@ class __CustomTimePickerBottomSheetState
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF6DC),
+              color: const Color(0xFFFEF08A),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF58CC02)),
+              border: Border.all(color: AppColors.ink, width: 2.0),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.ink,
+                  offset: Offset(2.5, 2.5),
+                  blurRadius: 0,
+                ),
+              ],
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Text(
                   '⏰  Khung giờ chọn: ',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF786C65)),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Nunito',
+                  ),
                 ),
                 Text(
                   '${_formatTime(_startTime)} - ${_formatTime(_endTime)}',
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF3C2A21),
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
                     fontFamily: 'Fredoka',
                   ),
                 ),
@@ -587,7 +605,8 @@ class __CustomTimePickerBottomSheetState
               key: const Key('study-time-range-error'),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Nunito',
               ),
             ),
           ],
@@ -600,7 +619,14 @@ class __CustomTimePickerBottomSheetState
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF3E0),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFFB74D)),
+                border: Border.all(color: AppColors.ink, width: 2.0),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.ink,
+                    offset: Offset(2.5, 2.5),
+                    blurRadius: 0,
+                  ),
+                ],
               ),
               child: Text(
                 'Khung giờ học khá dài '
@@ -609,7 +635,8 @@ class __CustomTimePickerBottomSheetState
                 style: const TextStyle(
                   color: Color(0xFFE65100),
                   fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Nunito',
                 ),
               ),
             ),
@@ -617,9 +644,19 @@ class __CustomTimePickerBottomSheetState
           const SizedBox(height: 18),
 
           // Confirm Button
-          SizedBox(
+          Container(
             width: double.infinity,
             height: 48,
+            decoration: const BoxDecoration(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ink,
+                  offset: Offset(3.5, 3.5),
+                  blurRadius: 0,
+                ),
+              ],
+            ),
             child: ElevatedButton(
               key: const Key('confirm-study-time-range'),
               onPressed: isValidRange
@@ -629,18 +666,22 @@ class __CustomTimePickerBottomSheetState
                     }
                   : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF58CC02),
+                backgroundColor: AppColors.lime,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(
+                    color: AppColors.ink,
+                    width: 2.4,
+                  ),
                 ),
               ),
               child: const Text(
                 'Xác nhận',
                 style: TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
                   fontFamily: 'Fredoka',
                 ),
               ),
@@ -669,7 +710,7 @@ class _TimeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isSelected ? const Color(0xFFFFF6DC) : Colors.transparent,
+      color: isSelected ? AppColors.lime : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
@@ -680,7 +721,7 @@ class _TimeTab extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
             border: isSelected
-                ? Border.all(color: const Color(0xFF58CC02), width: 1.5)
+                ? Border.all(color: AppColors.ink, width: 2.0)
                 : null,
           ),
           child: Column(
@@ -690,8 +731,9 @@ class _TimeTab extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   fontSize: 12,
-                  color: Color(0xFF786C65),
-                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Nunito',
                 ),
               ),
               const SizedBox(height: 2),
@@ -699,8 +741,8 @@ class _TimeTab extends StatelessWidget {
                 time,
                 style: const TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3C2A21),
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
                   fontFamily: 'Fredoka',
                 ),
               ),

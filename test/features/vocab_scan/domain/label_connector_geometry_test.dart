@@ -311,6 +311,20 @@ void main() {
     expect(anchor.dy == targetBox.top, isFalse);
   });
 
+  test('computeConnectorPath can target the center for visible arrows', () {
+    const labelRect = Rect.fromLTWH(300, 600, 80, 80);
+    const targetBox = Rect.fromLTWH(20, 30, 40, 40);
+
+    final path = computeConnectorPath(
+      labelRect: labelRect,
+      targetBox: targetBox,
+      targetCenter: true,
+    );
+
+    expect(_isOnBorder(path.from, labelRect), isTrue);
+    expect(path.to, targetBox.center);
+  });
+
   test('targetBox contained by labelRect collapses to a finite shared anchor',
       () {
     const labelRect = Rect.fromLTWH(0, 0, 200, 200);

@@ -38,7 +38,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
 
     if (state.isInitializing) {
       return const Scaffold(
-        backgroundColor: Color(0xFFFAF6EE),
+        backgroundColor: AppColors.cream,
         body: Center(
           child: CircularProgressIndicator(color: AppColors.duoGreen),
         ),
@@ -47,7 +47,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
 
     if (state.initializationError != null) {
       return Scaffold(
-        backgroundColor: const Color(0xFFFAF6EE),
+        backgroundColor: AppColors.cream,
         body: SafeArea(
           child: Center(
             child: Padding(
@@ -85,7 +85,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF3E7),
+      backgroundColor: AppColors.cream,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isWide =
@@ -155,15 +155,15 @@ class OnboardingWizardScreen extends ConsumerWidget {
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFF3C2A21),
-                      width: 2.5,
+                      color: AppColors.ink,
+                      width: 2.8,
                     ),
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0xFF3C2A21),
-                        offset: Offset(0, 4),
+                        color: AppColors.ink,
+                        offset: Offset(6, 6),
                         blurRadius: 0,
                       ),
                     ],
@@ -179,7 +179,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF3C2A21),
+                          color: AppColors.ink,
                           fontFamily: 'Fredoka',
                         ),
                       ),
@@ -189,11 +189,15 @@ class OnboardingWizardScreen extends ConsumerWidget {
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF786C65),
+                          color: AppColors.mutedInk,
+                          fontFamily: 'Nunito',
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Divider(color: Color(0xFFE2D6C5)),
+                      const Divider(
+                        color: AppColors.ink,
+                        thickness: 2.0,
+                      ),
                       const SizedBox(height: 12),
                       ...List.generate(_stepTitles.length, (index) {
                         final isActive = index == state.currentStep;
@@ -204,18 +208,18 @@ class OnboardingWizardScreen extends ConsumerWidget {
                           child: Row(
                             children: [
                               Container(
-                                width: 26,
-                                height: 26,
+                                width: 28,
+                                height: 28,
                                 decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
+                                  borderRadius: BorderRadius.circular(8),
                                   color: isCompleted
-                                      ? AppColors.duoGreen
+                                      ? AppColors.lime
                                       : (isActive
-                                          ? const Color(0xFFFFC72C)
-                                          : const Color(0xFFE2D6C5)),
+                                          ? AppColors.yellow
+                                          : AppColors.softWhite),
                                   border: Border.all(
-                                    color: const Color(0xFF3C2A21),
-                                    width: 1.5,
+                                    color: AppColors.ink,
+                                    width: 2.0,
                                   ),
                                 ),
                                 child: Center(
@@ -223,33 +227,35 @@ class OnboardingWizardScreen extends ConsumerWidget {
                                       ? const Icon(
                                           Icons.check,
                                           size: 16,
-                                          color: Colors.white,
+                                          color: AppColors.ink,
                                         )
                                       : Text(
                                           '${index + 1}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w800,
-                                            color: isActive
-                                                ? const Color(0xFF3C2A21)
-                                                : const Color(0xFF786C65),
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w900,
+                                            fontFamily: 'Fredoka',
+                                            color: AppColors.ink,
                                           ),
                                         ),
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                _stepTitles[index],
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: isActive
-                                      ? FontWeight.w800
-                                      : FontWeight.w600,
-                                  color: isActive
-                                      ? const Color(0xFF3C2A21)
-                                      : (isCompleted
-                                          ? AppColors.duoGreen
-                                          : const Color(0xFF9E8F85)),
+                              Expanded(
+                                child: Text(
+                                  _stepTitles[index],
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontFamily: isActive ? 'Fredoka' : 'Nunito',
+                                    fontWeight: isActive
+                                        ? FontWeight.w900
+                                        : FontWeight.w700,
+                                    color: isActive
+                                        ? AppColors.ink
+                                        : (isCompleted
+                                            ? AppColors.ink
+                                            : const Color(0xFF888888)),
+                                  ),
                                 ),
                               ),
                             ],
@@ -293,15 +299,15 @@ class OnboardingWizardScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF3C2A21),
+          color: AppColors.ink,
           width: 2.5,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 4),
+            color: AppColors.ink,
+            offset: Offset(6, 6),
             blurRadius: 0,
           ),
         ],
@@ -356,26 +362,32 @@ class _SaveErrorMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final errorColor = Theme.of(context).colorScheme.error;
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: errorColor.withValues(alpha: 0.08),
-        border: Border.all(color: errorColor, width: 2),
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFFFEE2E2),
+        border: Border.all(color: const Color(0xFFDC2626), width: 2),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0xFFDC2626),
+            offset: Offset(3, 3),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: errorColor),
+          const Icon(Icons.error_outline, color: Color(0xFFDC2626)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(
-                color: errorColor,
-                fontWeight: FontWeight.bold,
+              style: const TextStyle(
+                color: Color(0xFFDC2626),
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Nunito',
               ),
             ),
           ),
@@ -419,18 +431,18 @@ class _NavigationBar extends StatelessWidget {
         if (currentStep > 0) ...[
           Expanded(
             child: Container(
-              height: 52,
+              height: 50,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF3C2A21),
-                  width: 2.5,
+                  color: AppColors.ink,
+                  width: 2.4,
                 ),
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0xFF3C2A21),
-                    offset: Offset(0, 4),
+                    color: AppColors.ink,
+                    offset: Offset(4, 4),
                     blurRadius: 0,
                   ),
                 ],
@@ -440,14 +452,14 @@ class _NavigationBar extends StatelessWidget {
                 child: InkWell(
                   key: const Key('onboarding-back-button'),
                   onTap: isBusy ? null : onBack,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(12),
                   child: const Center(
                     child: Text(
                       '← Quay lại',
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF3C2A21),
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
                         fontFamily: 'Fredoka',
                       ),
                     ),
@@ -463,18 +475,18 @@ class _NavigationBar extends StatelessWidget {
         Expanded(
           flex: currentStep > 0 ? 2 : 1,
           child: Container(
-            height: 52,
+            height: 50,
             decoration: BoxDecoration(
-              color: const Color(0xFF58CC02),
-              borderRadius: BorderRadius.circular(20),
+              color: AppColors.lime,
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: const Color(0xFF3C2A21),
-                width: 2.5,
+                color: AppColors.ink,
+                width: 2.4,
               ),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0xFF3C2A21),
-                  offset: Offset(0, 4),
+                  color: AppColors.ink,
+                  offset: Offset(6, 6),
                   blurRadius: 0,
                 ),
               ],
@@ -484,7 +496,7 @@ class _NavigationBar extends StatelessWidget {
               child: InkWell(
                 key: const Key('onboarding-next-button'),
                 onTap: isBusy ? null : onNext,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(12),
                 child: Center(
                   child: isBusy
                       ? Row(
@@ -493,8 +505,8 @@ class _NavigationBar extends StatelessWidget {
                             const SizedBox.square(
                               dimension: 20,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
+                                strokeWidth: 2.4,
+                                color: AppColors.ink,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -502,8 +514,8 @@ class _NavigationBar extends StatelessWidget {
                               nextButtonText,
                               style: const TextStyle(
                                 fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.ink,
                                 fontFamily: 'Fredoka',
                               ),
                             ),
@@ -513,9 +525,10 @@ class _NavigationBar extends StatelessWidget {
                           nextButtonText,
                           style: const TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.ink,
                             fontFamily: 'Fredoka',
+                            letterSpacing: 0.2,
                           ),
                         ),
                 ),

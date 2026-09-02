@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../../core/constants/app_colors.dart';
+
 class CapyVideoHeader extends StatefulWidget {
   final String videoPath;
   final bool showText;
@@ -76,31 +78,32 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
             'Deery Vocab',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3C2A21),
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
               fontFamily: 'Fredoka',
-              letterSpacing: 0.5,
+              letterSpacing: -0.2,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           const Text(
             'Học tiếng cùng Deery, đi khắp thế giới',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 15.5,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF6E5D53),
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.mutedInk,
+              fontFamily: 'Nunito',
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
         ],
         Container(
           width: videoWidth,
           height: widget.videoHeight,
           decoration: BoxDecoration(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
           ),
           clipBehavior: Clip.antiAlias,
           child: _isInitialized && _controller != null
@@ -127,21 +130,22 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
     }
 
     return Container(
+      key: const Key('auth-hero-box'),
       width: double.infinity,
       padding: widget.showText
-          ? const EdgeInsets.symmetric(vertical: 24, horizontal: 22)
+          ? const EdgeInsets.symmetric(vertical: 22, horizontal: 20)
           : const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF3C2A21),
-          width: 2.5,
+          color: AppColors.ink,
+          width: 2.8,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 4),
+            color: AppColors.ink,
+            offset: Offset(8, 8),
             blurRadius: 0,
           ),
         ],

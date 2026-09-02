@@ -81,6 +81,8 @@ void main() {
     expect(footprintPath.from.dx, placed.labelRect.right);
     expect(cardPath.from.dx, cardRect.right);
     expect(cardPath.from.dx, lessThan(footprintPath.from.dx));
+    expect(footprintPath.to, placed.anchorBox.center);
+    expect(cardPath.to, placed.anchorBox.center);
   });
 
   test('all configurable line and arrow styles paint visible pixels', () async {

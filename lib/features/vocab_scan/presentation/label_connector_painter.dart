@@ -84,6 +84,7 @@ void paintAllConnectors(
     final route = selectConnectorRoute(
       labelRect: labelRects[index],
       targetBox: placed.anchorBox,
+      targetCenter: true,
       obstacleRects: [
         for (final (otherIndex, rect) in labelRects.indexed)
           if (otherIndex != index) rect,
@@ -119,6 +120,7 @@ ConnectorPath connectorPathForPlacedLabel(
   return computeConnectorPath(
     labelRect: labelRectResolver?.call(placedLabel) ?? placedLabel.labelRect,
     targetBox: placedLabel.anchorBox,
+    targetCenter: true,
   );
 }
 

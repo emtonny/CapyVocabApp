@@ -1,4 +1,5 @@
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/emoji_picker_dialog.dart';
+import 'package:capy_vocab/core/constants/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -90,5 +91,70 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selectedResult, '');
+  });
+
+  testWidgets(
+      'EmojiPickerDialog supports selecting Quốc kỳ category and searching flags',
+      (tester) async {
+    String? selectedResult;
+    await tester.pumpWidget(
+      buildHarness(
+        currentEmoji: '🦌',
+        onSelected: (val) => selectedResult = val,
+      ),
+    );
+
+    // Open dialog
+    await tester.tap(find.byKey(const Key('open-dialog-btn')));
+    await tester.pumpAndSettle();
+
+    // Switch to category "Quốc kỳ"
+    final flagChip = find.text('Quốc kỳ');
+    expect(flagChip, findsOneWidget);
+    await tester.ensureVisible(flagChip);
+    await tester.pumpAndSettle();
+    await tester.tap(flagChip);
+    await tester.pumpAndSettle();
+
+    // Vietnam flag is present in Quốc kỳ
+    expect(find.text('🇻🇳'), findsWidgets);
+
+    // Search for "nhat ban"
+    final searchField = find.byType(TextField);
+    await tester.enterText(searchField, 'nhat ban');
+    await tester.pumpAndSettle();
+
+    expect(find.text('🇯🇵'), findsOneWidget);
+
+    await tester.tap(find.text('🇯🇵'));
+    await tester.pumpAndSettle();
+
+    expect(selectedResult, '🇯🇵');
+  });
+
+  testWidgets('dialog neo-brutal giữ ô emoji đủ lớn trên màn hình hẹp',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      buildHarness(currentEmoji: '🦌', onSelected: (_) {}),
+    );
+    await tester.tap(find.byKey(const Key('open-dialog-btn')));
+    await tester.pumpAndSettle();
+
+    final dialog = tester.widget<AlertDialog>(find.byType(AlertDialog));
+    final shape = dialog.shape! as RoundedRectangleBorder;
+    expect(dialog.backgroundColor, AppColors.softWhite);
+    expect(dialog.elevation, 0);
+    expect(shape.side.color, AppColors.ink);
+    expect(shape.side.width, 2.8);
+    final firstEmoji = tester.getSize(
+      find.byKey(const Key('test-emoji-0')),
+    );
+    expect(firstEmoji.width, greaterThanOrEqualTo(48));
+    expect(firstEmoji.height, greaterThanOrEqualTo(48));
+    expect(tester.takeException(), isNull);
   });
 }

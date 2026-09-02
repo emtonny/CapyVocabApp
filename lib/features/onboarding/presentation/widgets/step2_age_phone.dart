@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_colors.dart';
 import '../providers/onboarding_provider.dart';
 
 class Step2AgePhone extends ConsumerWidget {
@@ -17,31 +18,28 @@ class Step2AgePhone extends ConsumerWidget {
       children: [
         const SizedBox(
           height: 0,
-          child: Text('Độ tuổi và số điện thoại', style: TextStyle(fontSize: 0)),
+          child:
+              Text('Độ tuổi và số điện thoại', style: TextStyle(fontSize: 0)),
         ),
         // Step Title Header
         const Text(
           '2. Độ tuổi & Số điện thoại 📱',
           style: TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3C2A21),
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
             fontFamily: 'Fredoka',
           ),
         ),
         const SizedBox(height: 18),
 
         // Age Label & Field
-        const Text(
-          'Tuổi của bạn',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3C2A21),
-            fontFamily: 'Fredoka',
-          ),
+        _buildFieldLabel(
+          label: 'Tuổi của bạn',
+          icon: Icons.cake_outlined,
+          badgeColor: AppColors.yellow,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         TextFormField(
           key: const Key('onboarding-age-field'),
           initialValue: state.data.age?.toString() ?? '',
@@ -54,8 +52,9 @@ class Step2AgePhone extends ConsumerWidget {
           ],
           style: const TextStyle(
             fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF3C2A21),
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+            fontFamily: 'Nunito',
           ),
           decoration: _inputDecoration(
             hintText: '20',
@@ -67,16 +66,12 @@ class Step2AgePhone extends ConsumerWidget {
         const SizedBox(height: 16),
 
         // Phone Label & Field
-        const Text(
-          'Số điện thoại liên hệ',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF3C2A21),
-            fontFamily: 'Fredoka',
-          ),
+        _buildFieldLabel(
+          label: 'Số điện thoại liên hệ',
+          icon: Icons.phone_iphone_rounded,
+          badgeColor: AppColors.lime,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         TextFormField(
           key: const Key('onboarding-phone-field'),
           initialValue: state.data.phone,
@@ -89,8 +84,9 @@ class Step2AgePhone extends ConsumerWidget {
           ],
           style: const TextStyle(
             fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF3C2A21),
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+            fontFamily: 'Nunito',
           ),
           decoration: _inputDecoration(
             hintText: '0987654321',
@@ -101,14 +97,54 @@ class Step2AgePhone extends ConsumerWidget {
                     child: SizedBox.square(
                       dimension: 20,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF58CC02),
+                        strokeWidth: 2.4,
+                        color: AppColors.ink,
                       ),
                     ),
                   )
                 : null,
           ),
           onChanged: notifier.updatePhone,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFieldLabel({
+    required String label,
+    required IconData icon,
+    required Color badgeColor,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: badgeColor,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: AppColors.ink,
+              width: 1.8,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 15,
+            color: AppColors.ink,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
+            fontFamily: 'Fredoka',
+            letterSpacing: 0.1,
+          ),
         ),
       ],
     );
@@ -123,36 +159,37 @@ class Step2AgePhone extends ConsumerWidget {
       hintText: hintText,
       errorText: errorText,
       hintStyle: const TextStyle(
-        color: Color(0xFFAFA49C),
-        fontWeight: FontWeight.normal,
+        color: Color(0xFF888888),
+        fontFamily: 'Nunito',
+        fontWeight: FontWeight.w600,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppColors.softWhite,
       suffixIcon: suffixIcon,
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(
-          color: Color(0xFF3C2A21),
+          color: AppColors.ink,
           width: 2.0,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(
-          color: Color(0xFF58CC02),
+          color: AppColors.ink,
           width: 2.5,
         ),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(
           color: Colors.redAccent,
           width: 2.0,
         ),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(
           color: Colors.redAccent,
           width: 2.5,

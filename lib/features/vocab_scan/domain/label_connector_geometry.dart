@@ -172,6 +172,7 @@ ConnectorRoute connectorRouteFromPath(
 ConnectorRoute selectConnectorRoute({
   required Rect labelRect,
   required Rect targetBox,
+  bool targetCenter = false,
   Iterable<Rect> obstacleRects = const [],
   Iterable<ConnectorRoute> existingRoutes = const [],
   Rect? canvasRect,
@@ -179,6 +180,7 @@ ConnectorRoute selectConnectorRoute({
   final endpoints = computeConnectorPath(
     labelRect: labelRect,
     targetBox: targetBox,
+    targetCenter: targetCenter,
   );
   final baseKind =
       _routeKindForLength((endpoints.to - endpoints.from).distance);
@@ -229,12 +231,6 @@ Offset computeLabelAnchor({
 }
 
 /// Returns the target-side endpoint nearest to [labelAnchor].
-///
-/// For disjoint rectangles, the result lies on [targetBox]'s border. The same
-/// symmetric overlap fallback as [computeLabelAnchor] applies: when
-/// [labelAnchor] is already inside or on [targetBox], it is returned unchanged.
-/// This lets both containment directions and partial intersections collapse to
-/// a deterministic zero-length connector.
 Offset computeTargetAnchor({
   required Rect targetBox,
   required Offset labelAnchor,
@@ -243,18 +239,23 @@ Offset computeTargetAnchor({
 }
 
 /// Computes endpoints sequentially: label anchor first, then target anchor.
+/// Set [targetCenter] for visible arrows that should point into the detected
+/// object while placement geometry continues to use the nearest bbox border.
 ConnectorPath computeConnectorPath({
   required Rect labelRect,
   required Rect targetBox,
+  bool targetCenter = false,
 }) {
   final labelAnchor = computeLabelAnchor(
     labelRect: labelRect,
     targetBox: targetBox,
   );
-  final targetAnchor = computeTargetAnchor(
-    targetBox: targetBox,
-    labelAnchor: labelAnchor,
-  );
+  final targetAnchor = targetCenter
+      ? targetBox.center
+      : computeTargetAnchor(
+          targetBox: targetBox,
+          labelAnchor: labelAnchor,
+        );
   return ConnectorPath(from: labelAnchor, to: targetAnchor);
 }
 

@@ -100,7 +100,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF3E7),
+      backgroundColor: AppColors.cream,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= _wideLayoutMinWidth;
@@ -122,18 +122,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   ) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
+          constraints: const BoxConstraints(maxWidth: 440),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const CapyVideoHeader(),
-              const SizedBox(height: 6),
+              const SizedBox(height: 14),
               _buildTabSwitcher(isLoading),
-              const SizedBox(height: 6),
+              const SizedBox(height: 14),
               _buildFormCard(isLoading, errorMessage),
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
               _buildSocialSection(),
             ],
           ),
@@ -157,20 +157,21 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             children: [
               // Top Prominent Banner Header for Web/PC & Tablet
               Container(
+                key: const Key('auth-wide-header-box'),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
                 margin: const EdgeInsets.only(bottom: 24),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: const Color(0xFF3C2A21),
-                    width: 2.5,
+                    color: AppColors.ink,
+                    width: 2.8,
                   ),
                   boxShadow: const [
                     BoxShadow(
-                      color: Color(0xFF3C2A21),
-                      offset: Offset(0, 4),
+                      color: AppColors.ink,
+                      offset: Offset(8, 8),
                       blurRadius: 0,
                     ),
                   ],
@@ -181,11 +182,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       'Deery Vocab',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 34,
+                        fontSize: 32,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF3C2A21),
+                        color: AppColors.ink,
                         fontFamily: 'Fredoka',
-                        letterSpacing: 0.5,
+                        letterSpacing: -0.2,
                       ),
                     ),
                     SizedBox(height: 4),
@@ -195,7 +196,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF786C65),
+                        color: AppColors.mutedInk,
+                        fontFamily: 'Nunito',
                       ),
                     ),
                   ],
@@ -223,9 +225,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _buildTabSwitcher(isLoading),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 14),
                         _buildFormCard(isLoading, errorMessage),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 22),
                         _buildSocialSection(),
                       ],
                     ),
@@ -241,19 +243,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   Widget _buildFormCard(bool isLoading, String? errorMessage) {
     return Container(
+      key: const Key('auth-form-box'),
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF3C2A21),
-          width: 2.5,
+          color: AppColors.ink,
+          width: 2.8,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 4),
+            color: AppColors.ink,
+            offset: Offset(8, 8),
             blurRadius: 0,
           ),
         ],
@@ -265,108 +268,159 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_isSignUp) ...[
-                _buildFieldLabel('👤 Họ tên'),
-                const SizedBox(height: 6),
-                TextFormField(
-                  key: const Key('sign-up-display-name-field'),
-                  controller: _displayNameController,
+                _buildFieldLabel(
+                  label: 'Họ tên',
+                  icon: Icons.person_outline_rounded,
+                  badgeColor: const Color(0xFFDDD6FE),
+                ),
+                const SizedBox(height: 8),
+                _buildInputBox(
+                  boxKey: const Key('display-name-input-box'),
+                  child: TextFormField(
+                    key: const Key('sign-up-display-name-field'),
+                    controller: _displayNameController,
+                    enabled: !isLoading,
+                    keyboardType: TextInputType.name,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.name],
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink,
+                      fontFamily: 'Nunito',
+                    ),
+                    decoration: _inputDecoration(
+                      labelText: 'Họ tên',
+                      hintText: 'Nguyễn Văn An',
+                    ),
+                    validator: (value) {
+                      if (!Validators.isNotEmpty(value)) {
+                        return 'Vui lòng nhập họ tên.';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              _buildFieldLabel(
+                label: 'Email / Tên đăng nhập',
+                icon: Icons.email_outlined,
+                badgeColor: const Color(0xFF7DD3FC),
+              ),
+              const SizedBox(height: 8),
+              _buildInputBox(
+                boxKey: const Key('email-input-box'),
+                child: TextFormField(
+                  key: const Key('email-field'),
+                  controller: _emailController,
                   enabled: !isLoading,
-                  keyboardType: TextInputType.name,
-                  textCapitalization: TextCapitalization.words,
+                  keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.name],
+                  autofillHints: const [AutofillHints.email],
+                  autocorrect: false,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF3C2A21),
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                    fontFamily: 'Nunito',
                   ),
                   decoration: _inputDecoration(
-                    labelText: 'Họ tên',
-                    hintText: 'Nguyễn Văn An',
+                    labelText: 'Email',
+                    hintText: 'Email',
                   ),
                   validator: (value) {
                     if (!Validators.isNotEmpty(value)) {
-                      return 'Vui lòng nhập họ tên.';
+                      return 'Vui lòng nhập email.';
+                    }
+                    if (!Validators.isEmail(value!.trim())) {
+                      return 'Email không đúng định dạng.';
                     }
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
-              ],
-              _buildFieldLabel('📨 Email / Tên đăng nhập'),
-              const SizedBox(height: 6),
-              TextFormField(
-                controller: _emailController,
-                enabled: !isLoading,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                autofillHints: const [AutofillHints.email],
-                autocorrect: false,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF3C2A21),
-                ),
-                decoration: _inputDecoration(
-                  labelText: 'Email',
-                  hintText: 'user@capyvocab.com',
-                ),
-                validator: (value) {
-                  if (!Validators.isNotEmpty(value)) {
-                    return 'Vui lòng nhập email.';
-                  }
-                  if (!Validators.isEmail(value!.trim())) {
-                    return 'Email không đúng định dạng.';
-                  }
-                  return null;
-                },
               ),
               const SizedBox(height: 16),
-              _buildFieldLabel('🔒 Mật khẩu'),
-              const SizedBox(height: 6),
-              TextFormField(
-                controller: _passwordController,
-                enabled: !isLoading,
-                obscureText: _obscurePassword,
-                textInputAction: TextInputAction.done,
-                autofillHints: [
-                  _isSignUp
-                      ? AutofillHints.newPassword
-                      : AutofillHints.password,
-                ],
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF3C2A21),
-                ),
-                decoration: _inputDecoration(
-                  labelText: 'Mật khẩu',
-                  hintText: '••••••',
-                  suffixIcon: IconButton(
-                    tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
-                    onPressed: isLoading
-                        ? null
-                        : () => setState(
-                              () => _obscurePassword = !_obscurePassword,
+              _buildFieldLabel(
+                label: 'Mật khẩu',
+                icon: Icons.lock_rounded,
+                badgeColor: AppColors.yellow,
+              ),
+              const SizedBox(height: 8),
+              _buildInputBox(
+                boxKey: const Key('password-input-box'),
+                child: TextFormField(
+                  key: const Key('password-field'),
+                  controller: _passwordController,
+                  enabled: !isLoading,
+                  obscureText: _obscurePassword,
+                  obscuringCharacter: '•',
+                  textInputAction: TextInputAction.done,
+                  autofillHints: [
+                    _isSignUp
+                        ? AutofillHints.newPassword
+                        : AutofillHints.password,
+                  ],
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                    fontFamily: _obscurePassword ? null : 'Nunito',
+                    letterSpacing: _obscurePassword ? 1.5 : 0.0,
+                  ),
+                  decoration: _inputDecoration(
+                    labelText: 'Mật khẩu',
+                    hintText: 'Mật khẩu',
+                    suffixIcon: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: IconButton(
+                        tooltip:
+                            _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 48,
+                          height: 48,
+                        ),
+                        onPressed: isLoading
+                            ? null
+                            : () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                ),
+                        icon: Container(
+                          width: 34,
+                          height: 30,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: AppColors.softWhite,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: AppColors.ink,
+                              width: 1.8,
                             ),
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                      color: const Color(0xFF786C65),
+                          ),
+                          child: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 18,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
+                  validator: (value) {
+                    if (!Validators.isNotEmpty(value)) {
+                      return 'Vui lòng nhập mật khẩu.';
+                    }
+                    if (value!.length < 6) {
+                      return 'Mật khẩu phải có ít nhất 6 ký tự.';
+                    }
+                    return null;
+                  },
+                  onFieldSubmitted: isLoading ? null : (_) => _submit(),
                 ),
-                validator: (value) {
-                  if (!Validators.isNotEmpty(value)) {
-                    return 'Vui lòng nhập mật khẩu.';
-                  }
-                  if (value!.length < 6) {
-                    return 'Mật khẩu phải có ít nhất 6 ký tự.';
-                  }
-                  return null;
-                },
-                onFieldSubmitted: isLoading ? null : (_) => _submit(),
               ),
               if (errorMessage != null) ...[
                 const SizedBox(height: 16),
@@ -393,21 +447,24 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: Divider(
-                color: Color(0xFFE2D6C5),
-                thickness: 1.5,
+                color: AppColors.ink,
+                thickness: 2.0,
               ),
             ),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 12),
               child: Text(
                 'HOẶC TIẾP TỤC BẰNG',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF9E8F85),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
                   letterSpacing: 0.8,
                   fontFamily: 'Fredoka',
                 ),
@@ -415,8 +472,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             ),
             Expanded(
               child: Divider(
-                color: Color(0xFFE2D6C5),
-                thickness: 1.5,
+                color: AppColors.ink,
+                thickness: 2.0,
               ),
             ),
           ],
@@ -433,7 +490,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             );
           },
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         SocialAuthButton(
           provider: SocialProvider.facebook,
           onPressed: () {
@@ -449,15 +506,50 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
-  Widget _buildFieldLabel(String label) {
-    return Text(
-      label,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.bold,
-        color: Color(0xFF3C2A21),
-        fontFamily: 'Fredoka',
-      ),
+  Widget _buildFieldLabel({
+    required String label,
+    required IconData icon,
+    required Color badgeColor,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: badgeColor,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: AppColors.ink,
+              width: 1.8,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 15,
+            color: AppColors.ink,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
+                fontFamily: 'Fredoka',
+                letterSpacing: 0.1,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -468,38 +560,48 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }) {
     return InputDecoration(
       labelText: labelText,
+      labelStyle: const TextStyle(
+        color: Color(0xFF666666),
+        fontFamily: 'Nunito',
+        fontWeight: FontWeight.w700,
+      ),
       hintText: hintText,
       hintStyle: const TextStyle(
-        color: Color(0xFFAFA49C),
-        fontWeight: FontWeight.normal,
+        color: Color(0xFF888888),
+        fontFamily: 'Nunito',
+        fontWeight: FontWeight.w600,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppColors.softWhite,
       suffixIcon: suffixIcon,
+      suffixIconConstraints: const BoxConstraints(
+        minWidth: 48,
+        minHeight: 48,
+      ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(
-          color: Color(0xFF3C2A21),
-          width: 2.0,
+          color: AppColors.ink,
+          width: 2.4,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(
-          color: Color(0xFF58CC02),
+          color: AppColors.ink,
           width: 2.5,
         ),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(
           color: Colors.redAccent,
-          width: 2.0,
+          width: 2.4,
         ),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(
           color: Colors.redAccent,
           width: 2.5,
@@ -508,44 +610,42 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
-  Widget _buildTabSwitcher(bool isLoading) {
+  Widget _buildInputBox({required Key boxKey, required Widget child}) {
     return Container(
-      width: double.infinity,
-      height: 56,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFF3C2A21),
-          width: 2.5,
-        ),
-        boxShadow: const [
+      key: boxKey,
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+        boxShadow: [
           BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 3),
+            color: AppColors.ink,
+            offset: Offset(6, 6),
             blurRadius: 0,
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildTabItem(
-              title: 'Đăng nhập',
-              isSelected: !_isSignUp,
-              onTap: isLoading ? null : () => _changeMode(false),
-            ),
+      child: child,
+    );
+  }
+
+  Widget _buildTabSwitcher(bool isLoading) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildTabItem(
+            title: 'Đăng nhập',
+            isSelected: !_isSignUp,
+            onTap: isLoading ? null : () => _changeMode(false),
           ),
-          Expanded(
-            child: _buildTabItem(
-              title: 'Đăng ký',
-              isSelected: _isSignUp,
-              onTap: isLoading ? null : () => _changeMode(true),
-            ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildTabItem(
+            title: 'Đăng ký',
+            isSelected: _isSignUp,
+            onTap: isLoading ? null : () => _changeMode(true),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -554,28 +654,40 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     required bool isSelected,
     VoidCallback? onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF58CC02) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: isSelected
-              ? Border.all(
-                  color: const Color(0xFF3C2A21),
-                  width: 2.0,
-                )
-              : null,
+    return Container(
+      key: Key(isSelected ? 'selected-auth-tab-box' : 'idle-auth-tab-box'),
+      height: 50,
+      decoration: BoxDecoration(
+        color: isSelected ? AppColors.lime : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.ink,
+          width: 2.5,
         ),
-        child: Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Fredoka',
-            color: isSelected ? Colors.white : const Color(0xFF3C2A21),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.ink,
+            offset: Offset(6, 6),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Center(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                fontFamily: 'Fredoka',
+                color: AppColors.ink,
+                letterSpacing: 0.2,
+              ),
+            ),
           ),
         ),
       ),
@@ -584,12 +696,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   Widget _buildSubmitButton(bool isLoading) {
     return Container(
+      key: const Key('auth-submit-shadow-box'),
       decoration: const BoxDecoration(
-        borderRadius: BorderRadius.all(Radius.circular(20)),
+        borderRadius: BorderRadius.all(Radius.circular(8)),
         boxShadow: [
           BoxShadow(
-            color: Color(0xFF3C2A21),
-            offset: Offset(0, 4),
+            color: AppColors.ink,
+            offset: Offset(8, 8),
             blurRadius: 0,
           ),
         ],
@@ -597,23 +710,23 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       child: FilledButton(
         onPressed: isLoading ? null : _submit,
         style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFF58CC02),
-          minimumSize: const Size.fromHeight(52),
+          backgroundColor: AppColors.lime,
+          minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(8),
             side: const BorderSide(
-              color: Color(0xFF3C2A21),
-              width: 2.5,
+              color: AppColors.ink,
+              width: 2.4,
             ),
           ),
           elevation: 0,
         ),
         child: isLoading
             ? const SizedBox.square(
-                dimension: 24,
+                dimension: 22,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
+                  strokeWidth: 2.4,
+                  color: AppColors.ink,
                 ),
               )
             : Row(
@@ -623,10 +736,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   Text(
                     _isSignUp ? 'Đăng ký' : 'Đăng nhập',
                     style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
                       fontFamily: 'Fredoka',
+                      letterSpacing: 0.3,
                     ),
                   ),
                 ],
@@ -654,8 +768,15 @@ class _MessageBox extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color),
-        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.ink, width: 2),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.ink,
+            offset: Offset(6, 6),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

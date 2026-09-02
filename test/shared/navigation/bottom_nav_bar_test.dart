@@ -6,13 +6,13 @@ import 'package:go_router/go_router.dart';
 
 void main() {
   testWidgets('hiển thị bốn tab và nút Camera nổi bật', (tester) async {
-    await tester.pumpWidget(_testApp());
+    await tester.pumpWidget(_navOnlyApp());
 
     expect(find.byType(BottomNavBar), findsOneWidget);
-    expect(find.text('Trang chủ'), findsOneWidget);
-    expect(find.text('Thư viện'), findsOneWidget);
-    expect(find.text('Cửa hàng'), findsOneWidget);
-    expect(find.text('Bạn bè'), findsOneWidget);
+    expect(find.byTooltip('Trang chủ'), findsOneWidget);
+    expect(find.byTooltip('Thư viện'), findsOneWidget);
+    expect(find.byTooltip('Cửa hàng'), findsOneWidget);
+    expect(find.byTooltip('Bạn bè'), findsOneWidget);
     expect(find.byKey(const Key('bottom-nav-camera-button')), findsOneWidget);
   });
 
@@ -20,20 +20,20 @@ void main() {
     await tester.pumpWidget(_testApp());
 
     // Tapping other tabs navigates to their respective screens, not HomeScreen
-    await tester.tap(find.text('Thư viện'));
+    await tester.tap(find.byTooltip('Thư viện'));
     await tester.pumpAndSettle();
     expect(find.text('StorageScreen'), findsOneWidget);
 
-    await tester.tap(find.text('Cửa hàng'));
+    await tester.tap(find.byTooltip('Cửa hàng'));
     await tester.pumpAndSettle();
     expect(find.text('ShopScreen'), findsOneWidget);
 
-    await tester.tap(find.text('Bạn bè'));
+    await tester.tap(find.byTooltip('Bạn bè'));
     await tester.pumpAndSettle();
     expect(find.text('FriendsScreen'), findsOneWidget);
 
     // Tap Home returns to HomeScreen
-    await tester.tap(find.text('Trang chủ'));
+    await tester.tap(find.byTooltip('Trang chủ'));
     await tester.pumpAndSettle();
     expect(find.text('HomeScreen'), findsOneWidget);
     expect(find.text('ScanScreen'), findsNothing);
@@ -48,6 +48,45 @@ void main() {
 
     expect(find.text('HomeScreen'), findsOneWidget);
     expect(find.text('ScanScreen'), findsNothing);
+  });
+
+  testWidgets('giữ đúng tỷ lệ neo-brutal trên màn hình hẹp', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_navOnlyApp());
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byKey(const Key('bottom-nav-home-icon'))),
+      const Size.square(47),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('bottom-nav-camera-frame'))),
+      const Size.square(74),
+    );
+
+    final shellTop =
+        tester.getTopLeft(find.byKey(const Key('bottom-nav-shell'))).dy;
+    final cameraTop =
+        tester.getTopLeft(find.byKey(const Key('bottom-nav-camera-frame'))).dy;
+    expect(cameraTop, lessThan(shellTop));
+  });
+
+  testWidgets('khớp golden của thanh điều hướng neo-brutal', (tester) async {
+    tester.view.physicalSize = const Size(390, 180);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_navOnlyApp());
+
+    await expectLater(
+      find.byType(BottomNavBar),
+      matchesGoldenFile('goldens/bottom_nav_bar.png'),
+    );
   });
 }
 
@@ -81,6 +120,23 @@ Widget _testApp() {
         path: '/scan',
         builder: (_, __) => Scaffold(
           appBar: AppBar(title: const Text('ScanScreen')),
+        ),
+      ),
+    ],
+  );
+
+  return MaterialApp.router(routerConfig: router);
+}
+
+Widget _navOnlyApp() {
+  final router = GoRouter(
+    initialLocation: '/home',
+    routes: [
+      GoRoute(
+        path: '/home',
+        builder: (_, __) => const Scaffold(
+          body: SizedBox.expand(),
+          bottomNavigationBar: BottomNavBar(),
         ),
       ),
     ],

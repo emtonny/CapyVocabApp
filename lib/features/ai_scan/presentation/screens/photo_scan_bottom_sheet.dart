@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 
+import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/gemini_vision_service.dart';
 import '../../data/datasources/scan_result_local_datasource.dart';
 import '../../data/services/scan_image_compressor.dart';
@@ -16,6 +17,7 @@ import '../controllers/scan_flow_controller.dart';
 import '../label_visual_style.dart';
 import '../providers/scan_provider.dart';
 import '../widgets/camera_capture_view.dart';
+import '../widgets/neo_scan_decorations.dart';
 import '../widgets/note_template_selector.dart';
 import '../widgets/scan_loading_overlay.dart';
 import '../widgets/vocab_canvas_overlay.dart';
@@ -229,10 +231,26 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
     return showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.softWhite,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppColors.ink, width: 2.8),
+        ),
         title: const Text('Không thể chuẩn bị ảnh'),
         content: Text(message),
         actions: [
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.yellow,
+              foregroundColor: AppColors.ink,
+              minimumSize: const Size(96, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: const BorderSide(color: AppColors.ink, width: 2.4),
+              ),
+            ),
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Đóng'),
           ),
@@ -307,15 +325,22 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         maxHeight: MediaQuery.of(context).size.height * 0.36,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAF6F0),
-        borderRadius: BorderRadius.circular(18),
+        color: AppColors.softWhite,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFFEFE6D8),
-          width: 1.5,
+          color: AppColors.ink,
+          width: 2.8,
         ),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.ink,
+            offset: Offset(4.0, 4.0),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(17),
+        borderRadius: BorderRadius.circular(9),
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -356,7 +381,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                     aspectRatio,
                   ),
                   child: const Padding(
-                    padding: EdgeInsets.all(7),
+                    padding: EdgeInsets.all(14),
                     child: Icon(
                       Icons.fullscreen_rounded,
                       color: Colors.white,
@@ -375,9 +400,8 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final isPreviewActive = _previewBytes != null || _isProcessing;
-    final maxSheetHeight =
-        isPreviewActive ? screenHeight * 0.82 : screenHeight * 0.55;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final maxSheetHeight = screenHeight * 0.88;
 
     return Material(
       color: Colors.transparent,
@@ -396,7 +420,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
               ),
             ),
 
-            // Half-screen Bottom Sheet Card pinned to bottom
+            // Bottom Sheet Card pinned to bottom with natural content fit
             Align(
               alignment: Alignment.bottomCenter,
               child: GestureDetector(
@@ -409,137 +433,178 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                     Navigator.of(context).pop();
                   }
                 },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 240),
                   curve: Curves.easeOutCubic,
-                  width: double.infinity,
-                  constraints: BoxConstraints(
-                    maxHeight: maxSheetHeight,
-                  ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFFFFFF),
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(28),
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    width: double.infinity,
+                    constraints: BoxConstraints(
+                      maxHeight: maxSheetHeight,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 16,
-                        spreadRadius: 4,
-                        offset: Offset(0, -4),
+                    decoration: BoxDecoration(
+                      color: AppColors.cream,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(14),
                       ),
-                    ],
-                  ),
-                  child: ScrollConfiguration(
-                    behavior: ScrollConfiguration.of(context)
-                        .copyWith(scrollbars: false),
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Top Drag Handle Bar
-                          Center(
-                            child: Container(
-                              width: 44,
-                              height: 5,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE2D6C5),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
+                      border: Border.all(
+                        color: AppColors.ink,
+                        width: 2.8,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: AppColors.ink,
+                          blurRadius: 0,
+                          offset: Offset(0, -6),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Stack(
+                      children: [
+                        // Top-Left Neon Triangle (Restrained Memphis Accent)
+                        const Positioned(
+                          top: 0,
+                          left: 0,
+                          child: IgnorePointer(
+                            child: NeoCornerTriangle(size: 44),
+                          ),
+                        ),
+                        // Top-Left Dot Matrix (3x3)
+                        const Positioned(
+                          top: 36,
+                          left: 32,
+                          child: IgnorePointer(
+                            child: NeoDotMatrix(
+                              rows: 3,
+                              columns: 3,
+                              dotSize: 3.5,
+                              spacing: 4.5,
                             ),
                           ),
-                          const SizedBox(height: 16),
+                        ),
 
-                          // Title
-                          const Text(
-                            'Quét từ vựng qua ảnh',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontFamily: 'Fredoka',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF3C2A21),
+                        // Main Scrollable Content (Takes only the exact height needed)
+                        ScrollConfiguration(
+                          behavior: ScrollConfiguration.of(context)
+                              .copyWith(scrollbars: false),
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            padding: EdgeInsets.fromLTRB(
+                              20,
+                              12,
+                              20,
+                              20 + bottomPadding,
                             ),
-                          ),
-                          const SizedBox(height: 16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // Top Drag Handle Bar
+                                Center(
+                                  child: Container(
+                                    width: 44,
+                                    height: 5,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.ink,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
 
-                          // Dynamic Image Preview & Labeled Result Widget
-                          _buildImagePreviewWidget(),
-
-                          // 2 Main Options: "Chụp ảnh thô" & "Tải ảnh lên"
-                          Row(
-                            children: [
-                              // Option 1: Chụp ảnh thô
-                              Expanded(
-                                child: _buildMainActionButton(
-                                  buttonKey: const Key('pick-camera-button'),
-                                  label: 'Chụp ảnh thô',
-                                  iconWidget: const Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      Icon(
-                                        Icons.photo_camera_rounded,
-                                        size: 38,
-                                        color: Color(0xFF5D4037),
+                                // Title & Close Button Header Row
+                                Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    const Center(
+                                      child: Text(
+                                        'Quét từ vựng qua ảnh',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontFamily: 'Fredoka',
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w900,
+                                          color: AppColors.ink,
+                                          letterSpacing: -0.2,
+                                        ),
                                       ),
-                                      Positioned(
-                                        top: -4,
-                                        right: -6,
-                                        child: Icon(
-                                          Icons.auto_awesome_rounded,
-                                          size: 18,
-                                          color: Color(0xFFFFB300),
+                                    ),
+                                    Positioned(
+                                      right: 0,
+                                      child: NeoCloseButton(
+                                        onTap: () {
+                                          if (Navigator.of(context).canPop()) {
+                                            Navigator.of(context).pop();
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 18),
+
+                                // Dynamic Image Preview & Labeled Result Widget
+                                _buildImagePreviewWidget(),
+
+                                // 2 Main Action Cards: "CHỤP ẢNH THÔ" & "TẢI ẢNH LÊN"
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(2, 4, 8, 8),
+                                  child: Row(
+                                    children: [
+                                      // Option 1: Chụp ảnh thô
+                                      Expanded(
+                                        child: _buildMainActionButton(
+                                          buttonKey:
+                                              const Key('pick-camera-button'),
+                                          label: 'CHỤP ẢNH THÔ',
+                                          backgroundColor: AppColors.yellow,
+                                          iconWidget:
+                                              const NeoCameraIcon(size: 38),
+                                          onTap: _isProcessing
+                                              ? null
+                                              : _captureAndScan,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+
+                                      // Option 2: Tải ảnh lên
+                                      Expanded(
+                                        child: _buildMainActionButton(
+                                          buttonKey:
+                                              const Key('pick-gallery-button'),
+                                          label: 'TẢI ẢNH LÊN',
+                                          backgroundColor: AppColors.mint,
+                                          iconWidget:
+                                              const NeoPhotoIcon(size: 36),
+                                          onTap: _isProcessing
+                                              ? null
+                                              : () => _pickAndScan(
+                                                  ScanImageSource.gallery),
                                         ),
                                       ),
                                     ],
                                   ),
-                                  onTap: _isProcessing ? null : _captureAndScan,
                                 ),
-                              ),
-                              const SizedBox(width: 14),
+                                const SizedBox(height: 22),
 
-                              // Option 2: Tải ảnh lên
-                              Expanded(
-                                child: _buildMainActionButton(
-                                  buttonKey: const Key('pick-gallery-button'),
-                                  label: 'Tải ảnh lên',
-                                  iconWidget: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE8F5E9),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: const Icon(
-                                      Icons.insert_photo_rounded,
-                                      size: 34,
-                                      color: Color(0xFF4CAF50),
-                                    ),
-                                  ),
-                                  onTap: _isProcessing
-                                      ? null
-                                      : () =>
-                                          _pickAndScan(ScanImageSource.gallery),
+                                NoteTemplateSelector(
+                                  selectedTemplate: _selectedTemplate,
+                                  customStyle: _customLabelStyle,
+                                  onTemplateChanged: (template) {
+                                    setState(
+                                        () => _selectedTemplate = template);
+                                  },
+                                  onCustomStyleChanged: (style) {
+                                    setState(() => _customLabelStyle = style);
+                                  },
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 24),
-
-                          NoteTemplateSelector(
-                            selectedTemplate: _selectedTemplate,
-                            customStyle: _customLabelStyle,
-                            onTemplateChanged: (template) {
-                              setState(() => _selectedTemplate = template);
-                            },
-                            onCustomStyleChanged: (style) {
-                              setState(() => _customLabelStyle = style);
-                            },
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -561,42 +626,55 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
     required Key buttonKey,
     required String label,
     required Widget iconWidget,
+    required Color backgroundColor,
     required VoidCallback? onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: buttonKey,
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFAF6F0),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: const Color(0xFFEFE6D8),
-              width: 1.5,
-            ),
+    return Container(
+      margin: const EdgeInsets.only(right: 6, bottom: 8),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.ink,
+          width: 2.8,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.ink,
+            offset: Offset(
+                7.0, 7.0), // Bóng cứng chuẩn 7px không blur lệch xuống phải
+            blurRadius: 0,
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                height: 44,
-                child: Center(child: iconWidget),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontFamily: 'Fredoka',
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3C2A21),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: buttonKey,
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  height: 42,
+                  child: Center(child: iconWidget),
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'Fredoka',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
