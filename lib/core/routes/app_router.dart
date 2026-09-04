@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/auth/presentation/screens/auth_screen.dart';
+import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/ai_scan/presentation/screens/storage_album_screen.dart';
@@ -32,9 +33,15 @@ class AppRouter {
       final session = client.auth.currentSession;
       final isOnAuthScreen = state.matchedLocation == '/auth';
       final isOnOnboardingScreen = state.matchedLocation == '/onboarding';
+      final isOnResetPasswordScreen =
+          state.matchedLocation == '/reset-password';
+
+      if (_authRefreshListenable.isPasswordRecovery && session != null) {
+        return isOnResetPasswordScreen ? null : '/reset-password';
+      }
 
       if (session == null) {
-        return isOnAuthScreen ? null : '/auth';
+        return isOnAuthScreen || isOnResetPasswordScreen ? null : '/auth';
       }
 
       var hasCompletedOnboarding = false;
@@ -56,7 +63,7 @@ class AppRouter {
         return isOnOnboardingScreen ? null : '/onboarding';
       }
 
-      if (isOnAuthScreen || isOnOnboardingScreen) {
+      if (isOnAuthScreen || isOnOnboardingScreen || isOnResetPasswordScreen) {
         return '/home';
       }
 
@@ -67,7 +74,22 @@ class AppRouter {
         path: '/auth',
         pageBuilder: (context, state) => NoTransitionPage(
           key: state.pageKey,
-          child: const AuthScreen(),
+          child: AuthScreen(
+            initialMessage:
+                state.uri.queryParameters['passwordReset'] == 'success'
+                    ? 'Đổi mật khẩu thành công. Hãy đăng nhập lại.'
+                    : null,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: ResetPasswordScreen(
+            canResetPassword: _authRefreshListenable.isPasswordRecovery &&
+                Supabase.instance.client.auth.currentSession != null,
+          ),
         ),
       ),
       GoRoute(
@@ -96,9 +118,11 @@ class AppRouter {
         pageBuilder: (context, state) => CustomTransitionPage<void>(
           key: state.pageKey,
           opaque: false,
-          barrierColor: const Color(0x66000000), // ~40% instant dark dimming backdrop
+          barrierColor:
+              const Color(0x66000000), // ~40% instant dark dimming backdrop
           barrierDismissible: true,
-          transitionsBuilder: (context, animation, secondaryAnimation, child) => child,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              child,
           child: const PhotoScanBottomSheet(),
         ),
       ),
@@ -155,7 +179,13 @@ class AppRouter {
 class _SupabaseAuthRefreshListenable extends ChangeNotifier {
   _SupabaseAuthRefreshListenable(Stream<AuthState> authStateChanges) {
     _subscription = authStateChanges.listen(
-      (_) => notifyListeners(),
+      (state) {
+        isPasswordRecovery = nextPasswordRecoveryState(
+          current: isPasswordRecovery,
+          event: state.event,
+        );
+        notifyListeners();
+      },
       onError: (Object error, StackTrace stackTrace) {
         debugPrint('Supabase auth state error: $error');
       },
@@ -163,10 +193,25 @@ class _SupabaseAuthRefreshListenable extends ChangeNotifier {
   }
 
   late final StreamSubscription<AuthState> _subscription;
+  bool isPasswordRecovery = false;
 
   @override
   void dispose() {
     _subscription.cancel();
     super.dispose();
   }
+}
+
+@visibleForTesting
+bool nextPasswordRecoveryState({
+  required bool current,
+  required AuthChangeEvent event,
+}) {
+  if (event == AuthChangeEvent.passwordRecovery) return true;
+  if (event == AuthChangeEvent.signedOut ||
+      event == AuthChangeEvent.signedIn ||
+      event == AuthChangeEvent.initialSession) {
+    return false;
+  }
+  return current;
 }

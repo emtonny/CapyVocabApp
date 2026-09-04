@@ -46,6 +46,108 @@ void main() {
     expect(request.uri.queryParameters['redirect_to'], redirectUrl);
     expect(requestBody['data'], {'display_name': 'Nguyễn Văn An'});
   });
+
+  test('signUp dùng mobile deep link mặc định trên native runtime', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final client = SupabaseClient(
+      'http://${server.address.address}:${server.port}',
+      'sb_publishable_test',
+      authOptions: const AuthClientOptions(
+        pkceAsyncStorage: _MemoryGotrueAsyncStorage(),
+      ),
+    );
+    final repository = AuthRepositoryImpl(supabaseClient: client);
+
+    addTearDown(() async {
+      await client.dispose();
+      await server.close(force: true);
+    });
+
+    final signUpFuture = repository.signUpWithEmailAndPassword(
+      email: 'mobile@example.com',
+      password: 'secret123',
+      displayName: 'Mobile User',
+    );
+    final request = await server.first;
+
+    request.response
+      ..statusCode = HttpStatus.ok
+      ..headers.contentType = ContentType.json
+      ..write('{}');
+    await request.response.close();
+    await signUpFuture;
+
+    expect(
+      request.uri.queryParameters['redirect_to'],
+      AuthRepositoryImpl.mobileLoginRedirectUrl,
+    );
+  });
+
+  test('password reset dùng mobile deep link trên native runtime', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final client = SupabaseClient(
+      'http://${server.address.address}:${server.port}',
+      'sb_publishable_test',
+      authOptions: const AuthClientOptions(
+        pkceAsyncStorage: _MemoryGotrueAsyncStorage(),
+      ),
+    );
+    final repository = AuthRepositoryImpl(supabaseClient: client);
+
+    addTearDown(() async {
+      await client.dispose();
+      await server.close(force: true);
+    });
+
+    final resetFuture = repository.sendPasswordResetEmail('mobile@example.com');
+    final request = await server.first;
+
+    request.response
+      ..statusCode = HttpStatus.ok
+      ..headers.contentType = ContentType.json
+      ..write('{}');
+    await request.response.close();
+    await resetFuture;
+
+    expect(request.uri.path, '/auth/v1/recover');
+    expect(
+      request.uri.queryParameters['redirect_to'],
+      AuthRepositoryImpl.mobileResetRedirectUrl,
+    );
+  });
+
+  test('password reset dùng redirect URL được cấu hình', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final client = SupabaseClient(
+      'http://${server.address.address}:${server.port}',
+      'sb_publishable_test',
+      authOptions: const AuthClientOptions(
+        pkceAsyncStorage: _MemoryGotrueAsyncStorage(),
+      ),
+    );
+    const redirectUrl = 'https://demo.capy-vocab.example/reset-password';
+    final repository = AuthRepositoryImpl(
+      supabaseClient: client,
+      passwordResetRedirectTo: redirectUrl,
+    );
+
+    addTearDown(() async {
+      await client.dispose();
+      await server.close(force: true);
+    });
+
+    final resetFuture = repository.sendPasswordResetEmail('web@example.com');
+    final request = await server.first;
+    request.response
+      ..statusCode = HttpStatus.ok
+      ..headers.contentType = ContentType.json
+      ..write('{}');
+    await request.response.close();
+    await resetFuture;
+
+    expect(request.uri.path, '/auth/v1/recover');
+    expect(request.uri.queryParameters['redirect_to'], redirectUrl);
+  });
 }
 
 class _MemoryGotrueAsyncStorage extends GotrueAsyncStorage {

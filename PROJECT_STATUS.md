@@ -326,14 +326,18 @@ The Flutter Web email-confirmation callback is wired on the application side:
 
 Each demo or production origin must still be added to the Supabase Auth
 redirect allowlist, and the real email round trip requires manual acceptance.
-Password recovery and Google OAuth callbacks remain deferred. Mobile
-universal/app links are outside the scope of the Web demo.
+Password recovery and Google OAuth callbacks use the native URL scheme
+`capyvocab://` on Android/iOS. The following URLs must also be allowlisted in
+Supabase Auth before completing a real mobile email/OAuth round trip:
+
+- `capyvocab://login-callback/`
+- `capyvocab://reset-password/`
 
 ### 7.5 AI and payment boundaries
 
-The Flutter project currently reads `GEMINI_API_KEY` from its bundled `.env`.
-That is not safe for production. Move Gemini calls to a server or Supabase
-Edge Function before publishing the app or connecting a public website.
+The Flutter bundle contains only the public Supabase URL and publishable key in
+`assets/config/client.config`. `GEMINI_API_KEY` is read only by the Supabase Edge
+Function and must remain configured as a server-side secret.
 
 Payment operations also need a trusted backend/webhook that verifies provider
 receipts before updating coins, purchases, or subscriptions.
@@ -344,8 +348,7 @@ receipts before updating coins, purchases, or subscriptions.
 
 1. Run the production email/password acceptance checklist.
 2. Audit and harden Production RLS, Storage policies, triggers, and grants.
-3. Remove Gemini secrets from the Flutter bundle; create a trusted AI proxy.
-4. Build the home lesson map and complete the remaining first usable learning
+3. Build the home lesson map and complete the remaining first usable learning
    vertical slice.
 
 ### P1 — Medium

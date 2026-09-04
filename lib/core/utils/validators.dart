@@ -2,10 +2,16 @@
 class Validators {
   Validators._();
 
-  static bool isNotEmpty(String? value) => value != null && value.trim().isNotEmpty;
+  static const minimumPasswordLength = 6;
+
+  static bool isNotEmpty(String? value) =>
+      value != null && value.trim().isNotEmpty;
 
   static bool isEmail(String value) {
     final regex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$');
     return regex.hasMatch(value);
   }
+
+  static bool isValidPassword(String? value) =>
+      value != null && value.length >= minimumPasswordLength;
 }

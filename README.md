@@ -1,5 +1,71 @@
 # Capy Vocab — Spa Từ Vựng Chill (Flutter)
+
+## Chạy ứng dụng
+
+```powershell
+# Android emulator đã được tạo trên máy phát triển
+flutter emulators --launch Capy_Pixel_API_35
+flutter devices
+flutter run -d emulator-5554 --no-dds
+
+# Web
 flutter run -d chrome --web-port=3000
+```
+
+Nếu ID emulator không phải `emulator-5554`, dùng ID Android do
+`flutter devices` trả về. Cờ `--no-dds` tránh lỗi Dart Development Service
+trên môi trường Windows hiện tại và vẫn hỗ trợ quy trình debug/hot reload cơ
+bản. Cấu hình public của Supabase được nạp từ
+`assets/config/client.config`; không đưa khóa API bí mật vào Flutter assets.
+
+Để email/OAuth quay lại ứng dụng mobile, thêm hai redirect URL sau vào
+allowlist của Supabase Auth:
+
+- `capyvocab://login-callback/`
+- `capyvocab://reset-password/`
+
+Với Supabase hosted, cấu hình **Authentication → URL Configuration** thêm cả
+URL web chính xác (`https://<domain>` và `https://<domain>/reset-password`),
+bật **Confirm email**, và đặt minimum password length là `6`. Production cần
+cấu hình custom SMTP; SMTP mặc định của Supabase chỉ phù hợp thử nghiệm và có
+giới hạn gửi thấp. Email xác nhận/khôi phục phải giữ `{{ .ConfirmationURL }}`
+để Supabase hoàn tất PKCE rồi trả về đúng redirect. Luồng PKCE hiện yêu cầu
+người dùng mở liên kết trên cùng thiết bị/trình duyệt đã yêu cầu email.
+
+Trong **Authentication → Email Templates**, cấu hình hai mẫu hosted sau:
+
+- **Confirm signup** — subject
+  `Chào mừng bạn đến với Deery Vocab - Xác nhận email`; nội dung thông báo đăng
+  ký thành công và nút xác nhận dùng `{{ .ConfirmationURL }}`.
+- **Reset password / Recovery** — subject `Đặt lại mật khẩu Deery Vocab`; nút
+  đặt lại mật khẩu cũng phải dùng `{{ .ConfirmationURL }}`.
+
+Phản hồi “đã gửi email” chỉ xác nhận Supabase đã nhận yêu cầu gửi, không chứng
+minh hộp thư tồn tại. Chỉ xem email là đã được sở hữu sau khi người dùng mở và
+hoàn tất liên kết xác nhận; màn hình quên mật khẩu luôn dùng thông báo trung
+tính để không làm lộ tài khoản nào đã đăng ký.
+
+Mẫu HTML hoàn chỉnh cho **Confirm signup** nằm tại
+`supabase/templates/confirmation.html`; avatar nguồn nằm tại
+`assets/images/deery-email-avatar.jpg`. Trước khi dán mẫu lên Supabase hosted,
+hãy upload avatar lên một URL HTTPS công khai hoặc deploy Flutter web để đường
+`{{ .SiteURL }}/assets/assets/images/deery-email-avatar.jpg` truy cập được từ
+Internet. Tên và avatar tròn bên cạnh người gửi trong Gmail không thuộc HTML;
+muốn thay `Supabase Auth <noreply@mail.app.supabase.io>` cần cấu hình custom
+SMTP với sender name `Deery Vocab` và tên miền gửi riêng.
+
+Với project Free mới dùng email provider mặc định của Supabase, hosted template
+có thể bị khóa chỉnh sửa. Khi đó cần bật custom SMTP trước rồi mới áp dụng mẫu
+email thương hiệu này.
+
+Cấu hình local tương ứng nằm trong `supabase/config.toml`. Kiểm thử thủ công
+đầy đủ: đăng ký → mở email xác nhận → đăng nhập → quên mật khẩu → mở email
+reset → đặt mật khẩu mới từ 6 ký tự → phiên recovery đăng xuất → đăng nhập bằng
+mật khẩu mới; đồng thời xác nhận mật khẩu cũ không còn đăng nhập được.
+
+Ứng dụng iOS chỉ có thể build/chạy bằng Xcode trên macOS; runner và URL scheme
+iOS đã được cấu hình sẵn trong repository.
+
 > **Current implementation status and AI handoff:** see
 > [PROJECT_STATUS.md](PROJECT_STATUS.md). This is the source of truth for what
 > is working, what remains scaffolded, and how future websites should connect.

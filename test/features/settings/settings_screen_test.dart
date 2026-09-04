@@ -224,6 +224,11 @@ class _RecordingAuthRepository implements AuthRepository {
   Future<void> sendPasswordResetEmail(String email) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> updatePassword(String password) {
+    throw UnimplementedError();
+  }
 }
 
 class _FailingAuthRepository extends _RecordingAuthRepository {

@@ -14,7 +14,7 @@ Future<void> main() async {
   }
 
   try {
-    await dotenv.load(fileName: '.env');
+    await dotenv.load(fileName: 'assets/config/client.config');
   } catch (e) {
     debugPrint('Dotenv load warning: $e');
   }

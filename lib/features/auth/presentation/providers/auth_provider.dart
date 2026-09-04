@@ -9,6 +9,10 @@ enum AuthFailureType {
   wrongPassword,
   emailAlreadyExists,
   emailNotConfirmed,
+  rateLimited,
+  weakPassword,
+  samePassword,
+  invalidRecovery,
   unknown,
 }
 
@@ -34,6 +38,37 @@ class AuthFailure implements Exception {
             AuthFailureType.emailNotConfirmed,
             'Email chưa được xác nhận.',
           );
+        case 'over_request_rate_limit':
+        case 'over_email_send_rate_limit':
+          return const AuthFailure(
+            AuthFailureType.rateLimited,
+            'Bạn thao tác quá nhanh. Vui lòng chờ một phút rồi thử lại.',
+          );
+        case 'weak_password':
+          return const AuthFailure(
+            AuthFailureType.weakPassword,
+            'Mật khẩu chưa đáp ứng yêu cầu bảo mật.',
+          );
+        case 'same_password':
+          return const AuthFailure(
+            AuthFailureType.samePassword,
+            'Mật khẩu mới phải khác mật khẩu hiện tại.',
+          );
+        case 'otp_expired':
+        case 'flow_state_expired':
+        case 'bad_code_verifier':
+        case 'pkce_verification_failed':
+          return const AuthFailure(
+            AuthFailureType.invalidRecovery,
+            'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.',
+          );
+      }
+
+      if (error.statusCode == '429') {
+        return const AuthFailure(
+          AuthFailureType.rateLimited,
+          'Bạn thao tác quá nhanh. Vui lòng chờ một phút rồi thử lại.',
+        );
       }
     }
 
@@ -124,4 +159,39 @@ final authProvider =
     repository: ref.watch(authRepositoryProvider),
     initialSession: SupabaseService.auth.currentSession,
   );
+});
+
+class PasswordRecoveryNotifier extends StateNotifier<AsyncValue<void>> {
+  PasswordRecoveryNotifier(this._repository) : super(const AsyncData(null));
+
+  final AuthRepository _repository;
+
+  Future<bool> sendResetEmail(String email) => _run(
+        () => _repository.sendPasswordResetEmail(email.trim()),
+      );
+
+  Future<bool> updatePassword(String password) => _run(
+        () => _repository.updatePassword(password),
+      );
+
+  void clear() => state = const AsyncData(null);
+
+  Future<bool> _run(Future<void> Function() action) async {
+    if (state.isLoading) return false;
+    state = const AsyncLoading();
+
+    try {
+      await action();
+      state = const AsyncData(null);
+      return true;
+    } catch (error, stackTrace) {
+      state = AsyncError(AuthFailure.from(error), stackTrace);
+      return false;
+    }
+  }
+}
+
+final passwordRecoveryProvider =
+    StateNotifierProvider<PasswordRecoveryNotifier, AsyncValue<void>>((ref) {
+  return PasswordRecoveryNotifier(ref.watch(authRepositoryProvider));
 });

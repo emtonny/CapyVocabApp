@@ -16,14 +16,14 @@ class SupabaseService {
   /// Interface lắng nghe kênh Realtime
   static RealtimeChannel channel(String name) => client.channel(name);
 
-  /// Khởi tạo Supabase Client đọc URL & ANON_KEY từ .env
+  /// Khởi tạo Supabase Client từ cấu hình public đã nạp vào dotenv.
   static Future<void> initialize() async {
     final String supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final String supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
     if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
       debugPrint(
-        'WARNING: SUPABASE_URL hoặc SUPABASE_ANON_KEY chưa được cấu hình trong file .env!',
+        'WARNING: SUPABASE_URL hoặc SUPABASE_ANON_KEY chưa được cấu hình trong assets/config/client.config!',
       );
     }
 

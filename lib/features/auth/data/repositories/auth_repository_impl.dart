@@ -1,16 +1,27 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/repositories/auth_repository.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
+  static const mobileLoginRedirectUrl = 'capyvocab://login-callback/';
+  static const mobileResetRedirectUrl = 'capyvocab://reset-password/';
+
   final SupabaseClient _supabaseClient;
   final String _emailRedirectTo;
+  final String _passwordResetRedirectTo;
 
   AuthRepositoryImpl({
     SupabaseClient? supabaseClient,
     String? emailRedirectTo,
+    String? passwordResetRedirectTo,
   })  : _supabaseClient = supabaseClient ?? SupabaseService.client,
-        _emailRedirectTo = emailRedirectTo ?? Uri.base.origin;
+        _emailRedirectTo = emailRedirectTo ??
+            (kIsWeb ? Uri.base.origin : mobileLoginRedirectUrl),
+        _passwordResetRedirectTo = passwordResetRedirectTo ??
+            (kIsWeb
+                ? '${Uri.base.origin}/reset-password'
+                : mobileResetRedirectUrl);
 
   @override
   Stream<User?> get authStateChanges {
@@ -59,7 +70,10 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<bool> signInWithOAuth(OAuthProvider provider) async {
     try {
-      return await _supabaseClient.auth.signInWithOAuth(provider);
+      return await _supabaseClient.auth.signInWithOAuth(
+        provider,
+        redirectTo: kIsWeb ? null : mobileLoginRedirectUrl,
+      );
     } catch (e) {
       rethrow;
     }
@@ -72,6 +86,16 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {
-    await _supabaseClient.auth.resetPasswordForEmail(email);
+    await _supabaseClient.auth.resetPasswordForEmail(
+      email,
+      redirectTo: _passwordResetRedirectTo,
+    );
+  }
+
+  @override
+  Future<void> updatePassword(String password) async {
+    await _supabaseClient.auth.updateUser(
+      UserAttributes(password: password),
+    );
   }
 }

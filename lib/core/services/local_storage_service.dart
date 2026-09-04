@@ -1,6 +1,22 @@
-// Lưu theme, phiên đăng nhập tạm (SharedPreferences)
-// TODO: Sinh bởi scaffold tự động từ FRD/Use Case. Cần hiện thực hoá chi tiết.
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalStorageService {
-  // TODO: implement service methods for Lưu theme, phiên đăng nhập tạm (SharedPreferences)
+  static const rememberedEmailKey = 'remembered_auth_email';
+
+  static Future<String?> getRememberedEmail() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(rememberedEmailKey);
+  }
+
+  static Future<void> setRememberedEmail(String? email) async {
+    final preferences = await SharedPreferences.getInstance();
+    final normalizedEmail = email?.trim();
+
+    if (normalizedEmail == null || normalizedEmail.isEmpty) {
+      await preferences.remove(rememberedEmailKey);
+      return;
+    }
+
+    await preferences.setString(rememberedEmailKey, normalizedEmail);
+  }
 }

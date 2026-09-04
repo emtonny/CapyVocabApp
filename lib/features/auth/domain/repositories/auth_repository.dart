@@ -28,4 +28,7 @@ abstract class AuthRepository {
 
   /// Gửi email khôi phục mật khẩu
   Future<void> sendPasswordResetEmail(String email);
+
+  /// Cập nhật mật khẩu cho phiên khôi phục hiện tại.
+  Future<void> updatePassword(String password);
 }
