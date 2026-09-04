@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:capy_vocab/core/constants/app_colors.dart';
 import 'package:capy_vocab/core/services/gemini_vision_service.dart';
 import 'package:capy_vocab/features/ai_scan/data/datasources/scan_result_local_datasource.dart';
 import 'package:capy_vocab/features/ai_scan/data/services/scan_image_compressor.dart';
@@ -10,6 +11,7 @@ import 'package:capy_vocab/features/ai_scan/data/services/scan_image_storage.dar
 import 'package:capy_vocab/features/ai_scan/presentation/label_visual_style.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/providers/scan_provider.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart';
+import 'package:capy_vocab/features/ai_scan/presentation/widgets/scan_paper_background.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/scan_loading_overlay.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +21,44 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {
+  testWidgets('AI Scan uses its dedicated micro linen-paper background',
+      (tester) async {
+    await _pumpScreen(
+      tester,
+      picker: _FakePicker(onPick: (_) async => null),
+      compressor: _FakeCompressor(
+        onCompress: (_) => throw UnimplementedError(),
+      ),
+      storage: _FakeStorage(),
+      visionClient: _FakeVisionClient(
+        onAnalyze: (_) => throw UnimplementedError(),
+      ),
+    );
+
+    expect(find.byType(ScanPaperBackground), findsOneWidget);
+    final backgroundPaint = tester.widget<CustomPaint>(
+      find.descendant(
+        of: find.byType(ScanPaperBackground),
+        matching: find.byType(CustomPaint),
+      ),
+    );
+    final painter = backgroundPaint.painter! as ScanPaperBackgroundPainter;
+
+    expect(painter.backgroundColor, AppColors.cream);
+    expect(painter.fiberColor, const Color(0xFF887866));
+    expect(painter.verticalFiberSpacing, 2.7);
+    expect(painter.horizontalFiberSpacing, 3.2);
+    expect(painter.secondaryVerticalSpacing, 7.4);
+    expect(painter.secondaryHorizontalSpacing, 8.6);
+    expect(
+      painter.verticalFiberOpacity,
+      greaterThan(painter.horizontalFiberOpacity),
+    );
+    expect(painter.verticalFiberOpacity, inInclusiveRange(0.05, 0.08));
+    expect(painter.horizontalFiberOpacity, inInclusiveRange(0.05, 0.08));
+    expect(painter.secondaryFiberOpacity, lessThan(0.04));
+  });
+
   test('device picker ánh xạ đúng gallery và camera sang image_picker',
       () async {
     final imagePicker = _FakeDeviceImagePicker();

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/responsive_layout.dart';
+import '../../../../shared/widgets/graph_paper_background.dart';
 import '../providers/onboarding_provider.dart';
 import '../widgets/capy_onboarding_header.dart';
 import '../widgets/step1_name_username.dart';
@@ -37,8 +38,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
     final notifier = ref.read(onboardingProvider.notifier);
 
     if (state.isInitializing) {
-      return const Scaffold(
-        backgroundColor: AppColors.cream,
+      return const GraphPaperScaffold(
         body: Center(
           child: CircularProgressIndicator(color: AppColors.duoGreen),
         ),
@@ -46,8 +46,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
     }
 
     if (state.initializationError != null) {
-      return Scaffold(
-        backgroundColor: AppColors.cream,
+      return GraphPaperScaffold(
         body: SafeArea(
           child: Center(
             child: Padding(
@@ -84,8 +83,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
       );
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.cream,
+    return GraphPaperScaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isWide =
@@ -163,7 +161,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
                     boxShadow: const [
                       BoxShadow(
                         color: AppColors.ink,
-                        offset: Offset(6, 6),
+                        offset: Offset(3, 3),
                         blurRadius: 0,
                       ),
                     ],
@@ -307,7 +305,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(6, 6),
+            offset: Offset(3, 3),
             blurRadius: 0,
           ),
         ],
@@ -372,7 +370,7 @@ class _SaveErrorMessage extends StatelessWidget {
         boxShadow: const [
           BoxShadow(
             color: Color(0xFFDC2626),
-            offset: Offset(3, 3),
+            offset: Offset(1.5, 1.5),
             blurRadius: 0,
           ),
         ],
@@ -442,7 +440,7 @@ class _NavigationBar extends StatelessWidget {
                 boxShadow: const [
                   BoxShadow(
                     color: AppColors.ink,
-                    offset: Offset(4, 4),
+                    offset: Offset(2, 2),
                     blurRadius: 0,
                   ),
                 ],
@@ -486,7 +484,7 @@ class _NavigationBar extends StatelessWidget {
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.ink,
-                  offset: Offset(6, 6),
+                  offset: Offset(3, 3),
                   blurRadius: 0,
                 ),
               ],

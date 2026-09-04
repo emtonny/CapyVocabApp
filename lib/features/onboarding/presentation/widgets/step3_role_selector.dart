@@ -112,8 +112,9 @@ class _RoleOptionCard extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: AppColors.ink,
-              offset:
-                  selected ? const Offset(3.5, 3.5) : const Offset(2.5, 2.5),
+              offset: selected
+                  ? const Offset(1.75, 1.75)
+                  : const Offset(1.25, 1.25),
               blurRadius: 0,
             ),
           ],

@@ -45,7 +45,7 @@ class BottomNavBar extends StatelessWidget {
                   boxShadow: const [
                     BoxShadow(
                       color: _ink,
-                      offset: Offset(5, 5),
+                      offset: Offset(2.5, 2.5),
                       blurRadius: 0,
                     ),
                   ],
@@ -126,7 +126,7 @@ class BottomNavBar extends StatelessWidget {
                     boxShadow: const [
                       BoxShadow(
                         color: _ink,
-                        offset: Offset(6, 7),
+                        offset: Offset(3, 3.5),
                         blurRadius: 0,
                       ),
                     ],
@@ -222,7 +222,7 @@ class _FramedNavIcon extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: _ink,
-            offset: Offset(isActive ? 3.5 : 2, isActive ? 4 : 2.5),
+            offset: Offset(isActive ? 1.75 : 1, isActive ? 2 : 1.25),
             blurRadius: 0,
           ),
         ],

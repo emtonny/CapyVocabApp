@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../shared/widgets/graph_paper_background.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/capy_video_header.dart';
 import '../widgets/social_auth_button.dart';
@@ -100,17 +102,24 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
 
     return Scaffold(
-      backgroundColor: AppColors.cream,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= _wideLayoutMinWidth;
+      backgroundColor: const Color(0xFFFBF8EE),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const GraphPaperBackground(),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= _wideLayoutMinWidth;
 
-          return SafeArea(
-            child: isWide
-                ? _buildWideScreenLayout(context, isLoading, errorMessage)
-                : _buildMobileScreenLayout(context, isLoading, errorMessage),
-          );
-        },
+              return SafeArea(
+                child: isWide
+                    ? _buildWideScreenLayout(context, isLoading, errorMessage)
+                    : _buildMobileScreenLayout(
+                        context, isLoading, errorMessage),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -171,26 +180,26 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   boxShadow: const [
                     BoxShadow(
                       color: AppColors.ink,
-                      offset: Offset(8, 8),
+                      offset: Offset(4, 4),
                       blurRadius: 0,
                     ),
                   ],
                 ),
-                child: const Column(
+                child: Column(
                   children: [
                     Text(
                       'Deery Vocab',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 32,
+                      style: GoogleFonts.robotoCondensed(
+                        fontSize: 42,
                         fontWeight: FontWeight.w900,
                         color: AppColors.ink,
-                        fontFamily: 'Fredoka',
-                        letterSpacing: -0.2,
+                        letterSpacing: -0.6,
+                        height: 1,
                       ),
                     ),
-                    SizedBox(height: 4),
-                    Text(
+                    const SizedBox(height: 4),
+                    const Text(
                       'Học tiếng cùng Deery, đi khắp thế giới',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -256,7 +265,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(8, 8),
+            offset: Offset(4, 4),
             blurRadius: 0,
           ),
         ],
@@ -618,7 +627,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         boxShadow: [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(6, 6),
+            offset: Offset(3, 3),
             blurRadius: 0,
           ),
         ],
@@ -667,7 +676,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(6, 6),
+            offset: Offset(3, 3),
             blurRadius: 0,
           ),
         ],
@@ -702,7 +711,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         boxShadow: [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(8, 8),
+            offset: Offset(4, 4),
             blurRadius: 0,
           ),
         ],
@@ -773,7 +782,7 @@ class _MessageBox extends StatelessWidget {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(6, 6),
+            offset: Offset(3, 3),
             blurRadius: 0,
           ),
         ],

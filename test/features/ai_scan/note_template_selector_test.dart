@@ -49,6 +49,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('before-style-preview')), findsOneWidget);
     expect(find.byKey(const Key('after-style-preview')), findsOneWidget);
+    expect(find.text('MẪU GỐC'), findsOneWidget);
+    expect(find.text('CỦA BẠN'), findsOneWidget);
+    expect(find.text('Xem trước'), findsNothing);
+    expect(find.text('LIVE'), findsNothing);
 
     await _expandSection(tester, 'Box label');
     final presetColorCenter =

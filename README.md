@@ -1,5 +1,5 @@
 # Capy Vocab — Spa Từ Vựng Chill (Flutter)
-
+flutter run -d chrome --web-port=3000
 > **Current implementation status and AI handoff:** see
 > [PROJECT_STATUS.md](PROJECT_STATUS.md). This is the source of truth for what
 > is working, what remains scaffolded, and how future websites should connect.

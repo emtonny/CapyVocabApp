@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../../shared/widgets/graph_paper_background.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 typedef ResetOnboarding = Future<void> Function();
@@ -176,13 +177,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final user = SupabaseService.auth.currentUser;
     final metadata = user?.userMetadata;
-    final displayName = (metadata?['display_name'] as String?)?.trim().isNotEmpty == true
-        ? metadata!['display_name'] as String
-        : (user?.email?.split('@').first ?? 'Học viên Deer');
+    final displayName =
+        (metadata?['display_name'] as String?)?.trim().isNotEmpty == true
+            ? metadata!['display_name'] as String
+            : (user?.email?.split('@').first ?? 'Học viên Deer');
     final email = user?.email ?? 'Chưa liên kết email';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAF3E0),
+    return GraphPaperScaffold(
       body: SafeArea(
         child: Column(
           children: [
@@ -241,7 +242,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             // Settings Content
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 children: [
                   // Profile Card
                   Container(
@@ -255,8 +257,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF5D4037).withValues(alpha: 0.05),
-                          offset: const Offset(0, 4),
+                          color:
+                              const Color(0xFF5D4037).withValues(alpha: 0.05),
+                          offset: const Offset(0, 2),
                           blurRadius: 10,
                         ),
                       ],
@@ -456,7 +459,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(height: 8),
                     FilledButton.icon(
                       key: const Key('reset-onboarding-debug-button'),
-                      onPressed: _isResettingOnboarding ? null : _resetOnboarding,
+                      onPressed:
+                          _isResettingOnboarding ? null : _resetOnboarding,
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.deepOrange,
                         foregroundColor: Colors.white,

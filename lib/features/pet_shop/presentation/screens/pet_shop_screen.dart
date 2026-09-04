@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../shared/navigation/bottom_nav_bar.dart';
+import '../../../../shared/widgets/graph_paper_background.dart';
 
 /// UI screen tương ứng FR-SHOP-01 — Cửa hàng & Pet Shop
 class PetShopScreen extends StatelessWidget {
@@ -10,8 +11,7 @@ class PetShopScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAF3E0),
+    return GraphPaperScaffold(
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

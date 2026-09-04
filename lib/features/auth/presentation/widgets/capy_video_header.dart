@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -74,15 +75,15 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.showText) ...[
-          const Text(
+          Text(
             'Deery Vocab',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 32,
+            style: GoogleFonts.robotoCondensed(
+              fontSize: 42,
               fontWeight: FontWeight.w900,
               color: AppColors.ink,
-              fontFamily: 'Fredoka',
-              letterSpacing: -0.2,
+              letterSpacing: -0.6,
+              height: 1,
             ),
           ),
           const SizedBox(height: 4),
@@ -145,7 +146,7 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(8, 8),
+            offset: Offset(4, 4),
             blurRadius: 0,
           ),
         ],

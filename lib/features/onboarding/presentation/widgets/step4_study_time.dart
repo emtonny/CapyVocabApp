@@ -247,8 +247,9 @@ class _CustomTimeSlotCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: AppColors.ink,
-            offset:
-                isSelected ? const Offset(3.5, 3.5) : const Offset(2.5, 2.5),
+            offset: isSelected
+                ? const Offset(1.75, 1.75)
+                : const Offset(1.25, 1.25),
             blurRadius: 0,
           ),
         ],
@@ -340,8 +341,9 @@ class _TimeSlotCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: AppColors.ink,
-            offset:
-                isSelected ? const Offset(3.5, 3.5) : const Offset(2.5, 2.5),
+            offset: isSelected
+                ? const Offset(1.75, 1.75)
+                : const Offset(1.25, 1.25),
             blurRadius: 0,
           ),
         ],
@@ -477,7 +479,7 @@ class __CustomTimePickerBottomSheetState
         boxShadow: [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(0, -6),
+            offset: Offset(0, -3),
             blurRadius: 0,
           ),
         ],
@@ -569,7 +571,7 @@ class __CustomTimePickerBottomSheetState
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.ink,
-                  offset: Offset(2.5, 2.5),
+                  offset: Offset(1.25, 1.25),
                   blurRadius: 0,
                 ),
               ],
@@ -623,7 +625,7 @@ class __CustomTimePickerBottomSheetState
                 boxShadow: const [
                   BoxShadow(
                     color: AppColors.ink,
-                    offset: Offset(2.5, 2.5),
+                    offset: Offset(1.25, 1.25),
                     blurRadius: 0,
                   ),
                 ],
@@ -652,7 +654,7 @@ class __CustomTimePickerBottomSheetState
               boxShadow: [
                 BoxShadow(
                   color: AppColors.ink,
-                  offset: Offset(3.5, 3.5),
+                  offset: Offset(1.75, 1.75),
                   blurRadius: 0,
                 ),
               ],

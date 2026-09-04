@@ -1,6 +1,7 @@
-import 'dart:typed_data';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 abstract interface class ScanImageCompressor {
@@ -21,7 +22,10 @@ class FlutterScanImageCompressor implements ScanImageCompressor {
     final sourceSize = await _readImageSize(sourceBytes);
     Uint8List? smallest;
     for (final dimension in _dimensions) {
-      final targetSize = _fitWithin(sourceSize, dimension);
+      final targetSize = calculateChromaSafeTargetSize(
+        sourceSize,
+        dimension,
+      );
       for (final quality in _qualities) {
         final compressed = await FlutterImageCompress.compressWithList(
           sourceBytes,
@@ -63,24 +67,71 @@ class FlutterScanImageCompressor implements ScanImageCompressor {
       throw const ScanImagePreparationException('Ảnh đã chọn không hợp lệ.');
     }
   }
+}
 
-  (int, int) _fitWithin((int, int) sourceSize, int maxDimension) {
-    final (width, height) = sourceSize;
-    if (width <= maxDimension && height <= maxDimension) {
-      return (width, height);
-    }
-
-    if (width >= height) {
-      return (
-        maxDimension,
-        (height * maxDimension / width).round().clamp(1, maxDimension),
-      );
-    }
-    return (
-      (width * maxDimension / height).round().clamp(1, maxDimension),
-      maxDimension,
-    );
+/// Chooses bounds that make the plugin's aspect-preserving JPEG output even
+/// on both axes. This avoids a final unpaired chroma row/column in YUV 4:2:0
+/// without adding another decode/encode pass.
+@visibleForTesting
+(int, int) calculateChromaSafeTargetSize(
+  (int, int) sourceSize,
+  int maxDimension,
+) {
+  final (width, height) = sourceSize;
+  if (width <= 0 || height <= 0 || maxDimension <= 0) {
+    throw ArgumentError('Image dimensions must be positive.');
   }
+
+  final sourceLongEdge = math.max(width, height);
+  final boundedLongEdge = math.min(sourceLongEdge, maxDimension);
+  final floatBuffer = Float32List(1);
+  var candidateLongEdge =
+      boundedLongEdge.isEven ? boundedLongEdge : boundedLongEdge - 1;
+
+  for (; candidateLongEdge >= 2; candidateLongEdge -= 2) {
+    final scaledShortEdge = width >= height
+        ? height * candidateLongEdge / width
+        : width * candidateLongEdge / height;
+    final candidateShortEdge = scaledShortEdge.floor();
+    if (candidateShortEdge >= 2 && candidateShortEdge.isEven) {
+      final bounds = width >= height
+          ? (candidateLongEdge, candidateShortEdge)
+          : (candidateShortEdge, candidateLongEdge);
+      if (_projectsToEvenSize(sourceSize, bounds) &&
+          _projectsToEvenSize(sourceSize, bounds, floatBuffer: floatBuffer)) {
+        return bounds;
+      }
+    }
+  }
+
+  // Degenerate one-pixel images cannot have two even axes without upscaling.
+  // Preserve the source instead of changing its aspect ratio.
+  return sourceSize;
+}
+
+bool _projectsToEvenSize(
+  (int, int) sourceSize,
+  (int, int) bounds, {
+  Float32List? floatBuffer,
+}) {
+  double precision(double value) {
+    if (floatBuffer == null) return value;
+    floatBuffer[0] = value;
+    return floatBuffer[0];
+  }
+
+  final sourceWidth = precision(sourceSize.$1.toDouble());
+  final sourceHeight = precision(sourceSize.$2.toDouble());
+  final widthScale = precision(sourceWidth / precision(bounds.$1.toDouble()));
+  final heightScale = precision(
+    sourceHeight / precision(bounds.$2.toDouble()),
+  );
+  final scale = precision(
+    math.max(1.0, math.min(widthScale, heightScale)),
+  );
+  final outputWidth = precision(sourceWidth / scale).truncate();
+  final outputHeight = precision(sourceHeight / scale).truncate();
+  return outputWidth.isEven && outputHeight.isEven;
 }
 
 class ScanImagePreparationException implements Exception {

@@ -88,7 +88,7 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
             boxShadow: const [
               BoxShadow(
                 color: AppColors.ink,
-                offset: Offset(4, 4),
+                offset: Offset(2, 2),
                 blurRadius: 0,
               ),
             ],
@@ -226,7 +226,7 @@ class _PresetChipButton extends StatelessWidget {
           BoxShadow(
             color: AppColors.ink,
             offset:
-                isSelected ? const Offset(2.8, 2.8) : const Offset(2.0, 2.0),
+                isSelected ? const Offset(1.4, 1.4) : const Offset(1.0, 1.0),
             blurRadius: 0,
           ),
         ],

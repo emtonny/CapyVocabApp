@@ -19,6 +19,7 @@ import '../providers/scan_provider.dart';
 import '../widgets/camera_capture_view.dart';
 import '../widgets/neo_scan_decorations.dart';
 import '../widgets/note_template_selector.dart';
+import '../widgets/scan_paper_background.dart';
 import '../widgets/scan_loading_overlay.dart';
 import '../widgets/vocab_canvas_overlay.dart';
 
@@ -334,7 +335,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(4.0, 4.0),
+            offset: Offset(2.0, 2.0),
             blurRadius: 0,
           ),
         ],
@@ -455,13 +456,18 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                         BoxShadow(
                           color: AppColors.ink,
                           blurRadius: 0,
-                          offset: Offset(0, -6),
+                          offset: Offset(0, -3),
                         ),
                       ],
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Stack(
                       children: [
+                        const Positioned.fill(
+                          child: IgnorePointer(
+                            child: ScanPaperBackground(),
+                          ),
+                        ),
                         // Top-Left Neon Triangle (Restrained Memphis Accent)
                         const Positioned(
                           top: 0,
@@ -641,8 +647,8 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(
-                7.0, 7.0), // Bóng cứng chuẩn 7px không blur lệch xuống phải
+            offset:
+                Offset(3.5, 3.5), // Bóng cứng 3.5px không blur lệch xuống phải
             blurRadius: 0,
           ),
         ],

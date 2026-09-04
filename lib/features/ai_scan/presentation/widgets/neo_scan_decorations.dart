@@ -209,7 +209,7 @@ class NeoCheckeredGrid extends StatelessWidget {
         boxShadow: const [
           BoxShadow(
             color: Colors.black,
-            offset: Offset(2, 2),
+            offset: Offset(1, 1),
             blurRadius: 0,
           ),
         ],
@@ -601,7 +601,7 @@ class NeoPhotoIcon extends StatelessWidget {
         boxShadow: const [
           BoxShadow(
             color: Colors.black,
-            offset: Offset(2, 2),
+            offset: Offset(1, 1),
             blurRadius: 0,
           ),
         ],

@@ -40,7 +40,7 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
-            offset: Offset(6, 6),
+            offset: Offset(3, 3),
             blurRadius: 0,
           ),
         ],
@@ -457,7 +457,7 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
                                   boxShadow: const [
                                     BoxShadow(
                                       color: AppColors.ink,
-                                      offset: Offset(2, 2),
+                                      offset: Offset(1, 1),
                                       blurRadius: 0,
                                     ),
                                   ],
@@ -778,7 +778,7 @@ class _SaveTemplateButton extends StatelessWidget {
                 boxShadow: const [
                   BoxShadow(
                     color: AppColors.ink,
-                    offset: Offset(6, 6),
+                    offset: Offset(3, 3),
                     blurRadius: 0,
                   ),
                 ],
@@ -849,7 +849,7 @@ class _EditorHeader extends StatelessWidget {
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.ink,
-                  offset: Offset(2, 2),
+                  offset: Offset(1, 1),
                   blurRadius: 0,
                 ),
               ],
@@ -925,7 +925,7 @@ class _EditorSection extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: AppColors.ink,
-              offset: Offset(4, 4),
+              offset: Offset(2, 2),
               blurRadius: 0,
             ),
           ],
@@ -1102,7 +1102,7 @@ class _EmojiPickerControl extends StatelessWidget {
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.ink,
-                  offset: Offset(2, 2),
+                  offset: Offset(1, 1),
                   blurRadius: 0,
                 ),
               ],
@@ -1303,7 +1303,7 @@ class _OpacityControl extends StatelessWidget {
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.ink,
-                  offset: Offset(1.5, 1.5),
+                  offset: Offset(0.75, 0.75),
                   blurRadius: 0,
                 ),
               ],
@@ -1348,7 +1348,7 @@ class _ToggleControl extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: AppColors.ink,
-              offset: Offset(2, 2),
+              offset: Offset(1, 1),
               blurRadius: 0,
             ),
           ],
@@ -1465,7 +1465,7 @@ class _ColorControl extends StatelessWidget {
                                   ? const [
                                       BoxShadow(
                                         color: AppColors.ink,
-                                        offset: Offset(2, 2),
+                                        offset: Offset(1, 1),
                                         blurRadius: 0,
                                       ),
                                     ]
@@ -1529,7 +1529,7 @@ class _ColorControl extends StatelessWidget {
                               ? const [
                                   BoxShadow(
                                     color: AppColors.ink,
-                                    offset: Offset(2, 2),
+                                    offset: Offset(1, 1),
                                     blurRadius: 0,
                                   ),
                                 ]
@@ -1687,7 +1687,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                   boxShadow: const [
                     BoxShadow(
                       color: AppColors.ink,
-                      offset: Offset(2.5, 2.5),
+                      offset: Offset(1.25, 1.25),
                       blurRadius: 0,
                     ),
                   ],
@@ -1855,7 +1855,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                                       ? const [
                                           BoxShadow(
                                             color: AppColors.ink,
-                                            offset: Offset(1.5, 1.5),
+                                            offset: Offset(0.75, 0.75),
                                             blurRadius: 0,
                                           ),
                                         ]
@@ -1988,100 +1988,29 @@ class _ComparisonPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      key: const Key('custom-label-preview'),
       label: 'So sánh mẫu mặc định và mẫu đang thiết kế',
       image: true,
-      child: Container(
-        key: const Key('custom-label-preview'),
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-        decoration: BoxDecoration(
-          color: AppColors.softWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.ink, width: 2.0),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.ink,
-              offset: Offset(2.5, 2.5),
-              blurRadius: 0,
+      child: Row(
+        children: [
+          const Expanded(
+            child: _PreviewPanel(
+              panelKey: Key('before-style-preview'),
+              title: 'MẪU GỐC',
+              style: LabelVisualStyle.standard,
+              isActive: false,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.mint, // Mint
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.ink, width: 1.8),
-                  ),
-                  child: const Icon(
-                    Icons.visibility_rounded,
-                    size: 16,
-                    color: AppColors.ink,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Xem trước',
-                    style: TextStyle(
-                      fontFamily: 'Fredoka',
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.lime, // Neon Lime
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: AppColors.ink, width: 1.8),
-                  ),
-                  child: const Text(
-                    'LIVE',
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 9.5,
-                      letterSpacing: 0.6,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                ),
-              ],
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _PreviewPanel(
+              panelKey: const Key('after-style-preview'),
+              title: 'CỦA BẠN',
+              style: style,
+              isActive: true,
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Expanded(
-                  child: _PreviewPanel(
-                    panelKey: Key('before-style-preview'),
-                    title: 'MẪU GỐC',
-                    style: LabelVisualStyle.standard,
-                    isActive: false,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _PreviewPanel(
-                    panelKey: const Key('after-style-preview'),
-                    title: 'CỦA BẠN',
-                    style: style,
-                    isActive: true,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2116,7 +2045,7 @@ class _PreviewPanel extends StatelessWidget {
             ? const [
                 BoxShadow(
                   color: AppColors.ink,
-                  offset: Offset(2.5, 2.5),
+                  offset: Offset(1.25, 1.25),
                   blurRadius: 0,
                 ),
               ]

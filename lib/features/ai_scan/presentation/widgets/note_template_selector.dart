@@ -282,7 +282,8 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
         _previousTemplate = widget.selectedTemplate;
         widget.onTemplateChanged(NoteLabelTemplate.custom);
       } else {
-        widget.onTemplateChanged(_previousTemplate ?? NoteLabelTemplate.standard);
+        widget
+            .onTemplateChanged(_previousTemplate ?? NoteLabelTemplate.standard);
       }
     });
   }
@@ -595,7 +596,7 @@ class _TemplateCard extends StatelessWidget {
           boxShadow: const [
             BoxShadow(
               color: AppColors.ink,
-              offset: Offset(4, 4),
+              offset: Offset(2, 2),
               blurRadius: 0,
             ),
           ],
@@ -610,7 +611,7 @@ class _TemplateCard extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: AppColors.ink,
-              offset: Offset(3, 3),
+              offset: Offset(1.5, 1.5),
               blurRadius: 0,
             ),
           ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../shared/navigation/bottom_nav_bar.dart';
+import '../../../../shared/widgets/graph_paper_background.dart';
 
 /// UI screen tương ứng UC-HOME-01
 class HomeScreen extends StatelessWidget {
@@ -9,8 +10,7 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAF3E0),
+    return GraphPaperScaffold(
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -165,7 +165,7 @@ class HomeScreen extends StatelessWidget {
                           BoxShadow(
                             color: Colors.black12,
                             blurRadius: 6,
-                            offset: Offset(0, 2),
+                            offset: Offset(0, 1),
                           ),
                         ],
                       ),

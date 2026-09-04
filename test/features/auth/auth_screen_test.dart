@@ -82,6 +82,10 @@ void main() {
     await _pumpAuthScreen(tester, _RecordingAuthRepository());
 
     expect(tester.takeException(), isNull);
+    final mobileBrandTitle = tester.widget<Text>(find.text('Deery Vocab'));
+    expect(mobileBrandTitle.style?.fontSize, 42);
+    expect(mobileBrandTitle.style?.fontWeight, FontWeight.w900);
+    expect(mobileBrandTitle.style?.fontFamily, contains('RobotoCondensed'));
     expect(
       tester.getTopLeft(find.text('Deery Vocab')).dy,
       lessThan(tester.getTopLeft(find.text('🦌')).dy),
@@ -90,6 +94,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    final wideBrandTitle = tester.widget<Text>(find.text('Deery Vocab'));
+    expect(wideBrandTitle.style?.fontSize, 42);
+    expect(wideBrandTitle.style?.fontWeight, FontWeight.w900);
+    expect(wideBrandTitle.style?.fontFamily, contains('RobotoCondensed'));
     final videoCardSize = tester.getSize(find.byType(CapyVideoHeader));
     expect(videoCardSize.width, 315);
     expect(videoCardSize.height, greaterThan(500));
@@ -138,26 +146,26 @@ void main() {
 
     await _pumpAuthScreen(tester, _RecordingAuthRepository());
 
-    _expectNeoBox(tester, const Key('auth-hero-box'), radius: 12, shadow: 8);
-    _expectNeoBox(tester, const Key('auth-form-box'), radius: 12, shadow: 8);
+    _expectNeoBox(tester, const Key('auth-hero-box'), radius: 12, shadow: 4);
+    _expectNeoBox(tester, const Key('auth-form-box'), radius: 12, shadow: 4);
     _expectNeoBox(
       tester,
       const Key('selected-auth-tab-box'),
       radius: 8,
-      shadow: 6,
+      shadow: 3,
     );
     _expectNeoBox(
       tester,
       const Key('idle-auth-tab-box'),
       radius: 8,
-      shadow: 6,
+      shadow: 3,
     );
-    _expectNeoBox(tester, const Key('google-auth-box'), radius: 8, shadow: 6);
+    _expectNeoBox(tester, const Key('google-auth-box'), radius: 8, shadow: 3);
     _expectNeoBox(
       tester,
       const Key('facebook-auth-box'),
       radius: 8,
-      shadow: 6,
+      shadow: 3,
     );
 
     for (final key in const [
@@ -166,7 +174,7 @@ void main() {
     ]) {
       final box = tester.widget<Container>(find.byKey(key));
       final decoration = box.decoration! as BoxDecoration;
-      _expectRadiusAndShadow(decoration, radius: 8, shadow: 6);
+      _expectRadiusAndShadow(decoration, radius: 8, shadow: 3);
     }
 
     for (final fieldKey in const [Key('email-field'), Key('password-field')]) {
@@ -194,7 +202,7 @@ void main() {
           .widget<Container>(find.byKey(const Key('auth-submit-shadow-box')))
           .decoration! as BoxDecoration,
       radius: 8,
-      shadow: 8,
+      shadow: 4,
     );
 
     final layoutException = tester.takeException();
