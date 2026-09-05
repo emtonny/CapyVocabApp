@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../theme/app_theme.dart';
 import '../../features/auth/presentation/screens/auth_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
@@ -72,8 +73,8 @@ class AppRouter {
     routes: [
       GoRoute(
         path: '/auth',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: AuthScreen(
             initialMessage:
                 state.uri.queryParameters['passwordReset'] == 'success'
@@ -84,8 +85,8 @@ class AppRouter {
       ),
       GoRoute(
         path: '/reset-password',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: ResetPasswordScreen(
             canResetPassword: _authRefreshListenable.isPasswordRecovery &&
                 Supabase.instance.client.auth.currentSession != null,
@@ -94,35 +95,33 @@ class AppRouter {
       ),
       GoRoute(
         path: '/onboarding',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: const OnboardingWizardScreen(),
         ),
       ),
       GoRoute(
         path: '/home',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: const HomeScreen(),
         ),
       ),
       GoRoute(
         path: '/storage',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: const StorageAlbumScreen(),
         ),
       ),
       GoRoute(
         path: '/scan',
-        pageBuilder: (context, state) => CustomTransitionPage<void>(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           opaque: false,
           barrierColor:
-              const Color(0x66000000), // ~40% instant dark dimming backdrop
+              const Color(0x66000000), // ~40% dark dimming backdrop
           barrierDismissible: true,
-          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-              child,
           child: const PhotoScanBottomSheet(),
         ),
       ),
@@ -131,48 +130,67 @@ class AppRouter {
         pageBuilder: (context, state) {
           final record = state.extra;
           if (record is! ScanResultRecord) {
-            return NoTransitionPage(
-              key: state.pageKey,
+            return _softPage(
+              state,
               child: const Scaffold(
                 body: Center(child: Text('Không tìm thấy kết quả quét.')),
               ),
             );
           }
-          return NoTransitionPage(
-            key: state.pageKey,
+          return _softPage(
+            state,
             child: ScanResultOverlayScreen(record: record),
           );
         },
       ),
       GoRoute(
         path: '/solo-arena',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: const SoloLobbyScreen(),
         ),
       ),
       GoRoute(
         path: '/pet-shop',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: const PetShopScreen(),
         ),
       ),
       GoRoute(
         path: '/friends',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: const FriendsLeaderboardScreen(),
         ),
       ),
       GoRoute(
         path: '/settings',
-        pageBuilder: (context, state) => NoTransitionPage(
-          key: state.pageKey,
+        pageBuilder: (context, state) => _softPage(
+          state,
           child: const SettingsScreen(),
         ),
       ),
     ],
+  );
+}
+
+CustomTransitionPage<void> _softPage(
+  GoRouterState state, {
+  required Widget child,
+  bool opaque = true,
+  Color? barrierColor,
+  bool barrierDismissible = false,
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    transitionDuration: softPageTransitionDuration,
+    reverseTransitionDuration: softPageReverseTransitionDuration,
+    opaque: opaque,
+    barrierColor: barrierColor,
+    barrierDismissible: barrierDismissible,
+    transitionsBuilder: buildSoftPageTransition,
+    child: child,
   );
 }
 

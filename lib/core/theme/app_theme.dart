@@ -2,8 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
 
-class _NoTransitionsBuilder extends PageTransitionsBuilder {
-  const _NoTransitionsBuilder();
+const softPageTransitionDuration = Duration(milliseconds: 280);
+const softPageReverseTransitionDuration = Duration(milliseconds: 240);
+
+Widget buildSoftPageTransition(
+  BuildContext context,
+  Animation<double> animation,
+  Animation<double> secondaryAnimation,
+  Widget child,
+) {
+  if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+    return child;
+  }
+
+  final curvedAnimation = animation.drive(
+    CurveTween(curve: Curves.easeOutCubic),
+  );
+
+  return FadeTransition(
+    opacity: curvedAnimation,
+    child: SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, 0.018),
+        end: Offset.zero,
+      ).animate(curvedAnimation),
+      child: child,
+    ),
+  );
+}
+
+class _SoftTransitionsBuilder extends PageTransitionsBuilder {
+  const _SoftTransitionsBuilder();
 
   @override
   Widget buildTransitions<T>(
@@ -13,17 +42,22 @@ class _NoTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    return child;
+    return buildSoftPageTransition(
+      context,
+      animation,
+      secondaryAnimation,
+      child,
+    );
   }
 }
 
 class AppTheme {
   AppTheme._();
 
-  static final _noTransitionsTheme = PageTransitionsTheme(
+  static final _softTransitionsTheme = PageTransitionsTheme(
     builders: Map<TargetPlatform, PageTransitionsBuilder>.fromIterable(
       TargetPlatform.values,
-      value: (_) => const _NoTransitionsBuilder(),
+      value: (_) => const _SoftTransitionsBuilder(),
     ),
   );
 
@@ -33,7 +67,7 @@ class AppTheme {
         brightness: Brightness.light,
         colorSchemeSeed: AppColors.duoGreen,
         scaffoldBackgroundColor: AppColors.creamyYuzu,
-        pageTransitionsTheme: _noTransitionsTheme,
+        pageTransitionsTheme: _softTransitionsTheme,
       );
 
   static ThemeData get dark => ThemeData(
@@ -42,6 +76,6 @@ class AppTheme {
         brightness: Brightness.dark,
         colorSchemeSeed: AppColors.duoGreen,
         scaffoldBackgroundColor: AppColors.darkBackground,
-        pageTransitionsTheme: _noTransitionsTheme,
+        pageTransitionsTheme: _softTransitionsTheme,
       );
 }
