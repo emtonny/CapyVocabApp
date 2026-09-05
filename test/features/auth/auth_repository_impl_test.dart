@@ -83,6 +83,55 @@ void main() {
     );
   });
 
+  test('signUp nhận diện phản hồi identities rỗng là email đã tồn tại',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final client = SupabaseClient(
+      'http://${server.address.address}:${server.port}',
+      'sb_publishable_test',
+      authOptions: const AuthClientOptions(
+        pkceAsyncStorage: _MemoryGotrueAsyncStorage(),
+      ),
+    );
+    final repository = AuthRepositoryImpl(supabaseClient: client);
+
+    addTearDown(() async {
+      await client.dispose();
+      await server.close(force: true);
+    });
+
+    final signUpFuture = repository.signUpWithEmailAndPassword(
+      email: 'existing@example.com',
+      password: 'secret123',
+      displayName: 'Existing User',
+    );
+    final duplicateExpectation = expectLater(
+      signUpFuture,
+      throwsA(
+        isA<AuthException>().having(
+          (error) => error.code,
+          'code',
+          'user_already_exists',
+        ),
+      ),
+    );
+    final request = await server.first;
+    request.response
+      ..statusCode = HttpStatus.ok
+      ..headers.contentType = ContentType.json
+      ..write(jsonEncode({
+        'id': 'obfuscated-user-id',
+        'app_metadata': <String, dynamic>{},
+        'user_metadata': <String, dynamic>{},
+        'aud': 'authenticated',
+        'email': 'existing@example.com',
+        'created_at': '2026-09-05T00:00:00.000Z',
+        'identities': <dynamic>[],
+      }));
+    await request.response.close();
+    await duplicateExpectation;
+  });
+
   test('password reset dùng mobile deep link trên native runtime', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final client = SupabaseClient(

@@ -92,11 +92,90 @@ void main() {
       findsOneWidget,
     );
 
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString(LocalStorageService.rememberedEmailKey),
+      'an@example.com',
+    );
+    expect(
+      tester
+          .widget<Container>(
+            find.byKey(const Key('remember-account-indicator')),
+          )
+          .decoration,
+      isA<BoxDecoration>().having(
+        (decoration) => decoration.color,
+        'selected color',
+        AppColors.lime,
+      ),
+    );
+
     await tester.pump(const Duration(milliseconds: 2900));
     expect(find.byKey(const Key('top-notification-banner')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('top-notification-banner')), findsNothing);
+  });
+
+  testWidgets('đăng ký trùng email giữ form và hiện thông báo rõ ràng',
+      (tester) async {
+    final repository = _RecordingAuthRepository(
+      signUpError: const AuthException(
+        'obfuscated duplicate',
+        code: 'user_already_exists',
+      ),
+    );
+    await _pumpAuthScreen(tester, repository);
+
+    await tester.tap(find.text('Đăng ký'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('sign-up-display-name-field')),
+      'Nguyễn Văn An',
+    );
+    await tester.enterText(
+      find.byKey(const Key('email-field')),
+      'existing@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const Key('password-field')),
+      'abc123',
+    );
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Đăng ký'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Đăng ký'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Email này đã tồn tại. Vui lòng đăng ký bằng email khác.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('sign-up-display-name-field')),
+      findsOneWidget,
+    );
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString(LocalStorageService.rememberedEmailKey),
+      isNull,
+    );
+  });
+
+  testWidgets('hiện thông báo thành công khi quay lại từ đặt lại mật khẩu',
+      (tester) async {
+    await _pumpAuthScreen(
+      tester,
+      _RecordingAuthRepository(),
+      initialMessage: 'Đổi mật khẩu thành công. Hãy đăng nhập lại.',
+    );
+    await tester.pump();
+
+    expect(
+      find.text('Đổi mật khẩu thành công. Hãy đăng nhập lại.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('top-notification-banner')), findsOneWidget);
   });
 
   testWidgets('video lớn và tên thương hiệu nằm phía trên trên mọi kích thước',
@@ -555,14 +634,17 @@ void _expectRadiusAndShadow(
 
 Future<void> _pumpAuthScreen(
   WidgetTester tester,
-  AuthRepository repository,
-) async {
+  AuthRepository repository, {
+  String? initialMessage,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         authRepositoryProvider.overrideWithValue(repository),
       ],
-      child: const MaterialApp(home: AuthScreen()),
+      child: MaterialApp(
+        home: AuthScreen(initialMessage: initialMessage),
+      ),
     ),
   );
 }
@@ -570,10 +652,12 @@ Future<void> _pumpAuthScreen(
 class _RecordingAuthRepository implements AuthRepository {
   _RecordingAuthRepository({
     this.signInSucceeds = false,
+    this.signUpError,
     this.resetError,
   });
 
   final bool signInSucceeds;
+  final Object? signUpError;
   final Object? resetError;
   String? receivedDisplayName;
   String? resetEmailSent;
@@ -590,6 +674,7 @@ class _RecordingAuthRepository implements AuthRepository {
     required String password,
     required String displayName,
   }) async {
+    if (signUpError != null) throw signUpError!;
     receivedDisplayName = displayName;
     return AuthResponse(
       user: const User(

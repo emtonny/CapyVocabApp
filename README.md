@@ -45,14 +45,12 @@ minh hộp thư tồn tại. Chỉ xem email là đã được sở hữu sau kh
 hoàn tất liên kết xác nhận; màn hình quên mật khẩu luôn dùng thông báo trung
 tính để không làm lộ tài khoản nào đã đăng ký.
 
-Mẫu HTML hoàn chỉnh cho **Confirm signup** nằm tại
-`supabase/templates/confirmation.html`; avatar nguồn nằm tại
-`assets/images/deery-email-avatar.jpg`. Trước khi dán mẫu lên Supabase hosted,
-hãy upload avatar lên một URL HTTPS công khai hoặc deploy Flutter web để đường
-`{{ .SiteURL }}/assets/assets/images/deery-email-avatar.jpg` truy cập được từ
-Internet. Tên và avatar tròn bên cạnh người gửi trong Gmail không thuộc HTML;
-muốn thay `Supabase Auth <noreply@mail.app.supabase.io>` cần cấu hình custom
-SMTP với sender name `Deery Vocab` và tên miền gửi riêng.
+Mẫu HTML hoàn chỉnh nằm tại `supabase/templates/confirmation.html` (xác nhận
+đăng ký) và `supabase/templates/recovery.html` (đặt lại mật khẩu). Hai mẫu dùng
+linh vật emoji trong HTML nên không phụ thuộc ảnh hoặc `SiteURL` công khai. Tên
+và avatar tròn bên cạnh người gửi trong Gmail không thuộc HTML; muốn thay
+`Supabase Auth <noreply@mail.app.supabase.io>` cần cấu hình custom SMTP với
+sender name `Deery Vocab` và tên miền gửi riêng.
 
 Với project Free mới dùng email provider mặc định của Supabase, hosted template
 có thể bị khóa chỉnh sửa. Khi đó cần bật custom SMTP trước rồi mới áp dụng mẫu

@@ -31,7 +31,7 @@ class AuthFailure implements Exception {
         case 'user_already_exists':
           return const AuthFailure(
             AuthFailureType.emailAlreadyExists,
-            'Email này đã được đăng ký.',
+            'Email này đã tồn tại. Vui lòng đăng ký bằng email khác.',
           );
         case 'email_not_confirmed':
           return const AuthFailure(

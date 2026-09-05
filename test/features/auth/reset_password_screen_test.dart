@@ -29,7 +29,13 @@ void main() {
 
   testWidgets('kiểm tra mật khẩu và hoàn tất đổi mật khẩu', (tester) async {
     final repository = _RecoveryAuthRepository();
-    await _pumpResetScreen(tester, repository, canResetPassword: true);
+    String? resetResult;
+    await _pumpResetScreen(
+      tester,
+      repository,
+      canResetPassword: true,
+      onLogin: (value) => resetResult = value,
+    );
 
     await tester.enterText(
       find.byKey(const Key('new-password-field')),
@@ -59,6 +65,7 @@ void main() {
 
     expect(repository.updatedPassword, 'abc123');
     expect(repository.signOutCallCount, 1);
+    expect(resetResult, 'success');
     expect(find.text('login-target'), findsOneWidget);
   });
 }
@@ -67,6 +74,7 @@ Future<void> _pumpResetScreen(
   WidgetTester tester,
   AuthRepository repository, {
   required bool canResetPassword,
+  ValueChanged<String?>? onLogin,
 }) async {
   final router = GoRouter(
     initialLocation: '/reset-password',
@@ -79,7 +87,10 @@ Future<void> _pumpResetScreen(
       ),
       GoRoute(
         path: '/auth',
-        builder: (_, __) => const Scaffold(body: Text('login-target')),
+        builder: (_, state) {
+          onLogin?.call(state.uri.queryParameters['passwordReset']);
+          return const Scaffold(body: Text('login-target'));
+        },
       ),
     ],
   );

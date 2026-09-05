@@ -61,6 +61,14 @@ class AuthRepositoryImpl implements AuthRepository {
         emailRedirectTo: _emailRedirectTo,
         data: {'display_name': displayName},
       );
+
+      if (response.user?.identities?.isEmpty == true) {
+        throw const AuthException(
+          'Email already registered.',
+          code: 'user_already_exists',
+        );
+      }
+
       return response;
     } catch (e) {
       rethrow;

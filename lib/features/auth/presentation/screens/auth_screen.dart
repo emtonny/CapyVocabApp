@@ -150,8 +150,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         if (session != null) {
           await notifier.signOut();
         }
+
+        final registeredEmail = _emailController.text.trim();
+        await _saveRememberedEmail(registeredEmail);
+        if (!mounted) return;
+
+        _emailController.text = registeredEmail;
         _passwordController.clear();
-        setState(() => _isSignUp = false);
+        setState(() {
+          _isSignUp = false;
+          _rememberAccount = true;
+        });
         _showTopNotification(
           'Đã gửi email xác nhận. Vui lòng kiểm tra hộp thư để hoàn tất đăng ký Deery Vocab.',
         );
