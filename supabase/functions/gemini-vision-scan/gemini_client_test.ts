@@ -3,33 +3,77 @@ import test from "node:test";
 
 import {
   buildGenerationConfig,
-  buildOpenAiRequestBody,
-  DEFAULT_VILAO_BASE_URL,
-  DEFAULT_VILAO_MODEL,
+  classifyGeminiQuotaError,
   fetchGeminiModelChain,
+  GeminiCircuitOpenError,
+  type GeminiCircuitPermit,
   type GeminiHealthStore,
   type GeminiModelHealth,
-  isOpenAiCompatible,
-  MODEL_CHAIN,
-  normalizeDetectedWordFields,
-  resolveEndpoint,
-  resolveGeminiGatewayConfig,
+  type GeminiQuotaKind,
 } from "./gemini_client.ts";
+import type { GeminiModelPolicy } from "./model_policy.ts";
+
+const FREE_MODEL = "gemini-3.5-flash-lite";
+const PRO_PRIMARY_MODEL = "gemini-3.7-flash";
+const PRO_FALLBACK_MODEL = "gemini-3.6-flash";
+const FREE_POLICY: GeminiModelPolicy = {
+  tier: "free",
+  primaryModel: FREE_MODEL,
+  fallbackModel: null,
+};
+const PRO_POLICY: GeminiModelPolicy = {
+  tier: "pro",
+  primaryModel: PRO_PRIMARY_MODEL,
+  fallbackModel: PRO_FALLBACK_MODEL,
+};
 
 const silentLogger = {
-  warn() { },
-  error() { },
+  warn() {},
+  error() {},
 };
 
 function successfulResponse() {
   return new Response(JSON.stringify({ candidates: [] }), { status: 200 });
 }
 
+test("P6 can redirect Gemini traffic to an explicit stub base URL", async () => {
+  const calls: string[] = [];
+
+  await fetchGeminiModelChain({
+    apiKey: "stub-key",
+    apiBaseUrl: "http://127.0.0.1:8787/v1beta/models/",
+    scanId: "p6-stub-url",
+    modelPolicy: FREE_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: (input) => {
+      calls.push(String(input));
+      return Promise.resolve(successfulResponse());
+    },
+    logger: silentLogger,
+  });
+
+  assert.deepEqual(calls, [
+    `http://127.0.0.1:8787/v1beta/models/${FREE_MODEL}:generateContent?key=stub-key`,
+  ]);
+});
+
 class InMemoryHealthStore implements GeminiHealthStore {
   readonly state = new Map<
     string,
     { isHealthy: boolean; consecutiveFailures: number }
   >();
+  readonly quotaErrors: Array<{ modelName: string; kind: GeminiQuotaKind }> =
+    [];
+
+  acquireAttempt(modelName: string): Promise<GeminiCircuitPermit> {
+    const health = this.state.get(modelName);
+    return Promise.resolve({
+      allowed: health?.isHealthy ?? true,
+      state: health?.isHealthy === false ? "open" : "healthy",
+      probeToken: null,
+      retryAfterSeconds: health?.isHealthy === false ? 60 : null,
+    });
+  }
 
   getModelHealth(
     modelNames: readonly string[],
@@ -57,24 +101,75 @@ class InMemoryHealthStore implements GeminiHealthStore {
     });
     return Promise.resolve();
   }
+
+  recordQuotaError(
+    modelName: string,
+    kind: GeminiQuotaKind,
+  ): Promise<void> {
+    this.quotaErrors.push({ modelName, kind });
+    return Promise.resolve();
+  }
 }
 
-test("uses the production Free Tier model order", () => {
-  assert.deepEqual(MODEL_CHAIN, [
-    "gemini-3.5-flash-lite",
-    "gemini-3.7-flash",
-    "gemini-3.5-flash",
-    "gemini-3.6-flash",
-  ]);
+test("Free uses only Flash-Lite and never falls back", async () => {
+  for (const status of [429, 500, 502, 504]) {
+    const calls: string[] = [];
+    const result = await fetchGeminiModelChain({
+      apiKey: "test-key",
+      scanId: `free-${status}`,
+      modelPolicy: FREE_POLICY,
+      createRequestBody: (model) => ({ model }),
+      fetcher: (input) => {
+        calls.push(String(input));
+        return Promise.resolve(new Response("failed", { status }));
+      },
+      logger: silentLogger,
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].includes(FREE_MODEL), true);
+    assert.equal(result.model, FREE_MODEL);
+    assert.equal(result.modelsTried, 1);
+    assert.equal(result.response.status, status);
+  }
 });
 
-test("retries one 503 on the same model before moving through the chain", async () => {
+test("Free retries one 503 on Lite but still never enters Pro pool", async () => {
   const calls: string[] = [];
-  const statuses = [503, 503, 200];
+  const delays: number[] = [];
+  const result = await fetchGeminiModelChain({
+    apiKey: "test-key",
+    scanId: "free-503",
+    modelPolicy: FREE_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: (input) => {
+      calls.push(String(input));
+      return Promise.resolve(new Response("unavailable", { status: 503 }));
+    },
+    sleep: (delay) => {
+      delays.push(delay);
+      return Promise.resolve();
+    },
+    random: () => 0,
+    logger: silentLogger,
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls.every((url) => url.includes(FREE_MODEL)), true);
+  assert.deepEqual(delays, [750]);
+  assert.equal(result.response.status, 503);
+  assert.equal(result.modelsTried, 1);
+});
+
+test("Pro uses fallback as its only retry after 503", async () => {
+  const calls: string[] = [];
+  const delays: number[] = [];
+  const statuses = [503, 200];
 
   const result = await fetchGeminiModelChain({
     apiKey: "test-key",
     scanId: "scan-503",
+    modelPolicy: PRO_POLICY,
     createRequestBody: (model) => ({ model }),
     fetcher: (input) => {
       calls.push(String(input));
@@ -84,32 +179,34 @@ test("retries one 503 on the same model before moving through the chain", async 
           : new Response("unavailable", { status: 503 }),
       );
     },
-    sleep: () => Promise.resolve(),
+    sleep: (delay) => {
+      delays.push(delay);
+      return Promise.resolve();
+    },
     logger: silentLogger,
   });
 
-  assert.deepEqual(
-    calls.map((url) => MODEL_CHAIN.find((model) => url.includes(model))),
-    [MODEL_CHAIN[0], MODEL_CHAIN[0], MODEL_CHAIN[1]],
-  );
-  assert.equal(result.model, MODEL_CHAIN[1]);
+  assert.equal(calls[0].includes(PRO_PRIMARY_MODEL), true);
+  assert.equal(calls[1].includes(PRO_FALLBACK_MODEL), true);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(delays, []);
+  assert.equal(result.model, PRO_FALLBACK_MODEL);
   assert.equal(result.modelsTried, 2);
   assert.equal(result.attemptsForModel, 1);
+  assert.equal(result.upstreamAttempts, 2);
 });
 
-test("moves immediately for retryable statuses and network errors", async () => {
-  for (const firstFailure of [404, 429, 500, 502, 504, "network"] as const) {
+test("Pro falls back only for 500, 502, and 504 responses", async () => {
+  for (const firstFailure of [500, 502, 504] as const) {
     const calls: string[] = [];
     const result = await fetchGeminiModelChain({
       apiKey: "test-key",
       scanId: `scan-${firstFailure}`,
+      modelPolicy: PRO_POLICY,
       createRequestBody: (model) => ({ model }),
       fetcher: (input) => {
         calls.push(String(input));
         if (calls.length === 1) {
-          if (firstFailure === "network") {
-            return Promise.reject(new TypeError("mock network error"));
-          }
           return Promise.resolve(
             new Response("model-specific or temporary error", {
               status: firstFailure,
@@ -123,16 +220,96 @@ test("moves immediately for retryable statuses and network errors", async () => 
     });
 
     assert.equal(calls.length, 2);
-    assert.equal(result.model, MODEL_CHAIN[1]);
+    assert.equal(calls[0].includes(PRO_PRIMARY_MODEL), true);
+    assert.equal(calls[1].includes(PRO_FALLBACK_MODEL), true);
+    assert.equal(result.model, PRO_FALLBACK_MODEL);
     assert.equal(result.modelsTried, 2);
   }
 });
 
-test("moves to the next model after a per-model timeout", async () => {
+test("Pro never falls back on 429", async () => {
+  let callCount = 0;
+  const result = await fetchGeminiModelChain({
+    apiKey: "test-key",
+    scanId: "pro-429",
+    modelPolicy: PRO_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: () => {
+      callCount += 1;
+      return Promise.resolve(new Response("quota", { status: 429 }));
+    },
+    logger: silentLogger,
+  });
+
+  assert.equal(callCount, 1);
+  assert.equal(result.model, PRO_PRIMARY_MODEL);
+  assert.equal(result.response.status, 429);
+  assert.equal(result.upstreamAttempts, 1);
+});
+
+test("429 with Retry-After retries the same model once and never falls back", async () => {
+  let callCount = 0;
+  const delays: number[] = [];
+  const result = await fetchGeminiModelChain({
+    apiKey: "test-key",
+    scanId: "pro-rpm-429",
+    modelPolicy: PRO_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: () => {
+      callCount += 1;
+      return Promise.resolve(
+        callCount === 1
+          ? new Response("rpm", {
+            status: 429,
+            headers: { "Retry-After": "1" },
+          })
+          : successfulResponse(),
+      );
+    },
+    sleep: (delay) => {
+      delays.push(delay);
+      return Promise.resolve();
+    },
+    logger: silentLogger,
+  });
+
+  assert.equal(callCount, 2);
+  assert.deepEqual(delays, [1000]);
+  assert.equal(result.model, PRO_PRIMARY_MODEL);
+  assert.equal(result.modelsTried, 1);
+  assert.equal(result.upstreamAttempts, 2);
+});
+
+test("Pro uses fallback as its only retry after a network failure", async () => {
+  let callCount = 0;
+  const result = await fetchGeminiModelChain({
+    apiKey: "test-key",
+    scanId: "pro-network",
+    modelPolicy: PRO_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: () => {
+      callCount += 1;
+      return callCount === 1
+        ? Promise.reject(new TypeError("mock network error"))
+        : Promise.resolve(successfulResponse());
+    },
+    sleep: () => Promise.resolve(),
+    random: () => 0,
+    logger: silentLogger,
+  });
+
+  assert.equal(callCount, 2);
+  assert.equal(result.model, PRO_FALLBACK_MODEL);
+  assert.equal(result.modelsTried, 2);
+  assert.equal(result.upstreamAttempts, 2);
+});
+
+test("Pro uses fallback as its only retry after timeout", async () => {
   let callCount = 0;
   const result = await fetchGeminiModelChain({
     apiKey: "test-key",
     scanId: "scan-timeout",
+    modelPolicy: PRO_POLICY,
     createRequestBody: (model) => ({ model }),
     fetcher: async (_input, init) => {
       callCount += 1;
@@ -146,20 +323,24 @@ test("moves to the next model after a per-model timeout", async () => {
       return successfulResponse();
     },
     attemptTimeoutMs: 5,
+    sleep: () => Promise.resolve(),
+    random: () => 0,
     logger: silentLogger,
   });
 
   assert.equal(callCount, 2);
-  assert.equal(result.model, MODEL_CHAIN[1]);
+  assert.equal(result.model, PRO_FALLBACK_MODEL);
   assert.equal(result.modelsTried, 2);
+  assert.equal(result.upstreamAttempts, 2);
 });
 
-test("does not switch model for request, auth, or payload errors", async () => {
-  for (const status of [400, 401, 403, 413]) {
+test("does not switch model for request, auth, not-found, or payload errors", async () => {
+  for (const status of [400, 401, 403, 404, 413, 422]) {
     let callCount = 0;
     const result = await fetchGeminiModelChain({
       apiKey: "test-key",
       scanId: `scan-${status}`,
+      modelPolicy: PRO_POLICY,
       createRequestBody: (model) => ({ model }),
       fetcher: () => {
         callCount += 1;
@@ -170,7 +351,7 @@ test("does not switch model for request, auth, or payload errors", async () => {
 
     assert.equal(callCount, 1);
     assert.equal(result.response.status, status);
-    assert.equal(result.model, MODEL_CHAIN[0]);
+    assert.equal(result.model, PRO_PRIMARY_MODEL);
     assert.equal(result.modelsTried, 1);
   }
 });
@@ -190,61 +371,65 @@ test("uses model-compatible thinking config with shared schema and token limit",
   assert.equal("temperature" in flash35, false);
 });
 
-test("deprioritizes a model on the scan after three system failures", async () => {
+test("Pro skips an open primary circuit and uses only its Pro fallback", async () => {
   const healthStore = new InMemoryHealthStore();
-
-  for (let scan = 1; scan <= 3; scan += 1) {
-    const calls: string[] = [];
-    const result = await fetchGeminiModelChain({
-      apiKey: "test-key",
-      scanId: `health-failure-${scan}`,
-      createRequestBody: (model) => ({ model }),
-      fetcher: (input) => {
-        const url = String(input);
-        calls.push(url);
-        return Promise.resolve(
-          url.includes(MODEL_CHAIN[0])
-            ? new Response("temporary system failure", { status: 500 })
-            : successfulResponse(),
-        );
-      },
-      healthStore,
-      logger: silentLogger,
-    });
-
-    assert.deepEqual(
-      calls.map((url) => MODEL_CHAIN.find((model) => url.includes(model))),
-      [MODEL_CHAIN[0], MODEL_CHAIN[1]],
-    );
-    assert.equal(result.model, MODEL_CHAIN[1]);
-  }
-
-  assert.deepEqual(healthStore.state.get(MODEL_CHAIN[0]), {
+  healthStore.state.set(PRO_PRIMARY_MODEL, {
     isHealthy: false,
     consecutiveFailures: 3,
   });
-
-  const nextScanCalls: string[] = [];
-  const nextResult = await fetchGeminiModelChain({
+  const calls: string[] = [];
+  const result = await fetchGeminiModelChain({
     apiKey: "test-key",
-    scanId: "health-reordered-scan",
+    scanId: "health-does-not-reorder",
+    modelPolicy: PRO_POLICY,
     createRequestBody: (model) => ({ model }),
     fetcher: (input) => {
-      nextScanCalls.push(String(input));
+      calls.push(String(input));
       return Promise.resolve(successfulResponse());
     },
     healthStore,
     logger: silentLogger,
   });
 
-  assert.deepEqual(
-    nextScanCalls.map((url) =>
-      MODEL_CHAIN.find((model) => url.includes(model))
-    ),
-    [MODEL_CHAIN[1]],
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].includes(PRO_FALLBACK_MODEL), true);
+  assert.equal(result.model, PRO_FALLBACK_MODEL);
+  assert.equal(result.upstreamAttempts, 1);
+});
+
+test("Free rejects an open Flash-Lite circuit without entering a Pro pool", async () => {
+  const healthStore = new InMemoryHealthStore();
+  healthStore.state.set(FREE_MODEL, {
+    isHealthy: false,
+    consecutiveFailures: 3,
+  });
+  let callCount = 0;
+
+  await assert.rejects(
+    () =>
+      fetchGeminiModelChain({
+        apiKey: "test-key",
+        scanId: "free-circuit-open",
+        modelPolicy: FREE_POLICY,
+        createRequestBody: (model) => ({ model }),
+        fetcher: () => {
+          callCount += 1;
+          return Promise.resolve(successfulResponse());
+        },
+        healthStore,
+        logger: silentLogger,
+      }),
+    (error: unknown) => {
+      assert.equal(error instanceof GeminiCircuitOpenError, true);
+      if (error instanceof GeminiCircuitOpenError) {
+        assert.equal(error.model, FREE_MODEL);
+        assert.equal(error.upstreamAttempts, 0);
+        assert.equal(error.retryAfterSeconds, 60);
+      }
+      return true;
+    },
   );
-  assert.equal(nextResult.model, MODEL_CHAIN[1]);
-  assert.equal(nextResult.modelsTried, 1);
+  assert.equal(callCount, 0);
 });
 
 test("does not count client or quota responses as health failures", async () => {
@@ -253,10 +438,11 @@ test("does not count client or quota responses as health failures", async () => 
     await fetchGeminiModelChain({
       apiKey: "test-key",
       scanId: `health-ignored-${status}`,
+      modelPolicy: PRO_POLICY,
       createRequestBody: (model) => ({ model }),
       fetcher: (input) =>
         Promise.resolve(
-          String(input).includes(MODEL_CHAIN[0])
+          String(input).includes(PRO_PRIMARY_MODEL)
             ? new Response("ignored health response", { status })
             : successfulResponse(),
         ),
@@ -264,8 +450,78 @@ test("does not count client or quota responses as health failures", async () => 
       logger: silentLogger,
     });
 
-    assert.equal(healthStore.state.has(MODEL_CHAIN[0]), false);
+    assert.equal(healthStore.state.has(PRO_PRIMARY_MODEL), false);
   }
+});
+
+test("classifies only explicit Gemini quota dimensions", async () => {
+  const quotaResponse = (quotaId: string) =>
+    Response.json(
+      {
+        error: {
+          code: 429,
+          details: [{ violations: [{ quotaId }] }],
+        },
+      },
+      { status: 429 },
+    );
+
+  assert.equal(
+    await classifyGeminiQuotaError(
+      quotaResponse("GenerateRequestsPerMinutePerProjectPerModel"),
+    ),
+    "rpm",
+  );
+  assert.equal(
+    await classifyGeminiQuotaError(
+      quotaResponse("GenerateContentInputTokensPerModelPerMinute"),
+    ),
+    "tpm",
+  );
+  assert.equal(
+    await classifyGeminiQuotaError(
+      quotaResponse("GenerateRequestsPerDayPerProjectPerModel-FreeTier"),
+    ),
+    "rpd",
+  );
+  assert.equal(
+    await classifyGeminiQuotaError(new Response("quota", { status: 429 })),
+    "unknown",
+  );
+});
+
+test("429 records quota telemetry without marking the model failed", async () => {
+  const healthStore = new InMemoryHealthStore();
+  const result = await fetchGeminiModelChain({
+    apiKey: "test-key",
+    scanId: "quota-rpd-telemetry",
+    modelPolicy: FREE_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: () =>
+      Promise.resolve(
+        Response.json(
+          {
+            error: {
+              code: 429,
+              details: [{
+                violations: [{
+                  quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                }],
+              }],
+            },
+          },
+          { status: 429 },
+        ),
+      ),
+    healthStore,
+    logger: silentLogger,
+  });
+
+  assert.equal(result.quotaKind, "rpd");
+  assert.deepEqual(healthStore.quotaErrors, [
+    { modelName: FREE_MODEL, kind: "rpd" },
+  ]);
+  assert.equal(healthStore.state.has(FREE_MODEL), false);
 });
 
 import {
@@ -273,7 +529,7 @@ import {
   HEALTH_CACHE_TTL_MS,
 } from "./gemini_model_health.ts";
 
-test("falls back to the default chain when health storage fails", async () => {
+test("health storage failures do not change the configured model", async () => {
   const calls: string[] = [];
   const unavailableHealthStore: GeminiHealthStore = {
     getModelHealth: () => Promise.reject(new Error("mock database error")),
@@ -284,6 +540,7 @@ test("falls back to the default chain when health storage fails", async () => {
   const result = await fetchGeminiModelChain({
     apiKey: "test-key",
     scanId: "health-store-unavailable",
+    modelPolicy: FREE_POLICY,
     createRequestBody: (model) => ({ model }),
     fetcher: (input) => {
       calls.push(String(input));
@@ -293,11 +550,9 @@ test("falls back to the default chain when health storage fails", async () => {
     logger: silentLogger,
   });
 
-  assert.equal(result.model, MODEL_CHAIN[0]);
-  assert.deepEqual(
-    calls.map((url) => MODEL_CHAIN.find((model) => url.includes(model))),
-    [MODEL_CHAIN[0]],
-  );
+  assert.equal(result.model, FREE_MODEL);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].includes(FREE_MODEL), true);
 });
 
 test("health cache: cache MISS calls DB once and populates cache", async () => {
@@ -313,7 +568,7 @@ test("health cache: cache MISS calls DB once and populates cache", async () => {
     recordSystemFailure: () => Promise.resolve(),
   };
 
-  let currentTime = 1000;
+  const currentTime = 1000;
   const cachedStore = createCachedGeminiHealthStore(mockDbStore, {
     cacheTtlMs: HEALTH_CACHE_TTL_MS,
     now: () => currentTime,
@@ -416,7 +671,7 @@ test("health cache: successful request on previously unhealthy model invalidates
     recordSystemFailure: () => Promise.resolve(),
   };
 
-  let currentTime = 1000;
+  const currentTime = 1000;
   const cachedStore = createCachedGeminiHealthStore(mockDbStore, {
     cacheTtlMs: 30_000,
     now: () => currentTime,
@@ -436,152 +691,31 @@ test("health cache: successful request on previously unhealthy model invalidates
   assert.equal(nextRead[0].isHealthy, true);
 });
 
-test("isOpenAiCompatible correctly identifies OpenAI and Google endpoints", () => {
-  assert.equal(isOpenAiCompatible("https://api.vilao.ai/v1"), true);
-  assert.equal(isOpenAiCompatible("https://api.vilao.ai/v1/chat/completions"), true);
-  assert.equal(isOpenAiCompatible("https://api.openai.com/v1"), true);
-  assert.equal(isOpenAiCompatible("https://generativelanguage.googleapis.com/v1beta/models"), false);
-  assert.equal(isOpenAiCompatible(""), false);
-  assert.equal(isOpenAiCompatible(undefined), false);
-});
-
-test("gateway config defaults to Vilao when only the API key is configured", () => {
-  assert.deepEqual(resolveGeminiGatewayConfig(), {
-    baseUrl: DEFAULT_VILAO_BASE_URL,
-    model: DEFAULT_VILAO_MODEL,
+test("scheduled health telemetry does not block a successful response", async () => {
+  let finishWrite!: () => void;
+  const pendingWrite = new Promise<void>((resolve) => {
+    finishWrite = resolve;
   });
-  assert.deepEqual(
-    resolveGeminiGatewayConfig(" https://gateway.example/v1/ ", " custom-model "),
-    {
-      baseUrl: "https://gateway.example/v1/",
-      model: "custom-model",
-    },
-  );
-});
-
-test("resolveEndpoint constructs valid Google vs OpenAI endpoints", () => {
-  const google = resolveEndpoint(
-    undefined,
-    "gemini-3.5-flash",
-    "google-key",
-  );
-  assert.match(google.url, /generativelanguage\.googleapis\.com/);
-  assert.match(google.url, /key=google-key/);
-  assert.equal(google.headers["Authorization"], undefined);
-
-  const vilao = resolveEndpoint(
-    "https://api.vilao.ai/v1",
-    "gemini-3.8-flash",
-    "vilao-key-123",
-  );
-  assert.equal(vilao.url, "https://api.vilao.ai/v1/chat/completions");
-  assert.equal(vilao.headers["Authorization"], "Bearer vilao-key-123");
-  assert.equal(vilao.headers["Content-Type"], "application/json");
-});
-
-test("buildOpenAiRequestBody builds valid multimodal chat completion body", () => {
-  const body = buildOpenAiRequestBody(
-    "gemini-3.8-flash",
-    "Identify objects",
-    "base64data",
-  );
-  assert.equal(body.model, "gemini-3.8-flash");
-  assert.equal(body.stream, false);
-  assert.equal(body.max_tokens, 8192);
-  assert.equal(body.messages[0].role, "user");
-  assert.deepEqual(body.messages[0].content, [
-    { type: "text", text: "Identify objects" },
-    {
-      type: "image_url",
-      image_url: { url: "data:image/jpeg;base64,base64data" },
-    },
-  ]);
-});
-
-test("fetchGeminiModelChain supports Vilao OpenAI gateway with gemini-3.8-flash", async () => {
-  let requestedUrl = "";
-  let authHeader = "";
-  let sentBody: unknown;
+  const scheduledTasks: Promise<void>[] = [];
+  const healthStore: GeminiHealthStore = {
+    getModelHealth: () => Promise.resolve([]),
+    recordSuccess: () => pendingWrite,
+    recordSystemFailure: () => Promise.resolve(),
+  };
 
   const result = await fetchGeminiModelChain({
-    apiKey: "vilao-secret-key",
-    scanId: "scan-vilao-1",
-    baseUrl: "https://api.vilao.ai/v1",
-    modelChain: ["gemini-3.8-flash"],
-    createRequestBody: (model) =>
-      buildOpenAiRequestBody(model, "prompt test", "img-b64"),
-    fetcher: (url, init) => {
-      requestedUrl = String(url);
-      authHeader = (init?.headers as Record<string, string>)?.["Authorization"];
-      sentBody = JSON.parse(init?.body as string);
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            choices: [
-              {
-                message: { content: '{"words":[{"number":1,"word":"cup"}]}' },
-                finish_reason: "stop",
-              },
-            ],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      );
-    },
+    apiKey: "test-key",
+    scanId: "background-health-write",
+    modelPolicy: FREE_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: () => Promise.resolve(successfulResponse()),
+    healthStore,
+    scheduleBackgroundTask: (task) => scheduledTasks.push(task),
     logger: silentLogger,
   });
 
-  assert.equal(requestedUrl, "https://api.vilao.ai/v1/chat/completions");
-  assert.equal(authHeader, "Bearer vilao-secret-key");
-  assert.equal((sentBody as { model: string }).model, "gemini-3.8-flash");
-  assert.equal(result.model, "gemini-3.8-flash");
-  assert.equal(result.modelsTried, 1);
-});
-
-test("normalizeDetectedWordFields maps Vilao aliases to the app schema", () => {
-  assert.deepEqual(
-    normalizeDetectedWordFields({
-      number: 1,
-      name: "envelope",
-      ipa: "/ˈenvələʊp/",
-      vietnamese: "phong bì",
-      box: { x: 10, y: 20, w: 30, h: 40 },
-    }),
-    {
-      number: 1,
-      word: "envelope",
-      phonetic: "/ˈenvələʊp/",
-      meaning_vi: "phong bì",
-      box: { x: 10, y: 20, w: 30, h: 40 },
-    },
-  );
-
-  assert.deepEqual(
-    normalizeDetectedWordFields({
-      word: "letter",
-      phonetic: "/ˈletə/",
-      meaning_vi: "lá thư",
-      name: "ignored name",
-      ipa: "ignored ipa",
-      vietnamese: "ignored meaning",
-    }),
-    {
-      word: "letter",
-      phonetic: "/ˈletə/",
-      meaning_vi: "lá thư",
-    },
-  );
-
-  assert.deepEqual(
-    normalizeDetectedWordFields({
-      english: "mailbox",
-      phonetic: "/ˈmeɪlbɒks/",
-      meaning_vi: "hộp thư",
-    }),
-    {
-      word: "mailbox",
-      phonetic: "/ˈmeɪlbɒks/",
-      meaning_vi: "hộp thư",
-    },
-  );
+  assert.equal(result.response.status, 200);
+  assert.equal(scheduledTasks.length, 1);
+  finishWrite();
+  await scheduledTasks[0];
 });

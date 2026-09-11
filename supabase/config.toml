@@ -385,6 +385,12 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# The gateway forwards requests so the handler can validate the user JWT with
+# Supabase Auth. This supports current publishable keys while still making a
+# valid Bearer JWT mandatory before entitlement lookup or Gemini execution.
+[functions.gemini-vision-scan]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

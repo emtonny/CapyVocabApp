@@ -1,28 +1,16 @@
-export const MODEL_CHAIN = [
-  "gemini-3.5-flash-lite",
-  "gemini-3.7-flash",
-  "gemini-3.5-flash",
-  "gemini-3.6-flash",
-] as const;
+import {
+  type GeminiModelPolicy,
+  shouldFallbackModelFailure,
+  shouldRetryModelFailure,
+} from "./model_policy.ts";
 
-export const DEFAULT_VILAO_BASE_URL = "https://api.vilao.ai/v1";
-export const DEFAULT_VILAO_MODEL = "gemini-3.8-flash";
-
-export function resolveGeminiGatewayConfig(
-  baseUrl?: string,
-  model?: string,
-): { baseUrl: string; model: string } {
-  return {
-    baseUrl: baseUrl?.trim() || DEFAULT_VILAO_BASE_URL,
-    model: model?.trim() || DEFAULT_VILAO_MODEL,
-  };
-}
-
-const GEMINI_API_BASE_URL =
+const DEFAULT_GEMINI_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
-const GEMINI_503_RETRY_DELAY_MS = 750;
+const GEMINI_RETRY_DELAY_MS = 750;
+const GEMINI_RETRY_JITTER_MS = 250;
+const MAX_RETRY_AFTER_MS = 5_000;
+const MAX_UPSTREAM_ATTEMPTS = 2;
 const GEMINI_ATTEMPT_TIMEOUT_MS = 35_000;
-const MODEL_FAILOVER_STATUSES = new Set([404, 429, 500, 502, 503, 504]);
 const MODEL_HEALTH_FAILURE_STATUSES = new Set([500, 502, 503, 504]);
 
 type Fetcher = (
@@ -33,16 +21,31 @@ type Fetcher = (
 type Logger = Pick<Console, "warn" | "error">;
 
 export type GeminiFailureKind = "timeout" | "network";
+export type GeminiCircuitState =
+  | "healthy"
+  | "degraded"
+  | "open"
+  | "half_open";
+export type GeminiQuotaKind = "rpm" | "tpm" | "rpd" | "unknown";
+
+export interface GeminiCircuitPermit {
+  allowed: boolean;
+  state: GeminiCircuitState;
+  probeToken: string | null;
+  retryAfterSeconds: number | null;
+}
 
 export class GeminiChainError extends Error {
   readonly kind: GeminiFailureKind;
   readonly model: string;
   readonly modelsTried: number;
+  readonly upstreamAttempts: number;
 
   constructor(
     kind: GeminiFailureKind,
     model: string,
     modelsTried: number,
+    upstreamAttempts: number,
     cause: unknown,
   ) {
     super(
@@ -55,6 +58,28 @@ export class GeminiChainError extends Error {
     this.kind = kind;
     this.model = model;
     this.modelsTried = modelsTried;
+    this.upstreamAttempts = upstreamAttempts;
+  }
+}
+
+export class GeminiCircuitOpenError extends Error {
+  readonly model: string;
+  readonly modelsTried: number;
+  readonly upstreamAttempts: number;
+  readonly retryAfterSeconds: number | null;
+
+  constructor(
+    model: string,
+    modelsTried: number,
+    upstreamAttempts: number,
+    retryAfterSeconds: number | null,
+  ) {
+    super(`Gemini circuit is open for ${model}`);
+    this.name = "GeminiCircuitOpenError";
+    this.model = model;
+    this.modelsTried = modelsTried;
+    this.upstreamAttempts = upstreamAttempts;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -63,6 +88,8 @@ export interface GeminiChainResult {
   model: string;
   modelsTried: number;
   attemptsForModel: number;
+  upstreamAttempts: number;
+  quotaKind: GeminiQuotaKind | null;
 }
 
 export interface GeminiModelHealth {
@@ -74,30 +101,41 @@ export interface GeminiHealthStore {
   getModelHealth(
     modelNames: readonly string[],
   ): Promise<readonly GeminiModelHealth[]>;
-  recordSuccess(modelName: string): Promise<void>;
-  recordSystemFailure(modelName: string): Promise<void>;
+  acquireAttempt?: (modelName: string) => Promise<GeminiCircuitPermit>;
+  recordSuccess(modelName: string, probeToken?: string | null): Promise<void>;
+  recordSystemFailure(
+    modelName: string,
+    probeToken?: string | null,
+  ): Promise<void>;
+  recordQuotaError?: (
+    modelName: string,
+    quotaKind: GeminiQuotaKind,
+    probeToken?: string | null,
+  ) => Promise<void>;
 }
 
-export interface GeminiChainOptions {
+interface GeminiChainOptions {
   apiKey: string;
   scanId: string;
+  modelPolicy: GeminiModelPolicy;
   createRequestBody: (model: string) => unknown;
   fetcher?: Fetcher;
   sleep?: (delayMs: number) => Promise<void>;
+  random?: () => number;
   attemptTimeoutMs?: number;
   logger?: Logger;
   healthStore?: GeminiHealthStore;
-  baseUrl?: string;
-  modelChain?: readonly string[];
+  scheduleBackgroundTask?: (task: Promise<void>) => void;
+  apiBaseUrl?: string;
 }
 
-export interface GeminiAttemptOptions {
+interface GeminiAttemptOptions {
   apiKey: string;
   model: string;
   requestBody: unknown;
   fetcher: Fetcher;
   timeoutMs: number;
-  baseUrl?: string;
+  apiBaseUrl?: string;
 }
 
 interface GeminiAttemptResult {
@@ -117,72 +155,6 @@ class GeminiAttemptError extends Error {
     this.name = "GeminiAttemptError";
     this.kind = kind;
   }
-}
-
-export function isOpenAiCompatible(baseUrl?: string): boolean {
-  if (!baseUrl) return false;
-  const trimmed = baseUrl.trim().toLowerCase();
-  return (
-    trimmed.length > 0 &&
-    !trimmed.includes("generativelanguage.googleapis.com")
-  );
-}
-
-export function resolveEndpoint(
-  baseUrl: string | undefined,
-  model: string,
-  apiKey: string,
-): { url: string; headers: Record<string, string> } {
-  if (isOpenAiCompatible(baseUrl)) {
-    const cleanUrl = baseUrl!.trim().replace(/\/+$/, "");
-    const url = cleanUrl.endsWith("/chat/completions")
-      ? cleanUrl
-      : `${cleanUrl}/chat/completions`;
-    return {
-      url,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-    };
-  }
-
-  const base = baseUrl && baseUrl.trim().length > 0
-    ? baseUrl.trim().replace(/\/+$/, "")
-    : GEMINI_API_BASE_URL;
-  return {
-    url: `${base}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    headers: {
-      "Content-Type": "application/json",
-    },
-  };
-}
-
-export function buildOpenAiRequestBody(
-  model: string,
-  prompt: string,
-  imageBase64: string,
-) {
-  return {
-    model,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: prompt },
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:image/jpeg;base64,${imageBase64}`,
-            },
-          },
-        ],
-      },
-    ],
-    stream: false,
-    max_tokens: 8192,
-    temperature: 0.2,
-  };
 }
 
 export function buildGenerationConfig(model: string, responseSchema: unknown) {
@@ -217,14 +189,13 @@ export async function fetchGemini(
   }, options.timeoutMs);
 
   try {
-    const { url, headers } = resolveEndpoint(
-      options.baseUrl,
-      options.model,
-      options.apiKey,
-    );
-    const response = await options.fetcher(url, {
+    const apiBaseUrl = options.apiBaseUrl ?? DEFAULT_GEMINI_API_BASE_URL;
+    const endpoint = `${apiBaseUrl.replace(/\/+$/, "")}/${
+      encodeURIComponent(options.model)
+    }:generateContent?key=${encodeURIComponent(options.apiKey)}`;
+    const response = await options.fetcher(endpoint, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       signal: controller.signal,
       body: JSON.stringify(options.requestBody),
     });
@@ -236,59 +207,146 @@ export async function fetchGemini(
   }
 }
 
-async function loadOrderedModelChain(
-  healthStore: GeminiHealthStore | undefined,
-  logger: Logger,
-  scanId: string,
-  modelChain?: readonly string[],
-): Promise<string[]> {
-  const defaultChain = modelChain && modelChain.length > 0
-    ? [...modelChain]
-    : [...MODEL_CHAIN];
-  if (!healthStore) return defaultChain;
-
-  try {
-    const rows = await healthStore.getModelHealth(defaultChain);
-    const healthByModel = new Map(
-      rows.map((row) => [row.modelName, row.isHealthy]),
-    );
-
-    // Modern JS sorting is stable. Models with the same/unknown health retain
-    // their configured priority in MODEL_CHAIN.
-    return defaultChain.sort((first, second) =>
-      Number(healthByModel.get(first) === false) -
-      Number(healthByModel.get(second) === false)
-    );
-  } catch (error) {
-    logger.warn(
-      "Gemini health read failed; using default model chain",
-      JSON.stringify({ scanId, error: String(error) }),
-    );
-    return defaultChain;
-  }
-}
-
 async function recordAttemptHealth(
   healthStore: GeminiHealthStore | undefined,
   logger: Logger,
   scanId: string,
   model: string,
-  outcome: "success" | "system_failure",
+  outcome: "success" | "system_failure" | "quota_error",
+  probeToken: string | null,
+  quotaKind: GeminiQuotaKind | null,
 ): Promise<void> {
   if (!healthStore) return;
 
   try {
     if (outcome === "success") {
-      await healthStore.recordSuccess(model);
-    } else {
-      await healthStore.recordSystemFailure(model);
+      await healthStore.recordSuccess(model, probeToken);
+    } else if (outcome === "system_failure") {
+      await healthStore.recordSystemFailure(model, probeToken);
+    } else if (healthStore.recordQuotaError) {
+      await healthStore.recordQuotaError(
+        model,
+        quotaKind ?? "unknown",
+        probeToken,
+      );
     }
   } catch (error) {
     logger.warn(
       "Gemini health write failed; continuing scan",
-      JSON.stringify({ scanId, model, outcome, error: String(error) }),
+      JSON.stringify({
+        scanId,
+        model,
+        outcome,
+        quotaKind,
+        error: String(error),
+      }),
     );
   }
+}
+
+async function dispatchAttemptHealth(
+  healthStore: GeminiHealthStore | undefined,
+  logger: Logger,
+  scanId: string,
+  model: string,
+  outcome: "success" | "system_failure" | "quota_error",
+  probeToken: string | null,
+  quotaKind: GeminiQuotaKind | null,
+  scheduleBackgroundTask: ((task: Promise<void>) => void) | undefined,
+  awaitWrite = false,
+): Promise<void> {
+  const task = recordAttemptHealth(
+    healthStore,
+    logger,
+    scanId,
+    model,
+    outcome,
+    probeToken,
+    quotaKind,
+  );
+  if (scheduleBackgroundTask && !awaitWrite) {
+    scheduleBackgroundTask(task);
+    return;
+  }
+  await task;
+}
+
+async function acquireCircuitPermit(
+  healthStore: GeminiHealthStore | undefined,
+  logger: Logger,
+  scanId: string,
+  model: string,
+): Promise<GeminiCircuitPermit> {
+  if (!healthStore?.acquireAttempt) {
+    return {
+      allowed: true,
+      state: "healthy",
+      probeToken: null,
+      retryAfterSeconds: null,
+    };
+  }
+
+  try {
+    return await healthStore.acquireAttempt(model);
+  } catch (error) {
+    logger.warn(
+      "Gemini circuit read failed; continuing with configured policy",
+      JSON.stringify({ scanId, model, error: String(error) }),
+    );
+    return {
+      allowed: true,
+      state: "healthy",
+      probeToken: null,
+      retryAfterSeconds: null,
+    };
+  }
+}
+
+function readRetryAfterMs(response: Response): number | null {
+  const value = response.headers.get("retry-after")?.trim();
+  if (!value) return null;
+
+  const seconds = Number(value);
+  const delayMs = Number.isFinite(seconds)
+    ? Math.ceil(seconds * 1_000)
+    : Date.parse(value) - Date.now();
+  return Number.isFinite(delayMs) && delayMs >= 0 &&
+      delayMs <= MAX_RETRY_AFTER_MS
+    ? delayMs
+    : null;
+}
+
+export async function classifyGeminiQuotaError(
+  response: Response,
+): Promise<GeminiQuotaKind> {
+  if (response.status !== 429) return "unknown";
+
+  let body: string;
+  try {
+    body = (await response.clone().text()).toLowerCase();
+  } catch {
+    return "unknown";
+  }
+
+  if (
+    /tokens?[_ -]?per[_ -]?minute|tokensperminute|inputtokenspermodelperminute|\btpm\b/
+      .test(body)
+  ) {
+    return "tpm";
+  }
+  if (
+    /requests?[_ -]?per[_ -]?day|requestsperday|perdayperprojectpermodel|\brpd\b/
+      .test(body)
+  ) {
+    return "rpd";
+  }
+  if (
+    /requests?[_ -]?per[_ -]?minute|requestsperminute|perminuteperprojectpermodel|\brpm\b/
+      .test(body)
+  ) {
+    return "rpm";
+  }
+  return "unknown";
 }
 
 export async function fetchGeminiModelChain(
@@ -300,13 +358,18 @@ export async function fetchGeminiModelChain(
       new Promise((resolve) => setTimeout(resolve, delayMs)));
   const timeoutMs = options.attemptTimeoutMs ?? GEMINI_ATTEMPT_TIMEOUT_MS;
   const logger = options.logger ?? console;
+  const random = options.random ?? Math.random;
+  const retryDelayMs = () =>
+    GEMINI_RETRY_DELAY_MS +
+    Math.floor(Math.max(0, Math.min(1, random())) * GEMINI_RETRY_JITTER_MS);
   let lastAttemptError: GeminiAttemptError | undefined;
-  const orderedModelChain = await loadOrderedModelChain(
-    options.healthStore,
-    logger,
-    options.scanId,
-    options.modelChain,
-  );
+  let upstreamAttempts = 0;
+  const orderedModelChain = [
+    options.modelPolicy.primaryModel,
+    ...(options.modelPolicy.fallbackModel
+      ? [options.modelPolicy.fallbackModel]
+      : []),
+  ];
 
   for (
     let modelIndex = 0;
@@ -316,8 +379,36 @@ export async function fetchGeminiModelChain(
     const model = orderedModelChain[modelIndex];
     const modelsTried = modelIndex + 1;
     const isLastModel = modelsTried === orderedModelChain.length;
+    const circuitPermit = await acquireCircuitPermit(
+      options.healthStore,
+      logger,
+      options.scanId,
+      model,
+    );
+    if (!circuitPermit.allowed) {
+      logger.warn(
+        "Gemini circuit open",
+        JSON.stringify({
+          scanId: options.scanId,
+          model,
+          state: circuitPermit.state,
+          retryAfterSeconds: circuitPermit.retryAfterSeconds,
+          nextModel: isLastModel ? null : orderedModelChain[modelIndex + 1],
+        }),
+      );
+      if (!isLastModel) continue;
+      throw new GeminiCircuitOpenError(
+        model,
+        modelsTried,
+        upstreamAttempts,
+        circuitPermit.retryAfterSeconds,
+      );
+    }
 
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    let attemptsForModel = 0;
+    while (upstreamAttempts < MAX_UPSTREAM_ATTEMPTS) {
+      attemptsForModel += 1;
+      upstreamAttempts += 1;
       try {
         const { response } = await fetchGemini({
           apiKey: options.apiKey,
@@ -325,28 +416,56 @@ export async function fetchGeminiModelChain(
           requestBody: options.createRequestBody(model),
           fetcher,
           timeoutMs,
-          baseUrl: options.baseUrl,
+          apiBaseUrl: options.apiBaseUrl ?? DEFAULT_GEMINI_API_BASE_URL,
         });
 
+        const quotaKind = response.status === 429
+          ? await classifyGeminiQuotaError(response)
+          : null;
         if (response.ok) {
-          await recordAttemptHealth(
+          await dispatchAttemptHealth(
             options.healthStore,
             logger,
             options.scanId,
             model,
             "success",
+            circuitPermit.probeToken,
+            null,
+            options.scheduleBackgroundTask,
           );
         } else if (MODEL_HEALTH_FAILURE_STATUSES.has(response.status)) {
-          await recordAttemptHealth(
+          await dispatchAttemptHealth(
             options.healthStore,
             logger,
             options.scanId,
             model,
             "system_failure",
+            circuitPermit.probeToken,
+            null,
+            options.scheduleBackgroundTask,
+            true,
+          );
+        } else if (response.status === 429) {
+          await dispatchAttemptHealth(
+            options.healthStore,
+            logger,
+            options.scanId,
+            model,
+            "quota_error",
+            circuitPermit.probeToken,
+            quotaKind,
+            options.scheduleBackgroundTask,
           );
         }
 
-        if (response.status === 503 && attempt === 1) {
+        const responseFailure = { status: response.status };
+        const retryAfterMs = response.status === 429
+          ? readRetryAfterMs(response)
+          : null;
+        if (
+          !response.ok && retryAfterMs !== null &&
+          upstreamAttempts < MAX_UPSTREAM_ATTEMPTS
+        ) {
           await response.body?.cancel();
           logger.warn(
             "Gemini model retry",
@@ -354,16 +473,20 @@ export async function fetchGeminiModelChain(
               scanId: options.scanId,
               model,
               status: response.status,
-              failedAttempt: attempt,
-              nextAttempt: attempt + 1,
-              delayMs: GEMINI_503_RETRY_DELAY_MS,
+              failedAttempt: attemptsForModel,
+              nextAttempt: attemptsForModel + 1,
+              delayMs: retryAfterMs,
             }),
           );
-          await sleep(GEMINI_503_RETRY_DELAY_MS);
+          await sleep(retryAfterMs);
           continue;
         }
 
-        if (MODEL_FAILOVER_STATUSES.has(response.status) && !isLastModel) {
+        if (
+          !isLastModel &&
+          shouldFallbackModelFailure(options.modelPolicy, responseFailure) &&
+          upstreamAttempts < MAX_UPSTREAM_ATTEMPTS
+        ) {
           await response.body?.cancel();
           logger.warn(
             "Gemini model fallback",
@@ -371,31 +494,102 @@ export async function fetchGeminiModelChain(
               scanId: options.scanId,
               model,
               status: response.status,
-              attemptsForModel: attempt,
+              attemptsForModel,
               nextModel: orderedModelChain[modelIndex + 1],
             }),
           );
           break;
         }
 
-        return { response, model, modelsTried, attemptsForModel: attempt };
+        if (
+          isLastModel && modelIndex === 0 &&
+          shouldRetryModelFailure(responseFailure) &&
+          upstreamAttempts < MAX_UPSTREAM_ATTEMPTS
+        ) {
+          await response.body?.cancel();
+          const delayMs = retryDelayMs();
+          logger.warn(
+            "Gemini model retry",
+            JSON.stringify({
+              scanId: options.scanId,
+              model,
+              status: response.status,
+              failedAttempt: attemptsForModel,
+              nextAttempt: attemptsForModel + 1,
+              delayMs,
+            }),
+          );
+          await sleep(delayMs);
+          continue;
+        }
+
+        return {
+          response,
+          model,
+          modelsTried,
+          attemptsForModel,
+          upstreamAttempts,
+          quotaKind,
+        };
       } catch (error) {
         if (!(error instanceof GeminiAttemptError)) throw error;
         lastAttemptError = error;
-        await recordAttemptHealth(
+        await dispatchAttemptHealth(
           options.healthStore,
           logger,
           options.scanId,
           model,
           "system_failure",
+          circuitPermit.probeToken,
+          null,
+          options.scheduleBackgroundTask,
+          true,
         );
+        if (
+          !isLastModel &&
+          shouldFallbackModelFailure(options.modelPolicy, {
+            kind: error.kind,
+          }) && upstreamAttempts < MAX_UPSTREAM_ATTEMPTS
+        ) {
+          logger.warn(
+            "Gemini model fallback",
+            JSON.stringify({
+              scanId: options.scanId,
+              model,
+              failureKind: error.kind,
+              attemptsForModel,
+              nextModel: orderedModelChain[modelIndex + 1],
+            }),
+          );
+          break;
+        }
+        if (
+          isLastModel && modelIndex === 0 &&
+          shouldRetryModelFailure({ kind: error.kind }) &&
+          upstreamAttempts < MAX_UPSTREAM_ATTEMPTS
+        ) {
+          const delayMs = retryDelayMs();
+          logger.warn(
+            "Gemini model retry",
+            JSON.stringify({
+              scanId: options.scanId,
+              model,
+              failureKind: error.kind,
+              failedAttempt: attemptsForModel,
+              nextAttempt: attemptsForModel + 1,
+              delayMs,
+            }),
+          );
+          await sleep(delayMs);
+          continue;
+        }
         logger.warn(
           "Gemini model fallback",
           JSON.stringify({
             scanId: options.scanId,
             model,
             failureKind: error.kind,
-            attemptsForModel: attempt,
+            attemptsForModel,
             nextModel: isLastModel ? null : orderedModelChain[modelIndex + 1],
           }),
         );
@@ -409,36 +603,7 @@ export async function fetchGeminiModelChain(
     lastAttemptError?.kind ?? "network",
     finalModel,
     orderedModelChain.length,
+    upstreamAttempts,
     lastAttemptError,
   );
 }
-
-export function normalizeDetectedWordFields(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return raw;
-  }
-
-  const record = { ...(raw as Record<string, unknown>) };
-
-  const word = record.word ?? record.name ?? record.english;
-  const phonetic = record.phonetic ?? record.ipa;
-  const meaningVi = record.meaning_vi ?? record.vietnamese;
-
-  delete record.name;
-  delete record.english;
-  delete record.ipa;
-  delete record.vietnamese;
-
-  if (word !== undefined) {
-    record.word = word;
-  }
-  if (phonetic !== undefined) {
-    record.phonetic = phonetic;
-  }
-  if (meaningVi !== undefined) {
-    record.meaning_vi = meaningVi;
-  }
-
-  return record;
-}
-

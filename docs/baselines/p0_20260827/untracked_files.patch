@@ -1,0 +1,3176 @@
+diff --git a/CURRENT_STATE.md b/CURRENT_STATE.md
+new file mode 100644
+index 0000000..5d79ae4
+--- /dev/null
++++ b/CURRENT_STATE.md
+@@ -0,0 +1,29 @@
++# 1. ĐANG Ở ĐÂU
++
++- Branch `AI-scan`, HEAD `17742d7`, đã đồng bộ hoàn toàn với `origin/AI-scan` (ahead 0/behind 0).
++- Commit GitHub adaptive label overlay tasks 3–13b đã được fast-forward vào local; solver production hiện dùng `PlacedLabel`/`LabelPlacementSolver` trong `features/vocab_scan`.
++- Pipeline progressive refinement/GrabCut local đã được gỡ theo quyết định sản phẩm; AI Scan tiếp tục dùng Stage 1 Gemini, bbox và adaptive label solver.
++- Repo khai báo app `0.1.0`; không có artefact phát hành để xác minh số version binary đang trên máy người dùng. Production Supabase chỉ có `gemini-vision-scan` v15 `ACTIVE`.
++- Không thay đổi hiện tại nào đã deploy/release, nên app production đang dùng không bị ảnh hưởng.
++
++# 2. NHỮNG GÌ ĐÃ XONG (code có, test pass, đã review)
++
++- Adaptive label placement từ GitHub: candidate rings, angle ranking, forbidden zones, connector collision, content-aware label sizing và fallback tiers; đã merge vào HEAD và test pass.
++- Sobel edge-map được giữ như thuật toán độc lập; hiện chưa được nối vào luồng production.
++
++# 3. NHỮNG GÌ ĐANG DỞ DANG (code có nhưng chưa xong/chưa test được)
++
++- Chưa có benchmark thiết bị thật cho chất lượng và độ trễ của Stage 1 + adaptive label solver sau khi gỡ refinement.
++
++# 4. NHỮNG GÌ CHƯA BẮT ĐẦU
++
++- Kiểm thử Stage 1 và label placement trên bộ ảnh thật, đặc biệt cảnh đông và ảnh có tỷ lệ cực đoan.
++
++# 5. QUYẾT ĐỊNH ĐANG CHỜ TÔI (không phải agent tự quyết)
++
++- Có nối Sobel edge-map vào production hay tiếp tục giữ bbox connector hiện tại.
++
++# 6. RỦI RO/CẢNH BÁO CÒN TỒN TẠI (nếu có)
++
++- Baseline production Stage 1 ở P95 `5.126 s` theo log / `5.273 s` theo client tại lần đo trước.
++- Worktree lớn chưa commit, có 2 file migration legacy đang staged-delete và nhiều artefact untracked; cần review kỹ trước mọi commit.
+diff --git a/lib/features/ai_scan/presentation/layout/silhouette_edge_map.dart b/lib/features/ai_scan/presentation/layout/silhouette_edge_map.dart
+new file mode 100644
+index 0000000..26e8a62
+--- /dev/null
++++ b/lib/features/ai_scan/presentation/layout/silhouette_edge_map.dart
+@@ -0,0 +1,433 @@
++import 'dart:math' as math;
++import 'dart:typed_data';
++
++import 'package:flutter/widgets.dart';
++
++import '../../../vocab_scan/domain/label_connector_geometry.dart';
++import '../../../vocab_scan/domain/label_placement_solver.dart';
++
++const double maxConnectorLengthRatio = 0.22;
++
++enum RayCastFallbackReason {
++  none,
++  invalidInput,
++  noClearEdge,
++  excessiveShift,
++  otherObjectCore,
++  connectorCapExceeded,
++}
++
++enum AnchorRefinementMethod { sobel, bbox }
++
++class RayCastAnchorResult {
++  const RayCastAnchorResult({
++    required this.anchor,
++    required this.fallbackAnchor,
++    required this.fallbackReason,
++    required this.scannedSampleCount,
++    this.gradientMagnitude,
++    this.backgroundGradient,
++    this.method = AnchorRefinementMethod.bbox,
++  });
++
++  final Offset anchor;
++  final Offset fallbackAnchor;
++  final RayCastFallbackReason fallbackReason;
++  final int scannedSampleCount;
++  final double? gradientMagnitude;
++  final double? backgroundGradient;
++  final AnchorRefinementMethod method;
++
++  bool get usedFallback => fallbackReason != RayCastFallbackReason.none;
++
++  RayCastAnchorResult fallback(RayCastFallbackReason reason) =>
++      RayCastAnchorResult(
++        anchor: fallbackAnchor,
++        fallbackAnchor: fallbackAnchor,
++        fallbackReason: reason,
++        scannedSampleCount: scannedSampleCount,
++        gradientMagnitude: gradientMagnitude,
++        backgroundGradient: backgroundGradient,
++        method: AnchorRefinementMethod.bbox,
++      );
++}
++
++class AnchorRefinementBatch {
++  const AnchorRefinementBatch({
++    required this.connectorPaths,
++    required this.results,
++  });
++
++  final List<ConnectorPath> connectorPaths;
++  final List<RayCastAnchorResult> results;
++}
++
++/// Refines connector endpoints without changing solver-owned label placement.
++///
++/// Sobel refines the endpoint when image data is available, while the
++/// deterministic bbox connector remains the final fallback.
++AnchorRefinementBatch refineConnectorPaths({
++  required List<PlacedLabel> placedLabels,
++  required List<ConnectorPath> bboxPaths,
++  required Rect imageRect,
++  SilhouetteEdgeMap? edgeMap,
++}) {
++  if (placedLabels.length != bboxPaths.length) {
++    throw ArgumentError('Placed labels and connector paths must align.');
++  }
++  final imageDiagonal = math.sqrt(
++    imageRect.width * imageRect.width + imageRect.height * imageRect.height,
++  );
++  final paths = <ConnectorPath>[];
++  final results = <RayCastAnchorResult>[];
++
++  for (var index = 0; index < placedLabels.length; index++) {
++    final placed = placedLabels[index];
++    final bboxPath = bboxPaths[index];
++    RayCastAnchorResult result;
++    if (edgeMap != null) {
++      result = edgeMap.findAnchor(
++        cardAnchor: bboxPath.from,
++        objectRect: placed.anchorBox,
++        imageRect: imageRect,
++        fallbackAnchor: bboxPath.to,
++        otherObjectRects: [
++          for (var otherIndex = 0;
++              otherIndex < placedLabels.length;
++              otherIndex++)
++            if (otherIndex != index) placedLabels[otherIndex].anchorBox,
++        ],
++      );
++    } else {
++      result = RayCastAnchorResult(
++        anchor: bboxPath.to,
++        fallbackAnchor: bboxPath.to,
++        fallbackReason: RayCastFallbackReason.invalidInput,
++        scannedSampleCount: 0,
++      );
++    }
++
++    final refinedLength = (result.anchor - bboxPath.from).distance;
++    final bboxLength = (bboxPath.to - bboxPath.from).distance;
++    final maximumLength = math.max(
++      bboxLength,
++      imageDiagonal * maxConnectorLengthRatio,
++    );
++    if (refinedLength > maximumLength + 0.001) {
++      result = result.fallback(RayCastFallbackReason.connectorCapExceeded);
++    }
++    paths.add(ConnectorPath(from: bboxPath.from, to: result.anchor));
++    results.add(result);
++  }
++
++  return AnchorRefinementBatch(
++    connectorPaths: List.unmodifiable(paths),
++    results: List.unmodifiable(results),
++  );
++}
++
++class SilhouetteEdgeMapInput {
++  const SilhouetteEdgeMapInput({
++    required this.rgba,
++    required this.width,
++    required this.height,
++  });
++
++  final Uint8List rgba;
++  final int width;
++  final int height;
++}
++
++SilhouetteEdgeMap buildSilhouetteEdgeMap(SilhouetteEdgeMapInput input) =>
++    SilhouetteEdgeMap.fromRgba(
++      rgba: input.rgba,
++      width: input.width,
++      height: input.height,
++    );
++
++/// Full-resolution grayscale source used for inexpensive silhouette probes.
++///
++/// Unlike [TextureComplexityMap], this map is never downsampled. Sobel values
++/// are computed only at the handful of pixels sampled by each connector ray.
++class SilhouetteEdgeMap {
++  const SilhouetteEdgeMap._({
++    required this.width,
++    required this.height,
++    required Uint8List grayscale,
++  }) : _grayscale = grayscale;
++
++  factory SilhouetteEdgeMap.fromRgba({
++    required Uint8List rgba,
++    required int width,
++    required int height,
++  }) {
++    if (width < 3 || height < 3 || rgba.length < width * height * 4) {
++      return SilhouetteEdgeMap._(
++        width: 0,
++        height: 0,
++        grayscale: Uint8List(0),
++      );
++    }
++    final grayscale = Uint8List(width * height);
++    for (var index = 0; index < grayscale.length; index++) {
++      final rgbaIndex = index * 4;
++      grayscale[index] = (rgba[rgbaIndex] * 0.299 +
++              rgba[rgbaIndex + 1] * 0.587 +
++              rgba[rgbaIndex + 2] * 0.114)
++          .round();
++    }
++    return SilhouetteEdgeMap._(
++      width: width,
++      height: height,
++      grayscale: grayscale,
++    );
++  }
++
++  final int width;
++  final int height;
++  final Uint8List _grayscale;
++
++  bool get isValid => width >= 3 && height >= 3;
++
++  RayCastAnchorResult findAnchor({
++    required Offset cardAnchor,
++    required Rect objectRect,
++    required Rect imageRect,
++    required Offset fallbackAnchor,
++    double sampleSpacing = 2.5,
++    double maxShiftObjectDiagonalRatio = 0.6,
++    Iterable<Rect> otherObjectRects = const [],
++  }) {
++    if (!isValid ||
++        !_isFiniteOffset(cardAnchor) ||
++        !_isFiniteOffset(fallbackAnchor) ||
++        !_isFiniteRect(objectRect) ||
++        !_isFiniteRect(imageRect) ||
++        sampleSpacing <= 0) {
++      return RayCastAnchorResult(
++        anchor: fallbackAnchor,
++        fallbackAnchor: fallbackAnchor,
++        fallbackReason: RayCastFallbackReason.invalidInput,
++        scannedSampleCount: 0,
++      );
++    }
++
++    final sourceCard = _canvasToSource(cardAnchor, imageRect);
++    final sourceObjectRect = Rect.fromLTRB(
++      (objectRect.left - imageRect.left) / imageRect.width * width,
++      (objectRect.top - imageRect.top) / imageRect.height * height,
++      (objectRect.right - imageRect.left) / imageRect.width * width,
++      (objectRect.bottom - imageRect.top) / imageRect.height * height,
++    );
++    final sourceCenter = sourceObjectRect.center;
++    final ray = sourceCenter - sourceCard;
++    final rayLength = ray.distance;
++    if (rayLength <= sampleSpacing) {
++      return RayCastAnchorResult(
++        anchor: fallbackAnchor,
++        fallbackAnchor: fallbackAnchor,
++        fallbackReason: RayCastFallbackReason.invalidInput,
++        scannedSampleCount: 0,
++      );
++    }
++
++    final direction = ray / rayLength;
++    // The backend bbox is intentionally shrunken. Begin looking before that
++    // rectangle so the true silhouette outside it can still be recovered.
++    final searchPadding = math.min(
++          sourceObjectRect.width,
++          sourceObjectRect.height,
++        ) *
++        0.5;
++    final searchRect = sourceObjectRect.inflate(searchPadding);
++    final entryDistance = _rayEntryDistance(
++      origin: sourceCard,
++      direction: direction,
++      maximumDistance: rayLength,
++      rect: searchRect,
++    );
++    if (entryDistance == null) {
++      return RayCastAnchorResult(
++        anchor: fallbackAnchor,
++        fallbackAnchor: fallbackAnchor,
++        fallbackReason: RayCastFallbackReason.invalidInput,
++        scannedSampleCount: 0,
++      );
++    }
++
++    const backgroundSampleCount = 8;
++    final scanStart = math.max(
++      sampleSpacing,
++      entryDistance - (backgroundSampleCount + 2) * sampleSpacing,
++    );
++    final gradients = <({double magnitude, double alignment})>[];
++    final points = <Offset>[];
++    for (var distance = scanStart;
++        distance <= rayLength;
++        distance += sampleSpacing) {
++      final point = sourceCard + direction * distance;
++      if (point.dx < 1 ||
++          point.dy < 1 ||
++          point.dx >= width - 1 ||
++          point.dy >= height - 1) {
++        continue;
++      }
++      points.add(point);
++      final sobel = _sobel(point.dx.round(), point.dy.round());
++      final alignment = sobel.magnitude <= 1e-9
++          ? 0.0
++          : (sobel.gx * direction.dx + sobel.gy * direction.dy).abs() /
++              sobel.magnitude;
++      gradients.add((magnitude: sobel.magnitude, alignment: alignment));
++    }
++
++    if (gradients.length <= backgroundSampleCount) {
++      return RayCastAnchorResult(
++        anchor: fallbackAnchor,
++        fallbackAnchor: fallbackAnchor,
++        fallbackReason: RayCastFallbackReason.noClearEdge,
++        scannedSampleCount: gradients.length,
++      );
++    }
++
++    for (var index = backgroundSampleCount; index < gradients.length; index++) {
++      final baselineStart = math.max(0, index - backgroundSampleCount);
++      final baseline = gradients
++          .sublist(baselineStart, index)
++          .map((sample) => sample.magnitude)
++          .toList(growable: false);
++      final mean = baseline.reduce((a, b) => a + b) / baseline.length;
++      final variance = baseline.fold<double>(
++            0,
++            (sum, value) => sum + (value - mean) * (value - mean),
++          ) /
++          baseline.length;
++      final standardDeviation = math.sqrt(variance);
++      final adaptiveThreshold = math.max(
++        32.0,
++        math.max(mean * 1.8, mean + math.max(18, standardDeviation * 2)),
++      );
++      final pointDistance = (points[index] - sourceCard).distance;
++      if (pointDistance + sampleSpacing < entryDistance ||
++          gradients[index].magnitude < adaptiveThreshold ||
++          gradients[index].alignment < 0.35) {
++        continue;
++      }
++      final canvasAnchor = _sourceToCanvas(points[index], imageRect);
++      final objectDiagonal = math.sqrt(
++        objectRect.width * objectRect.width +
++            objectRect.height * objectRect.height,
++      );
++      if ((canvasAnchor - fallbackAnchor).distance >
++          objectDiagonal * maxShiftObjectDiagonalRatio) {
++        return RayCastAnchorResult(
++          anchor: fallbackAnchor,
++          fallbackAnchor: fallbackAnchor,
++          fallbackReason: RayCastFallbackReason.excessiveShift,
++          scannedSampleCount: index + 1,
++        );
++      }
++      if (otherObjectRects
++          .any((rect) => _innerCore(rect).contains(canvasAnchor))) {
++        return RayCastAnchorResult(
++          anchor: fallbackAnchor,
++          fallbackAnchor: fallbackAnchor,
++          fallbackReason: RayCastFallbackReason.otherObjectCore,
++          scannedSampleCount: index + 1,
++        );
++      }
++      return RayCastAnchorResult(
++        anchor: canvasAnchor,
++        fallbackAnchor: fallbackAnchor,
++        fallbackReason: RayCastFallbackReason.none,
++        scannedSampleCount: index + 1,
++        gradientMagnitude: gradients[index].magnitude,
++        backgroundGradient: mean,
++        method: AnchorRefinementMethod.sobel,
++      );
++    }
++
++    return RayCastAnchorResult(
++      anchor: fallbackAnchor,
++      fallbackAnchor: fallbackAnchor,
++      fallbackReason: RayCastFallbackReason.noClearEdge,
++      scannedSampleCount: gradients.length,
++    );
++  }
++
++  ({double gx, double gy, double magnitude}) _sobel(int x, int y) {
++    int pixel(int dx, int dy) => _grayscale[(y + dy) * width + x + dx];
++    final gx = -pixel(-1, -1) +
++        pixel(1, -1) -
++        2 * pixel(-1, 0) +
++        2 * pixel(1, 0) -
++        pixel(-1, 1) +
++        pixel(1, 1);
++    final gy = -pixel(-1, -1) -
++        2 * pixel(0, -1) -
++        pixel(1, -1) +
++        pixel(-1, 1) +
++        2 * pixel(0, 1) +
++        pixel(1, 1);
++    return (
++      gx: gx.toDouble(),
++      gy: gy.toDouble(),
++      magnitude: math.sqrt((gx * gx + gy * gy).toDouble()),
++    );
++  }
++
++  Offset _canvasToSource(Offset point, Rect imageRect) => Offset(
++        (point.dx - imageRect.left) / imageRect.width * width,
++        (point.dy - imageRect.top) / imageRect.height * height,
++      );
++
++  Offset _sourceToCanvas(Offset point, Rect imageRect) => Offset(
++        imageRect.left + point.dx / width * imageRect.width,
++        imageRect.top + point.dy / height * imageRect.height,
++      );
++}
++
++Rect _innerCore(Rect rect) => Rect.fromLTRB(
++      rect.left + rect.width * 0.2,
++      rect.top + rect.height * 0.2,
++      rect.right - rect.width * 0.2,
++      rect.bottom - rect.height * 0.2,
++    );
++
++double? _rayEntryDistance({
++  required Offset origin,
++  required Offset direction,
++  required double maximumDistance,
++  required Rect rect,
++}) {
++  var minimum = 0.0;
++  var maximum = maximumDistance;
++
++  bool clip(
++      double originValue, double directionValue, double low, double high) {
++    if (directionValue.abs() < 1e-9) {
++      return originValue >= low && originValue <= high;
++    }
++    final first = (low - originValue) / directionValue;
++    final second = (high - originValue) / directionValue;
++    minimum = math.max(minimum, math.min(first, second));
++    maximum = math.min(maximum, math.max(first, second));
++    return minimum <= maximum;
++  }
++
++  if (!clip(origin.dx, direction.dx, rect.left, rect.right) ||
++      !clip(origin.dy, direction.dy, rect.top, rect.bottom)) {
++    return null;
++  }
++  return minimum.clamp(0, maximumDistance);
++}
++
++bool _isFiniteOffset(Offset offset) => offset.dx.isFinite && offset.dy.isFinite;
++
++bool _isFiniteRect(Rect rect) =>
++    rect.left.isFinite &&
++    rect.top.isFinite &&
++    rect.right.isFinite &&
++    rect.bottom.isFinite &&
++    rect.width > 0 &&
++    rect.height > 0;
+diff --git a/plan_business.md b/plan_business.md
+new file mode 100644
+index 0000000..a9005e5
+--- /dev/null
++++ b/plan_business.md
+@@ -0,0 +1,525 @@
++# Kế hoạch kiến trúc AI Scan và khả năng mở rộng kinh doanh
++
++## Trạng thái
++
++- Ngày lập: 2026-08-27.
++- Trạng thái: Chờ duyệt trước khi triển khai.
++- Phạm vi hiện tại: Tối ưu mã nguồn, RPD, entitlement, model routing và khả năng mở rộng.
++- Chưa thực hiện: Thanh toán thật, quảng cáo, credit, thay đổi production hoặc nâng Gemini Tier 1.
++- Phần nâng Gemini production project lên Tier 1 do chủ dự án thực hiện.
++
++## 1. Yêu cầu kinh doanh đã chốt
++
++- Tài khoản mới mặc định là `free`.
++- Không cần tạo subscription Free cho mọi tài khoản.
++- Subscription `active` và chưa hết hạn thì người dùng là `pro`.
++- Subscription hết hạn hoặc bị hủy thì người dùng quay về Free.
++- Free sử dụng `gemini-3.5-flash-lite`.
++- Pro sử dụng `gemini-3.7-flash`.
++- Pro có thể fallback sang `gemini-3.6-flash` khi 3.7 gặp lỗi hệ thống.
++- Free không được fallback sang model Pro.
++- Model phải được chọn ở server; Flutter không được tự khai báo tier hoặc model.
++- Free và Pro dùng chung response schema để không phải duy trì hai luồng UI.
++- Sự khác biệt về chất lượng giữa Flash-Lite và Flash đã được kiểm tra thực tế và được chấp nhận làm quyền lợi Pro.
++
++## 2. Mục tiêu kỹ thuật
++
++- Một scan thành công trung bình không vượt quá `1.05` Gemini request.
++- Duplicate Gemini call bằng `0` đối với cùng user và request ID.
++- Không thể gọi Gemini ngoài luồng xác thực và entitlement.
++- Free và Pro có quota, retry, health và circuit breaker tách biệt theo model pool.
++- Có thể thay model bằng config/canary mà không phát hành lại Flutter.
++- Có thể thêm tính năng Pro sau này thông qua capability tập trung.
++- Đủ khả năng load test từ `15` đến `500 RPM` sau khi nâng Tier 1.
++
++## 3. Kiến trúc mục tiêu
++
++```text
++Flutter
++  | JWT + request_id + image
++  v
++Supabase Edge: gemini-vision-scan
++  |- Xác thực user
++  |- Resolve entitlement/capabilities
++  |- Kiểm tra idempotency
++  |- Chọn model policy
++  |    |- Free -> Gemini 3.5 Flash-Lite
++  |    `- Pro  -> Gemini 3.7 Flash -> Gemini 3.6 Flash fallback
++  |- Gọi Gemini
++  |- Ghi model/token/attempt/latency/error
++  `- Trả kết quả theo một response schema
++```
++
++## 4. Phân biệt tối ưu RPD với tối ưu token
++
++RPD chỉ giảm khi giảm số lần gọi Gemini:
++
++```text
++RPD tiêu thụ
++= unique scan
+++ upstream retry
+++ duplicate request bị lọt
+++ synthetic Gemini health check
++```
++
++- `request_id`, idempotency, cache ngắn hạn và retry đúng cách giúp giảm RPD.
++- Nén ảnh, rút prompt, giảm output và thinking chủ yếu giảm TPM, latency và chi phí; chúng không trực tiếp giảm một RPD của request đã gửi.
++
++Mục tiêu:
++
++- `calls_per_scan <= 1.05`.
++- `duplicate_calls = 0`.
++- Synthetic Gemini health không quá `2-4 request/model/ngày`.
++- Không retry khi đã chạm RPD.
++
++## 5. P0 - Baseline và bảo toàn mã nguồn hiện tại
++
++Mã nguồn đang có nhiều thay đổi chưa commit trong khu vực AI Scan và Edge Function. Trước khi sửa:
++
++1. Lưu `git status` và diff hiện tại.
++2. Không ghi đè các thay đổi hierarchy, ranking, bounding box, health-store và Flutter scan flow.
++3. Chạy baseline:
++   - Flutter analyze.
++   - Flutter tests liên quan AI Scan.
++   - Deno check.
++   - Deno tests.
++   - Deno lint.
++4. Ghi rõ lỗi nào có sẵn trước triển khai.
++5. Xác nhận version production/canary hiện tại để có đường rollback.
++
++Điều kiện hoàn thành: Có baseline và phạm vi diff rõ ràng trước lần sửa đầu tiên.
++
++## 6. P1 - Entitlement và capability tập trung
++
++### 6.1. Nguồn quyền chính thức
++
++Tái sử dụng bảng `public.subscriptions` hiện có. Một user là Pro khi:
++
++```text
++status = 'active'
++AND end_date > now()
++AND plan_type thuộc nhóm Pro được hỗ trợ
++```
++
++Yêu cầu database:
++
++- Kiểm tra duplicate trước khi thêm unique constraint.
++- Thêm index `(user_id, status, end_date DESC)`.
++- User chỉ được đọc subscription của chính mình.
++- Authenticated client không được insert/update/cancel subscription.
++- Chỉ service role, admin hoặc purchase webhook được ghi subscription.
++- Thêm `updated_at` nếu schema thực tế xác nhận cần.
++- Không sử dụng `user_metadata` làm quyền Pro.
++
++Hàm Flutter cho phép tự tạo/gia hạn subscription phải được loại bỏ. Trong giai đoạn test, quyền Pro chỉ được cấp qua admin/service-role.
++
++### 6.2. Capability policy
++
++Tạo module dùng chung:
++
++```text
++supabase/functions/_shared/entitlements.ts
++```
++
++API tối thiểu:
++
++```text
++resolveEntitlements(userId)
++hasCapability(userId, capability)
++requireCapability(userId, capability)
++```
++
++Capability ban đầu:
++
++```text
++Free -> ai_scan_basic
++Pro  -> ai_scan_basic + ai_scan_advanced
++```
++
++Capability có thể bổ sung sau:
++
++```text
++unlimited_scan
++advanced_statistics
++premium_games
++cloud_backup
++priority_processing
++```
++
++Flutter có thể ẩn/hiện UI theo capability, nhưng mọi chức năng có giá trị vẫn phải kiểm tra lại phía server.
++
++### 6.3. Xác thực
++
++- Production Edge Function bắt buộc JWT.
++- Server lấy `user_id` từ phiên đã xác thực.
++- Không tin `user_id`, `is_pro`, `tier` hoặc `model` từ request body.
++- Database entitlement lỗi thì trả `503` và không gọi Gemini.
++
++Điều kiện hoàn thành: User Free không thể giả thành Pro bằng request hoặc APK đã chỉnh sửa.
++
++## 7. P2 - Model router Free/Pro
++
++Tạo policy riêng, ví dụ:
++
++```text
++supabase/functions/gemini-vision-scan/model_policy.ts
++```
++
++Policy:
++
++```text
++Free:
++  primary  = gemini-3.5-flash-lite
++  fallback = none
++
++Pro:
++  primary  = gemini-3.7-flash
++  fallback = gemini-3.6-flash
++```
++
++Model name đọc từ Supabase Secrets/config:
++
++```text
++GEMINI_FREE_MODEL
++GEMINI_PRO_MODEL
++GEMINI_PRO_FALLBACK_MODEL
++```
++
++Quy tắc:
++
++- Client không được chọn model.
++- Free không fallback sang Pro.
++- `429` không được dùng làm lý do fallback để né quota.
++- Pro chỉ fallback khi 3.7 gặp lỗi hệ thống hoặc network phù hợp.
++- `503/network` tối đa một retry có jitter.
++- `400/401/403/422` không retry.
++- Giữ chung prompt và response schema ban đầu.
++- Không cố tình giới hạn Free để tạo khác biệt giả.
++- Loại `gemini-3.5-flash` khỏi production chain đã chọn.
++- Health-store hiện có tiếp tục theo dõi từng model.
++
++Response bổ sung nhưng vẫn tương thích ngược:
++
++```json
++{
++  "scan_id": "...",
++  "service_tier": "free",
++  "model_used": "gemini-3.5-flash-lite",
++  "words": []
++}
++```
++
++Điều kiện hoàn thành: Free luôn dùng Lite; active Pro luôn ưu tiên 3.7; không có fallback chéo tier.
++
++## 8. P3 - Request ID, idempotency và scan ledger
++
++### 8.1. Request contract
++
++Flutter tạo một UUID cho mỗi thao tác scan. Retry của cùng thao tác phải giữ nguyên ID:
++
++```json
++{
++  "request_id": "uuid",
++  "image_base64": "..."
++}
++```
++
++Flutter không gửi `tier` hoặc `model`.
++
++### 8.2. Bảng `ai_scan_requests`
++
++Các trường dự kiến:
++
++```text
++id
++client_request_id
++user_id
++service_tier
++status
++model_used
++attempt_count
++prompt_tokens
++output_tokens
++thinking_tokens
++total_tokens
++word_count
++latency_ms
++error_code
++result_json
++created_at
++completed_at
++expires_at
++```
++
++Constraints/index:
++
++- Unique `(user_id, client_request_id)`.
++- Index `(user_id, created_at DESC)`.
++- Index `(service_tier, created_at DESC)` nếu report sử dụng.
++- Index foreign key `user_id`.
++- RLS: user chỉ đọc request của mình; không tự ghi tier/model/token.
++- Không lưu ảnh.
++
++Luồng xử lý:
++
++1. Insert/reserve request bằng transaction ngắn.
++2. Nếu request đã thành công, trả `result_json` cũ.
++3. Nếu request đang chạy, không gọi Gemini lần hai.
++4. Gọi Gemini bên ngoài database transaction.
++5. Cập nhật success/error/token bằng statement ngắn.
++6. Giữ result khoảng 24 giờ để xử lý retry mất mạng.
++
++Không giữ lock database trong khi chờ Gemini.
++
++### 8.3. Cache hash ảnh tùy chọn
++
++Chỉ bổ sung sau khi telemetry chứng minh người dùng thường scan lại cùng ảnh:
++
++- Hash ảnh đã nén.
++- Cache theo `(user_id, image_hash)`.
++- TTL `5-10 phút`.
++- Không cache dùng chung giữa user.
++- Không lưu ảnh chỉ để cache.
++
++Điều kiện hoàn thành: Gửi cùng request 10 lần vẫn chỉ có một Gemini call.
++
++## 9. P4 - Flutter entitlement provider
++
++Tạo provider tập trung:
++
++```text
++lib/core/entitlements/entitlement_provider.dart
++```
++
++API UI:
++
++```dart
++entitlements.can(AppCapability.aiScanAdvanced)
++```
++
++Provider chịu trách nhiệm:
++
++- Hiện/ẩn chức năng Pro.
++- Hiện paywall hoặc badge Pro.
++- Refresh sau thanh toán.
++- Restore quyền khi đăng nhập thiết bị khác.
++- Cung cấp trạng thái Free mặc định khi không có subscription hợp lệ.
++
++Flutter vẫn không có quyền tự nâng plan. Endpoint server phải kiểm tra capability lại.
++
++Các test cần có:
++
++- Request ID giữ nguyên khi retry.
++- Response cũ không có tier/model vẫn parse được.
++- Response mới parse được metadata.
++- Các exception `401/429/503` hiện tại không bị phá.
++- Scan provider/controller và widget/golden tests tiếp tục chạy.
++
++## 10. P5 - Retry, health và circuit breaker
++
++Theo dõi riêng ba model pool:
++
++- Flash-Lite Free.
++- Flash 3.7 Pro.
++- Flash 3.6 Pro fallback.
++
++Trạng thái circuit:
++
++```text
++healthy -> degraded -> open -> half_open
++```
++
++Quy tắc:
++
++- Free pool lỗi không ảnh hưởng Pro pool.
++- Pro pool lỗi không tiêu quota Flash-Lite.
++- `429 quota` không được xem là model hỏng.
++- `RPD exhausted` không retry.
++- `RPM exhausted` tôn trọng `Retry-After`.
++- Circuit mở sau lỗi hệ thống liên tiếp theo cấu hình.
++- Sau cooldown chỉ thử một request half-open.
++- Log riêng quota metric, tier, model, attempt và latency.
++
++Health check:
++
++- Edge liveness không gọi Gemini.
++- Synthetic Gemini health tối đa `2-4 lần/model/ngày`.
++- Không dùng scan đầy đủ để health check liên tục.
++
++Chưa thêm queue, Redis, VPS hoặc dependency mới. Chỉ bổ sung khi load test chứng minh cần.
++
++## 11. Checkpoint do chủ dự án thực hiện - Gemini Tier 1
++
++Chủ dự án thực hiện:
++
++1. Nâng Gemini production project lên Tier 1.
++2. Thiết lập billing/prepay.
++3. Đặt budget alert và spend cap phù hợp.
++4. Ghi lại quota thực tế của:
++   - Gemini 3.5 Flash-Lite.
++   - Gemini 3.7 Flash.
++   - Gemini 3.6 Flash.
++   - RPM.
++   - TPM.
++   - RPD.
++5. Cung cấp quota thực tế trước khi cấu hình limiter và load test production.
++
++Không hard-code quota Free Tier cũ vào mã nguồn production.
++
++## 12. P6 - Verification và load test
++
++### 12.1. Edge/Deno
++
++- Anonymous request trả `401`.
++- Free luôn route Lite.
++- Active Pro chưa hết hạn route 3.7.
++- Pro hết hạn/cancelled route Lite.
++- Client gửi `model=3.7` nhưng Free vẫn dùng Lite.
++- Free `429` không fallback sang Pro.
++- Pro lỗi hệ thống fallback đúng sang 3.6.
++- Duplicate request chỉ gọi Gemini một lần.
++- Usage metadata được ghi đúng.
++- Entitlement database lỗi không cấp Pro.
++- Response schema cũ vẫn hợp lệ.
++
++### 12.2. Database/RLS
++
++- User A không đọc scan/subscription của user B.
++- Authenticated user không insert/update subscription.
++- Service role ghi được subscription và scan ledger.
++- Query entitlement sử dụng index.
++- Migration xử lý dữ liệu hiện có và rollback được.
++- Chạy Supabase database/security advisors.
++
++### 12.3. Load profile
++
++Chạy riêng:
++
++1. `100% Free`.
++2. `100% Pro`.
++3. `99% Free / 1% Pro`.
++4. `98% Free / 2% Pro`.
++
++Các nấc:
++
++```text
++15 -> 50 -> 150 -> 500 RPM
++```
++
++Mục tiêu:
++
++- Success `>= 99%`.
++- `429 < 1%` khi quota còn đủ.
++- `calls_per_scan <= 1.05`.
++- Không duplicate call.
++- Không fallback chéo tier.
++- P95 không xấu hơn baseline được duyệt.
++- Supabase CPU, RAM và connections ổn định.
++
++Load test Supabase bằng Gemini stub trước; chỉ chạy end-to-end thật sau khi quota Tier 1 cho phép.
++
++## 13. P7 - Canary và production rollout
++
++1. Deploy canary với JWT.
++2. Chỉ tài khoản nội bộ được sử dụng.
++3. Test Free và Pro thật.
++4. Soak test `3-7 ngày`.
++5. Theo dõi:
++   - Request và RPD theo model.
++   - Calls-per-scan.
++   - Token/scan.
++   - Word count.
++   - P50/P95/P99 latency.
++   - Retry/fallback/error rate.
++   - Supabase CPU/RAM/connections.
++6. Cảnh báo quota/budget ở `50%`, `75%`, `90%`.
++7. Chỉ promote production khi đạt tiêu chí.
++8. Giữ Edge Function version trước để rollback.
++
++## 14. P8 - Mở rộng kinh doanh trong tương lai
++
++### 14.1. Thanh toán
++
++```text
++Store payment
++-> webhook server xác minh
++-> upsert subscriptions
++-> entitlement thành Pro
++-> Flutter refresh capabilities
++```
++
++Client không được tự xác nhận thanh toán hoặc tự ghi subscription.
++
++### 14.2. Quảng cáo Free
++
++```text
++AdMob rewarded ad
++-> Server-Side Verification
++-> cộng scan credit
++-> admission kiểm tra credit
++-> Free được gọi Flash-Lite
++```
++
++Credit phải dùng ledger bất biến và idempotent theo external event ID. Không tin callback quảng cáo từ client.
++
++### 14.3. Tier mới
++
++Ví dụ:
++
++```text
++Free     -> Flash-Lite
++Pro      -> Flash 3.7
++Pro Plus -> model cao hơn hoặc priority throughput
++```
++
++Khi chỉ có `2-3` tier, capability mapping giữ trong code. Chỉ chuyển thành bảng policy động khi số tier và feature thực sự nhiều.
++
++### 14.4. Nâng model
++
++Khi Google thay model:
++
++1. Đổi model config ở canary.
++2. Chạy regression dataset hiện có.
++3. So sánh chất lượng, token, latency và lỗi.
++4. Soak test.
++5. Promote config production.
++
++Không cần thay đổi Flutter nếu response schema không đổi.
++
++## 15. Thứ tự triển khai
++
++```text
++P0 -> P1 -> P2 -> P3 -> P4 -> P5
++                              |
++                              v
++                    Chủ dự án nâng Tier 1
++                              |
++                              v
++                         P6 -> P7
++                              |
++                              v
++                         P8 về sau
++```
++
++## 16. Phạm vi khuyến nghị hiện tại
++
++- Thực hiện trước: `P0-P5`.
++- Dừng tại checkpoint Tier 1 để lấy quota thật.
++- Sau Tier 1: thực hiện `P6-P7`.
++- Để sau: `P8`.
++- Không tạo hai Edge Function riêng cho Free và Pro.
++- Không thêm queue, Redis, VPS, Kubernetes hoặc nhà cung cấp AI thứ hai trước khi có số liệu load test.
++- Không thay đổi response schema hiện tại theo cách phá vỡ Flutter cũ.
++- Mọi thay đổi phải có migration, test, canary và rollback tương ứng.
++
++## 17. Các quyết định mặc định đang đề xuất
++
++- Pro fallback: `gemini-3.6-flash`.
++- Thời gian giữ result idempotency: `24 giờ`.
++- Synthetic AI health: `2-4 lần/model/ngày`.
++- Retry upstream: tối đa `1` cho lỗi tạm thời phù hợp.
++- Calls-per-scan mục tiêu: `<= 1.05`.
++- Free/Pro dùng chung prompt và schema ở lần triển khai đầu.
++- Capability và model policy là hai nguồn cấu hình tập trung phía server.
++
++Các quyết định này có thể được điều chỉnh sau telemetry nhưng không được thay đổi âm thầm trong lúc triển khai.
+diff --git a/scan_feature_handoff.md b/scan_feature_handoff.md
+new file mode 100644
+index 0000000..7db186f
+--- /dev/null
++++ b/scan_feature_handoff.md
+@@ -0,0 +1,1085 @@
++# AI Scan Feature Handoff
++
++> Tài liệu bàn giao kỹ thuật cho agent tiếp quản chức năng chính: chụp/chọn
++> ảnh, nhận diện từ vựng bằng Gemini Vision và vẽ note từ vựng lên ảnh.
++
++## 0. Thông tin baseline
++
++- Ngày đối chiếu mã nguồn: `2026-08-25`.
++- Branch tại thời điểm lập handoff: `AI-scan`.
++- Commit nền: `ac576d70c89473fefe1bcf5a4d15e5bc16b352e4`.
++- Flutter: `3.44.4` stable.
++- Dart: `3.12.2`.
++- Supabase CLI: `2.114.0`.
++- Tài liệu này mô tả **hiện trạng trong source**, không mô tả đầy đủ sản phẩm
++  mong muốn trong tương lai.
++- Khi tài liệu và code khác nhau, code và test hiện tại là nguồn sự thật.
++- Không dùng mô tả Gemini 1.5 trong `README.md`/comment `pubspec.yaml` làm căn
++  cứ runtime; Edge Function hiện cấu hình model khác, xem mục 6.
++
++Verification tại baseline:
++
++```powershell
++flutter test test/features/ai_scan test/features/vocab_scan `
++  test/core/services/gemini_vision_service_test.dart
++```
++
++- Kết quả: `142` tests passed.
++- `flutter analyze`: pass, không có issue.
++- Deno không có trong PATH trên máy lập handoff, nên Edge TypeScript tests chưa
++  được chạy tại baseline này; xem lệnh ở mục 17.4.
++- Browser-only compressor test cần Chrome runner riêng; lần kiểm tra trực tiếp
++  tại baseline bị treo khi khởi động runner và đã được dừng, nên không tính là
++  pass.
++
++## 1. Phạm vi và trạng thái hiện tại
++
++### 1.1 Phần đã chạy trong flow chính
++
++1. Mở bottom sheet Scan từ nút camera ở bottom navigation.
++2. Chụp ảnh bằng camera hoặc chọn ảnh trong thư viện.
++3. Có camera implementation riêng trên web.
++4. Đọc bytes, tạo preview và tính aspect ratio.
++5. Nén ảnh thành JPEG không quá 300 KiB, bỏ EXIF.
++6. Lưu JPEG cục bộ/tạm thời tùy nền tảng.
++7. Gửi Base64 JPEG cùng Supabase access token tới Edge Function.
++8. Edge Function gọi chuỗi model Gemini, chuẩn hóa kết quả.
++9. Flutter parse, validate, deduplicate, rank và normalize bounding box.
++10. Lưu record kết quả vào SQLite trên native hoặc RAM trên web.
++11. Vẽ bounding box, connector và card từ vựng trực tiếp trong bottom sheet.
++12. Cho phép mở fullscreen và zoom/pan toàn bộ ảnh + overlay.
++
++### 1.2 Phần có source nhưng chưa nối vào flow chính
++
++- `ScanFlowController.scanAndNavigate()` và route `/scan-overlay` tồn tại,
++  nhưng `PhotoScanBottomSheet` hiện gọi `scan()` và render kết quả inline.
++- Chọn mẫu note chỉ thay đổi `_selectedTemplateIndex`; không thay đổi painter,
++  data hoặc output. `subtitle` được truyền vào builder nhưng không được render.
++- `NoteTemplateSelector` riêng vẫn là widget rỗng/TODO.
++- `VocabCanvasOverlay` nhận `ttsService` và `onLabelTap`, nhưng caller hiện tại
++  không truyền callback; chạm label và phát âm chưa hoạt động trong flow chính.
++- `sceneWords` được giữ để tương thích nhưng placement hiện chỉ dùng `words`.
++- `PhotoScanBottomSheet.show()` và `ScanNotifier.clear()` hiện không có caller
++  trong `lib/`.
++- Màn hình Thư viện chỉ là “Đang phát triển”; local datasource mới có `save`,
++  chưa có list/get/delete/update.
++- `SelectedVocabScreen`, `VocabEntity`, `PhotoNoteEntity` vẫn là scaffold/TODO.
++- Không upload ảnh scan lên Supabase Storage và không đồng bộ album theo user.
++
++## 2. Sơ đồ kiến trúc
++
++```text
++BottomNavBar
++  -> GoRouter /scan
++     -> PhotoScanBottomSheet
++        -> ScanImagePicker / web CameraCaptureView
++        -> ScanImageCompressor
++        -> ScanImageStorage.saveJpeg
++        -> ScanFlowController.scan
++           -> ScanNotifier.scanImage
++              -> ScanImageStorage.readBytes
++              -> GeminiVisionService
++                 -> Supabase Edge Function: gemini-vision-scan
++                    -> Gemini model health store (best effort)
++                    -> Gemini model chain
++                    -> response cleanup / bounding-box shrink
++              -> ScanResultStore.save
++                 -> SQLite on native
++                 -> memory store on web
++        -> VocabCanvasOverlay
++           -> image/bbox transform
++           -> label size measurement
++           -> forbidden zones
++           -> deterministic placement solver
++           -> connector geometry/painter
++           -> cards: number + word + IPA + Vietnamese meaning
++```
++
++Hai feature directory cùng tham gia một chức năng:
++
++- `lib/features/ai_scan`: input ảnh, orchestration, network, persistence, màn
++  hình và widget overlay.
++- `lib/features/vocab_scan`: hình học thuần cho placement/card/connector. Đây
++  không phải flow scan thứ hai.
++
++## 3. Điều kiện trước khi vào Scan
++
++### 3.1 Khởi động app
++
++`lib/main.dart` thực hiện:
++
++1. `WidgetsFlutterBinding.ensureInitialized()`.
++2. Load `.env`.
++3. Khởi tạo Supabase bằng `SUPABASE_URL` và `SUPABASE_ANON_KEY`.
++4. Query thử bảng `vocabularies`.
++5. Chỉ render `CapyVocabApp` khi health check thành công; nếu không, app hiện
++   màn hình mất kết nối và nút thử lại.
++6. Root app được bọc trong `ProviderScope`.
++
++Hệ quả: scan không thể mở nếu startup health check Supabase thất bại, kể cả
++phần chọn/nén ảnh về lý thuyết có thể chạy local.
++
++### 3.2 Auth và onboarding
++
++`lib/core/routes/app_router.dart` redirect:
++
++- Không có Supabase session -> `/auth`.
++- Có session nhưng chưa hoàn thành onboarding -> `/onboarding`.
++- Hoàn thành onboarding -> được vào `/home` và các route chính.
++
++Mỗi lần redirect có thể query `users.onboarding_completed`. Client scan cũng
++tự kiểm tra access token trước khi gửi request.
++
++### 3.3 Entry point
++
++- File: `lib/shared/navigation/bottom_nav_bar.dart`.
++- Nút: key `bottom-nav-camera-button`.
++- Hành động: `context.push('/scan')`.
++- Route `/scan` là `CustomTransitionPage<void>`:
++  - `opaque: false`;
++  - backdrop `0x66000000`;
++  - `barrierDismissible: true`;
++  - child `PhotoScanBottomSheet`.
++
++Bottom sheet cũng tự đóng khi người dùng chạm vùng ngoài hoặc vuốt xuống với
++`primaryVelocity > 200`.
++
++## 4. Runtime sequence phía Flutter
++
++### 4.1 Chọn nguồn ảnh
++
++UI có hai nút:
++
++| Nút | Key | Luồng |
++| --- | --- | --- |
++| Chụp ảnh thô | `pick-camera-button` | `_captureAndScan()` |
++| Tải ảnh lên | `pick-gallery-button` | `_pickAndScan(gallery)` |
++
++`_pickAndScan()` là orchestration method chính trong
++`lib/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart`.
++
++Đầu mỗi lượt chọn:
++
++1. Nếu `_isProcessing == true`, return.
++2. Xóa `_previewBytes`, `_imageAspectRatio`, `_scanRecord`.
++3. Đặt status về `Đang chuẩn bị ảnh...`.
++4. Gọi picker hoặc web capture override.
++
++Lưu ý: `_isProcessing` chỉ được đặt `true` **sau khi picker trả ảnh**. Trong
++thời gian native picker đang mở, guard nội bộ chưa khóa lượt gọi thứ hai.
++Vì preview/result cũ bị xóa trước khi mở picker, nếu người dùng bắt đầu lượt
++chọn mới rồi cancel, preview/result của lượt trước vẫn đã bị xóa.
++
++### 4.2 Camera và gallery trên native
++
++`DeviceScanImagePicker` bọc package `image_picker`:
++
++```dart
++pickImage(
++  source: camera ? ImageSource.camera : ImageSource.gallery,
++  requestFullMetadata: false,
++)
++```
++
++Kết quả được chuyển thành:
++
++```dart
++class PickedScanImage {
++  Uint8List bytes;
++  String name;
++}
++```
++
++- `name` hiện không được dùng sau khi chọn.
++- Người dùng hủy picker -> trả `null`, không hiện lỗi và không chạy pipeline.
++- Native/plugin exception -> `ScanImagePickerException` với message theo nguồn.
++
++### 4.3 Camera riêng trên web
++
++Web không dùng nhánh camera của `image_picker`. `_captureWithWebCamera()` push
++`CameraCaptureView` fullscreen và đợi `XFile` trả về.
++
++`BrowserCameraCaptureSession`:
++
++1. Gọi `navigator.mediaDevices.getUserMedia({video: ..., audio: false})`.
++2. Liệt kê `videoinput` bằng `enumerateDevices()`.
++3. Xác định camera đang active.
++4. Nếu camera mặc định có nhãn IR/infrared/Windows Hello, thử chuyển sang camera
++   thường đầu tiên.
++5. Dùng `HTMLVideoElement` autoplay, muted, playsInline để preview.
++6. Đặt `pointerEvents: none` cho element video để control Flutter nhận tap.
++7. Nếu có nhiều camera, UI cho đổi device.
++8. Khi chụp, vẽ frame video lên `HTMLCanvasElement`.
++9. Encode JPEG bằng `canvas.toBlob(..., 'image/jpeg', 0.92)`.
++10. Trả `XFile.fromData` về bottom sheet.
++11. Khi đóng/dispose, pause video, bỏ `srcObject`, stop toàn bộ media tracks.
++
++Web camera cần secure context: HTTPS khi deploy; localhost được browser cho
++phép trong development.
++
++Các nhóm lỗi camera web:
++
++- Permission/access/not-allowed -> yêu cầu cấp quyền, có nút thử lại.
++- Không tìm thấy camera -> gợi ý đóng để dùng thư viện, không hiện thử lại.
++- Lỗi khác -> hiển thị code + description của browser và cho thử lại.
++
++### 4.4 Preview và aspect ratio
++
++Sau khi có `PickedScanImage`:
++
++1. `_updateImageDimensions()` dùng `ui.instantiateImageCodec`.
++2. Aspect ratio là `image.width / image.height`.
++3. Bytes gốc được gán vào `_previewBytes` để preview xuất hiện ngay.
++4. `_isProcessing = true`.
++5. Status chuyển sang `Đang nén ảnh...`.
++
++Lỗi khi chỉ đọc dimensions bị bỏ qua; UI fallback aspect ratio `4 / 3`.
++
++### 4.5 Nén ảnh
++
++`FlutterScanImageCompressor` có contract:
++
++- Input phải khác rỗng và decode được.
++- Output là JPEG.
++- `keepExif: false`.
++- Dung lượng tối đa `300 * 1024` bytes.
++- Giữ tỷ lệ ảnh.
++
++Các cạnh tối đa được thử theo thứ tự:
++
++```text
++1024 -> 896 -> 768 -> 640 -> 512 -> 384
++```
++
++Mỗi kích thước thử các quality:
++
++```text
++85 -> 70 -> 55 -> 40 -> 25 -> 15
++```
++
++Compressor trả ngay lần đầu đạt <= 300 KiB. Nếu mọi tổ hợp vẫn quá lớn, nó
++ném `ScanImagePreparationException` thay vì gửi phiên bản vượt limit.
++
++Sau khi nén:
++
++- Preview đổi sang bytes JPEG đã nén.
++- Aspect ratio được đọc lại.
++- Status đổi thành `Đang nhận diện từ vựng...`.
++
++Không có status riêng cho bước lưu local; lúc đang lưu, UI đã hiện status nhận
++diện.
++
++### 4.6 Lưu JPEG trước scan
++
++Factory dùng conditional import:
++
++```text
++dart.library.io          -> IoScanImageStorage
++dart.library.js_interop  -> MemoryScanImageStorage
++fallback                 -> MemoryScanImageStorage
++```
++
++Native IO:
++
++```text
++<ApplicationDocumentsDirectory>/capy_scans/
++  capy_scan_<microsecondsSinceEpoch>.jpg
++```
++
++- Ghi bytes với `flush: true`.
++- `localPath` là absolute file path.
++
++Web/memory:
++
++```text
++memory://capy_scan_<microsecondsSinceEpoch>.jpg
++```
++
++- Bytes được copy vào `Map<String, Uint8List>`.
++- Reload app/tab làm mất dữ liệu.
++
++Ảnh được lưu **trước** khi gọi Vision. Không có cleanup khi Vision hoặc SQLite
++thất bại, nên scan lỗi có thể để lại file JPEG mồ côi trên native.
++
++### 4.7 Orchestration và Riverpod state
++
++`ScanFlowController.scan(context, ref, localPath)` gọi
++`scanProvider.notifier.scanImage(localPath)`.
++
++Providers:
++
++| Provider | Implementation mặc định |
++| --- | --- |
++| `scanImagePickerProvider` | `DeviceScanImagePicker` |
++| `scanImageCompressorProvider` | `FlutterScanImageCompressor` |
++| `scanImageStorageProvider` | platform storage factory |
++| `visionScanClientProvider` | `GeminiVisionService` |
++| `scanResultStoreProvider` | SQLite native / memory web |
++| `scanProvider` | `ScanNotifier` |
++
++`ScanNotifier` giữ `AsyncValue<ScanResultRecord?>`:
++
++```text
++initial: AsyncData(null)
++  -> scanImage(): AsyncLoading
++     -> success: AsyncData(record)
++     -> failure: AsyncError(error, stackTrace), rồi rethrow
++```
++
++Thứ tự bắt buộc trong `scanImage()`:
++
++1. Nếu state đang loading, ném `StateError`.
++2. Đọc lại bytes bằng `_imageStorage.readBytes(localPath)`.
++3. Gọi `_visionClient.analyzeImageBytes(imageBytes)`.
++4. Chỉ khi Vision thành công mới gọi `_resultStore.save(...)`.
++5. Trả record cho bottom sheet.
++
++`ScanFlowController` bắt exception để log và hiện dialog. Nó trả `null` sau
++lỗi; caller không được coi `null` là kết quả scan rỗng.
++
++### 4.8 Kết thúc flow trong bottom sheet
++
++Flow chính hiện gọi:
++
++```dart
++final record = await ScanFlowController.scan(...);
++if (record != null) {
++  setState(() => _scanRecord = record);
++}
++```
++
++Nó **không gọi** `scanAndNavigate()`. Sau thành công:
++
++- `_scanRecord` cung cấp vocabulary cho preview hiện tại.
++- `_isProcessing` về `false` trong `finally`.
++- Hai nút camera/gallery được bật lại.
++- Bottom sheet mở rộng tối đa từ khoảng 55% lên 82% chiều cao màn hình khi có
++  preview/đang xử lý.
++
++## 5. Client-to-Edge API contract
++
++### 5.1 Endpoint
++
++`GeminiVisionService` dựng URL từ Supabase REST URL runtime:
++
++```text
++<supabase-origin>/functions/v1/gemini-vision-scan
++```
++
++Không hardcode project host trong production path; constructor cho phép override
++endpoint/client/token provider để test.
++
++### 5.2 Request
++
++Flutter Base64-encode JPEG và gửi:
++
++```http
++POST /functions/v1/gemini-vision-scan
++Authorization: Bearer <current Supabase access token>
++Content-Type: application/json; charset=utf-8
++```
++
++```json
++{
++  "image_base64": "<base64 JPEG>"
++}
++```
++
++- Không có access token -> client dừng trước HTTP và ném
++  `GeminiAuthenticationException`.
++- Timeout tổng phía Flutter: 90 giây.
++- `http.ClientException` được chuyển thành `GeminiApiException(statusCode: 0)`.
++
++### 5.3 Edge input validation
++
++Edge Function:
++
++- Sinh một `scanId` UUID cho logging/correlation.
++- Hỗ trợ CORS `OPTIONS`.
++- Thiếu `GEMINI_API_KEY` -> HTTP 500 `server_misconfigured`.
++- Thiếu/sai kiểu `image_base64` -> HTTP 400 `invalid_request`.
++- Base64 dài hơn 600,000 ký tự -> HTTP 413 `image_too_large`.
++
++Các validation chưa có trong handler:
++
++- Không reject method khác `POST` (ngoài nhánh đặc biệt `OPTIONS`).
++- Không decode để xác nhận chuỗi là Base64 hợp lệ.
++- Không sniff/validate MIME hoặc magic bytes; request tới Gemini luôn khai báo
++  `image/jpeg`.
++
++Frontend cố giữ JPEG <= 300 KiB, nên Base64 thông thường khoảng <= 409,600 ký
++tự, nằm dưới limit Edge. Cả hai giới hạn vẫn phải được giữ đồng bộ khi sửa.
++
++Edge handler không tự parse/verify JWT trong source. Flutter gửi bearer token;
++việc enforce JWT ở gateway/deployment không được cấu hình riêng cho function
++này trong `supabase/config.toml`, vì vậy agent triển khai phải xác nhận cấu hình
++project thay vì mặc định rằng handler đã tự authorization.
++
++## 6. Gemini request và model failover
++
++### 6.1 Output yêu cầu từ Gemini
++
++Edge prompt yêu cầu tối đa 12 vật thể:
++
++- rõ, phổ biến và hữu ích cho học từ vựng;
++- ưu tiên vật lớn, rõ và dễ nhận diện;
++- mỗi loại chỉ lấy một đại diện rõ nhất;
++- tên tiếng Anh tự nhiên, lowercase, thường là singular;
++- không suy diễn subtype/brand/function/đặc điểm không nhìn thấy;
++- IPA;
++- nghĩa tiếng Việt sát vật thể;
++- bounding box nguyên trong hệ tọa độ 0..1000;
++- JSON thuần, không explanation.
++
++Response schema phía Edge:
++
++```json
++{
++  "words": [
++    {
++      "number": 1,
++      "word": "chair",
++      "phonetic": "/tʃeə(r)/",
++      "meaning_vi": "cái ghế",
++      "box": { "x": 100, "y": 200, "w": 250, "h": 400 }
++    }
++  ]
++}
++```
++
++`x`, `y` là góc trên trái; `w`, `h` là extent. Schema bắt buộc đủ năm field
++trên mỗi word.
++
++### 6.2 Model chain hiện tại
++
++`supabase/functions/gemini-vision-scan/gemini_client.ts`:
++
++```text
++1. gemini-3.5-flash-lite
++2. gemini-3.6-flash
++```
++
++Config chung:
++
++- `responseMimeType: application/json`.
++- `responseSchema`: schema ở trên.
++- `maxOutputTokens: 8192`.
++- Model không phải `gemini-2.5-*` dùng `thinkingLevel: low`.
++- Timeout mỗi attempt: 35 giây.
++
++Failover:
++
++- Status có thể chuyển model: `404, 429, 500, 502, 503, 504`.
++- Riêng 503: retry một lần trên cùng model sau 750 ms, rồi mới chuyển model.
++- Network error hoặc timeout của attempt: chuyển model ngay.
++- `400, 401, 403, 413`: không chuyển model.
++- Với timeout/network, mỗi model chỉ có một attempt nên hai lần 35 giây nằm
++  dưới client timeout 90 giây. Tuy nhiên 503 được phép hai attempt trên mỗi
++  model; nếu từng response 503 đều chậm, worst case có thể vượt 90 giây. Test
++  hiện chỉ bảo vệ hằng số 90 giây, không chứng minh mọi nhánh failover hoàn tất
++  trước client timeout.
++
++### 6.3 Model health store
++
++Nếu Edge có đủ `SUPABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY`, nó dùng
++`gemini_model_health` theo kiểu best effort:
++
++- Read/write timeout 1.5 giây.
++- Model marked unhealthy được đưa xuống cuối chain ở scan sau.
++- Success reset failures về 0 và healthy=true.
++- System failure tăng `consecutive_failures`.
++- Sau 3 system failures liên tiếp, `is_healthy=false`.
++- Client error/quota không được tính là health failure.
++- Lỗi đọc/ghi health store chỉ log warning; scan vẫn tiếp tục với chain mặc
++  định.
++
++Schema/RPC nằm trong migration:
++
++`supabase/migrations/20260815141623_add_gemini_model_health.sql`.
++
++Service role là writer; không được đưa service-role key xuống Flutter client.
++
++## 7. Hậu xử lý ở Edge
++
++Khi Gemini trả HTTP success:
++
++1. Đọc `candidates[0].content.parts[0].text`.
++2. Không có text -> HTTP 422 `empty_response`.
++3. JSON parse lỗi/truncated -> HTTP 422 `truncated_response`.
++4. Nếu `parsed.words` là array:
++   - rank theo diện tích box gốc giảm dần;
++   - deduplicate theo `word.trim().toLowerCase()`;
++   - lấy tối đa `MAX_WORDS = 12`;
++   - shrink mỗi box quanh tâm với ratio `0.5` cho cả width và height;
++   - clamp về 0..1000 và giữ kích thước tối thiểu 1;
++   - đánh lại `number = index + 1`.
++5. Log các box quá lớn/quá nhỏ và metadata scan thành công.
++6. Trả JSON đã xử lý về Flutter.
++
++Quan trọng: shrink ratio `0.5` theo hai chiều làm diện tích còn khoảng `25%`
++box Gemini ban đầu. Việc rank diễn ra **trước** shrink.
++
++Hiện Edge schema chỉ có `words`; không yêu cầu `scene_words`.
++
++## 8. Parse và domain model phía Flutter
++
++### 8.1 `GeminiVisionResult`
++
++Fields:
++
++```text
++detectedVocabulary : List<VocabDetection>
++sceneDetections    : List<VocabDetection>
++imageLanguage      : String (default 'en')
++confidence         : double (default 0.0)
++```
++
++Behavior `fromJson`:
++
++1. `words` bắt buộc là list, nếu không ném `FormatException`.
++2. Parse từng item thành `VocabDetection`.
++3. Nếu có `scene_words`, parse riêng; nếu không thì dùng `words` làm scene.
++4. Với `words`, giữ box lớn nhất cho mỗi normalized word.
++5. Sort diện tích box giảm dần, tie-break bằng word.
++6. Lấy tối đa `maxGeminiVocabularyWords = 15`.
++7. Đánh số lại liên tục.
++
++Edge hiện chỉ trả tối đa 12, nhưng client và placement solver chịu tối đa 15.
++Đây là hai giới hạn khác nhau; không thay một bên mà quên test bên còn lại.
++
++`imageLanguage` và `confidence` hiện không được đọc từ JSON trong factory nên
++luôn giữ default. `toJson()` chỉ serialize `words` và `scene_words`.
++
++### 8.2 `VocabDetection`
++
++Fields runtime:
++
++```text
++number       : int
++word         : String
++phonetic     : String
++meaning      : String       // đọc từ meaning_vi
++partOfSpeech : String       // default '', chưa parse/serialize
++x, y, w, h   : double       // normalized 0.0..1.0 trong Flutter
++```
++
++Validation:
++
++- `word`, `phonetic`, `meaning_vi` phải là string.
++- `number` phải là int dương; response cũ thiếu number dùng fallback theo index.
++- `box.x/y/w/h` phải là int 0..1000.
++- `x + w <= 1000` và `y + h <= 1000`.
++- Sau validate, chia mỗi coordinate cho 1000.
++
++Edge response schema đặt minimum `1` cho `w/h`, nhưng Flutter parser hiện chấp
++nhận cả `0` vì dùng chung validator 0..1000 cho bốn coordinate. Đây là tolerance
++khác contract server; không được mô tả hai validator là hoàn toàn giống nhau.
++
++`toJson()` nhân ngược coordinate với 1000 và round.
++
++## 9. Mapping lỗi Edge/HTTP sang UI
++
++| Tình huống/status | Flutter exception | Message UI hiện tại |
++| --- | --- | --- |
++| Không có token | `GeminiAuthenticationException` | Phiên đăng nhập đã hết hạn... |
++| 401/403 | `GeminiAuthenticationException` | Phiên đăng nhập đã hết hạn... |
++| 413 | `GeminiImageTooLargeException` | Ảnh quá lớn, vui lòng chọn ảnh khác |
++| 422 | `GeminiRecognitionException` | Không nhận diện được, thử ảnh khác |
++| 429 | `GeminiQuotaException` | Hệ thống đang bận, thử lại sau |
++| 503 | `GeminiUnavailableException` | Dịch vụ Gemini tạm thời không khả dụng... |
++| 504 hoặc client timeout | `GeminiTimeoutException` | Quá thời gian chờ, thử lại |
++| 500/502/status khác | `GeminiApiException` | Đã có lỗi, thử lại |
++| HTTP 200 sai schema | `GeminiInvalidResponseException` | Không nhận diện được, thử ảnh khác |
++| Network `ClientException` | `GeminiApiException(0)` | Đã có lỗi, thử lại |
++
++Với 503, exception còn giữ `errorCode`, `upstreamStatus`, `scanId` để debug,
++nhưng dialog chỉ hiện `message`.
++
++UI chia lỗi thành hai dialog:
++
++1. **Không thể chuẩn bị ảnh**: picker, compress, local storage preparation.
++2. **Không thể quét ảnh**: Gemini/Vision, read persisted image và lỗi scan khác.
++
++Mọi lỗi đều log `debugPrint` + stack trace. Không có telemetry/crash reporting
++riêng cho scan.
++
++## 10. Persistence contract
++
++### 10.1 Record
++
++```dart
++class ScanResultRecord {
++  int id;
++  String localPath;
++  String vocabJson;
++  GeminiVisionResult result;
++  DateTime createdAt;
++}
++```
++
++`vocabJson` là `jsonEncode(result.toJson())`.
++
++### 10.2 Native SQLite
++
++- Database: `<getDatabasesPath()>/capy_vocab.db`.
++- Version: 1.
++- Table được tạo bằng `CREATE TABLE IF NOT EXISTS` ở cả `onCreate` và `onOpen`.
++
++```sql
++CREATE TABLE scan_results (
++  id INTEGER PRIMARY KEY AUTOINCREMENT,
++  local_path TEXT NOT NULL,
++  vocab_json TEXT NOT NULL,
++  created_at TEXT DEFAULT (datetime('now'))
++);
++```
++
++Insert thực tế truyền `created_at` từ `DateTime.now().toUtc().toIso8601String()`
++và dùng `ConflictAlgorithm.abort`.
++
++Không có:
++
++- `user_id`;
++- foreign key;
++- cloud sync;
++- list/read/update/delete method;
++- migration strategy ngoài database version 1;
++- transaction bao phủ cả file JPEG và DB row;
++- cleanup orphan file;
++- encryption at rest do app tự quản lý.
++
++### 10.3 Web
++
++- Ảnh: `MemoryScanImageStorage`.
++- Record: `MemoryScanResultStore`.
++- ID tăng từ 1 trong lifetime của provider instance.
++- `MemoryScanResultStore` không giữ một collection nội bộ; nó chỉ tạo và trả
++  `ScanResultRecord`. Record hiện còn được giữ bởi Riverpod state/bottom sheet
++  trong lifetime hiện tại, không thể query lại thành history.
++- Không có persistence sau reload và không có album history.
++
++## 11. Render overlay
++
++### 11.1 Input
++
++Bottom sheet truyền:
++
++```dart
++VocabCanvasOverlay(
++  imageProvider: MemoryImage(compressedBytes),
++  words: record.result.detectedVocabulary,
++  sceneWords: record.result.placementContext,
++)
++```
++
++Hiện `sceneWords` không tham gia placement. Khi `words` rỗng, bottom sheet chỉ
++render `Image.memory` thay vì `VocabCanvasOverlay`.
++
++### 11.2 Image coordinate transform
++
++`ImageRectCalculator` dùng contain fit:
++
++- scale = min(canvasWidth/sourceWidth, canvasHeight/sourceHeight);
++- ảnh được căn giữa;
++- normalized detection `(x,y,w,h)` được map vào rect ảnh thực trên canvas.
++
++Placement không phụ thuộc kích thước preview hiện tại. Nó dùng reference canvas
++cố định width 400 và height theo aspect ratio ảnh, sau đó scale đồng nhất toàn
++bộ geometry/text/stroke sang viewport.
++
++### 11.3 Placement cache
++
++`_PlacementCache` key gồm:
++
++- snapshot mọi field của `words`;
++- source image size;
++- full style config;
++- compact style config.
++
++Resize canvas/zoom/rebuild không làm solve lại nếu key không đổi. Thay word hoặc
++kích thước ảnh thật mới recompute. Nếu words > 15 hoặc solver ném exception,
++widget fallback sang chỉ vẽ bounding box, không crash UI.
++
++### 11.4 Placement pipeline
++
++1. Đo card gồm word, IPA, nghĩa Việt, badge và decoration.
++2. Chuyển mỗi detection thành anchor box pixel-space.
++3. Tạo forbidden zone bằng object box inflate 6 px, clamp trong canvas.
++4. Sinh candidate quanh object theo 5 vòng bán kính và 8 góc cơ bản.
++5. Có angular recovery ±15° và ±30°.
++6. Dùng MRV: ưu tiên word có ít candidate hợp lệ nhất; tie-break bằng label
++   area lớn hơn rồi source index.
++7. Candidate lý tưởng phải ở trong canvas, tránh forbidden zones, label đã đặt
++   và connector collision.
++8. Fallback tuần tự:
++   - font/card compact;
++   - cho phép label overlap tối đa 20% trong điều kiện kiểm soát;
++   - ưu tiên vị trí edge connector-safe;
++   - relax connector constraint;
++   - edge last resort, có metadata báo overlap.
++9. Chọn connector route tránh label/object/connector khác khi có thể.
++
++`PlacementQuality`:
++
++```text
++ideal
++fallbackSmallerFont
++fallbackAllowOverlap
++fallbackEdge
++```
++
++### 11.5 Painter output
++
++Painter vẽ theo thứ tự:
++
++1. Bounding box amber fill alpha 0.22.
++2. Border deep orange 2 px.
++3. Connector/arrow.
++4. Label card màu warm white, viền Capy brown.
++5. Number badge hai chữ số (`01`, `02`, ...).
++6. Deer sticker/cookie decoration nếu geometry đủ chỗ.
++7. Ba dòng text:
++   - English word;
++   - IPA;
++   - Vietnamese meaning.
++
++Label hit testing có hỗ trợ card, badge và decoration; label vẽ sau nhận tap
++trước nếu fallback buộc overlap. Tuy nhiên current callers không truyền
++`onLabelTap`, nên overlay được bọc `IgnorePointer` và không có hành động khi
++chạm.
++
++### 11.6 Fullscreen zoom
++
++Nút key `zoom-image-button` mở `Dialog.fullscreen`:
++
++- background đen;
++- `InteractiveViewer` minScale 0.5, maxScale 4.0;
++- ảnh và overlay nằm chung một child nên biến đổi cùng nhau;
++- nút đóng ở góc trên phải.
++
++## 12. Route `/scan-overlay` và flow không còn là mặc định
++
++`ScanFlowController.scanAndNavigate()`:
++
++1. Gọi `scan()`.
++2. Nếu có record và context còn mounted, push `/scan-overlay` kèm `extra`.
++
++`AppRouter` yêu cầu `extra is ScanResultRecord`; nếu thiếu/sai kiểu, hiện màn
++“Không tìm thấy kết quả quét”. `ScanResultOverlayScreen` đọc JPEG từ
++`localPath` rồi render `VocabCanvasOverlay`.
++
++Production bottom sheet hiện không gọi method này. Test
++`scan_flow_controller_test.dart` vẫn bảo vệ flow điều hướng độc lập. Tên test
++“scan rồi mở overlay” trong `photo_scan_bottom_sheet_test.dart` đã cũ: assertion
++thực tế chỉ kiểm tra inline preview/zoom, không kiểm tra route navigation.
++
++Agent sau cần quyết định rõ một trong hai UX trước khi refactor:
++
++- Giữ kết quả inline và xóa/deprecate flow route riêng; hoặc
++- Chuyển flow chính về `scanAndNavigate()` và cập nhật test/UI tương ứng.
++
++Đây là thay đổi user-visible, không được tự suy đoán.
++
++## 13. Lifecycle, concurrency và failure semantics
++
++### 13.1 Invariants hiện có
++
++- `ScanNotifier` không cho hai Vision scan đồng thời trong cùng provider.
++- Sau khi picker trả ảnh, `_isProcessing` vô hiệu hóa hai action buttons.
++- Có `mounted` checks sau phần lớn async boundary.
++- `_isProcessing` được reset trong `finally` nếu widget còn mounted.
++- Vision lỗi thì không lưu `ScanResultRecord`.
++- Local save lỗi thì không gọi Vision.
++- Compress lỗi thì không gọi storage/Vision.
++
++### 13.2 Khoảng trống/rủi ro đã xác nhận
++
++- Không có `PopScope` hoặc cancellation token cho lượt scan. Nếu route bị đóng
++  bằng Back/navigation trong lúc xử lý, Future không bị cancel; scan và
++  persistence có thể vẫn hoàn tất sau khi UI đóng. Loading overlay có thể chặn
++  tap/drag trực tiếp, nhưng không phải cơ chế cancellation.
++- Native picker chưa bị khóa trong chính thời gian chờ picker trả về.
++- Bắt đầu lượt pick mới xóa kết quả cũ ngay; cancel picker không khôi phục lại
++  preview/record trước đó.
++- JPEG đã lưu không được xóa nếu Vision/DB insert lỗi.
++- Không có retry button trực tiếp trong dialog scan; user đóng dialog rồi bấm
++  chọn/chụp lại.
++- Không có idempotency key; retry tạo file và DB row mới.
++- Không có delete/retention policy cho JPEG/SQLite.
++- Không có progress phần trăm; chỉ có status text theo phase.
++- Ảnh nén được gửi qua Supabase Edge tới Google Gemini; cần phản ánh trong privacy
++  policy/consent nếu sản phẩm phát hành.
++- JPEG và vocab JSON nằm local, không có application-layer encryption.
++- Nếu Gemini trả JSON hợp lệ với `words: []`, flow vẫn lưu record và UI chỉ hiện
++  ảnh; Edge chỉ trả 422 khi thiếu raw text hoặc parse lỗi.
++- `partOfSpeech`, `imageLanguage`, `confidence` hiện là field danh nghĩa, chưa có
++  end-to-end data.
++
++## 14. Platform matrix
++
++| Concern | Non-web theo nhánh source | Web |
++| --- | --- | --- |
++| Camera | `image_picker` native | Custom `getUserMedia` screen |
++| Gallery | `image_picker` | `image_picker` web branch |
++| Compress | `flutter_image_compress` | `flutter_image_compress` web support |
++| Image storage | App documents/capy_scans | In-memory Map |
++| Result storage | SQLite `sqflite` | In-memory store |
++| Persistence after restart | Có file + row, nhưng chưa có UI đọc | Không |
++| Camera selection | Theo native picker | Dropdown khi >1 device |
++| Secure-context requirement | N/A | HTTPS/localhost |
++
++Repository hiện không chứa đầy đủ runner config tiêu chuẩn:
++
++- Không thấy `android/app/src/main/AndroidManifest.xml`.
++- Không thấy `ios/Runner/Info.plist`.
++- Vì vậy không thấy khai báo camera/photo usage description hoặc permission
++  tương ứng trong source hiện tại.
++
++Widget/unit tests không chứng minh native app đã có permission configuration.
++Trước khi build/release Android/iOS, agent phải kiểm tra/khôi phục runner files
++và permission theo version plugin đang khóa trong `pubspec.lock`.
++
++Provider chỉ phân nhánh bằng `kIsWeb`: mọi target không phải web đều chọn
++`ScanResultLocalDataSource`/`sqflite`. Điều này không tự chứng minh Windows,
++Linux hoặc mọi desktop runner được plugin hiện tại hỗ trợ; phải build/test target
++cụ thể trước khi tuyên bố hỗ trợ desktop.
++
++## 15. Cấu hình và secret
++
++Flutter `.env` dùng:
++
++```text
++SUPABASE_URL
++SUPABASE_ANON_KEY
++```
++
++`.env.example` còn liệt kê `GEMINI_API_KEY`, nhưng runtime Flutter scan không
++đọc key này. Gemini key phải là Edge Function secret, không đưa vào client app
++hoặc bundle Flutter.
++
++`pubspec.yaml` hiện khai báo nguyên `.env` trong `flutter.assets`. Vì vậy nếu
++đặt `GEMINI_API_KEY` thật vào `.env`, key có nguy cơ bị đóng gói cùng client dù
++code Flutter không đọc nó. Chỉ để cấu hình public/publishable dành cho client
++trong asset này; chuyển mọi server secret sang Supabase Edge secrets.
++
++Edge runtime dùng:
++
++```text
++GEMINI_API_KEY             required
++SUPABASE_URL               required để bật health store
++SUPABASE_SERVICE_ROLE_KEY  required để bật health store
++```
++
++Không log Base64 ảnh hoặc secret. Edge chỉ log error body rút gọn, scanId,
++model, attempts, finish reason, usage metadata và word count.
++
++## 16. Source map để tiếp quản
++
++### 16.1 Entry, routing, UI orchestration
++
++| File | Trách nhiệm |
++| --- | --- |
++| `lib/shared/navigation/bottom_nav_bar.dart` | Nút camera mở `/scan` |
++| `lib/core/routes/app_router.dart` | Auth redirect, `/scan`, `/scan-overlay` |
++| `lib/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart` | Flow chính và inline result UI |
++| `lib/features/ai_scan/presentation/controllers/scan_flow_controller.dart` | Scan error dialog và optional navigation |
++| `lib/features/ai_scan/presentation/providers/scan_provider.dart` | DI providers + `ScanNotifier` |
++| `lib/features/ai_scan/presentation/widgets/scan_loading_overlay.dart` | Blocking loading overlay có semantics live region |
++| `lib/features/ai_scan/presentation/screens/scan_result_overlay_screen.dart` | Route result riêng, hiện không dùng trong flow chính |
++
++### 16.2 Image input/preparation/storage
++
++| File | Trách nhiệm |
++| --- | --- |
++| `data/services/scan_image_picker.dart` | Camera/gallery abstraction |
++| `data/services/scan_image_compressor.dart` | JPEG <= 300 KiB |
++| `data/services/scan_image_storage.dart` | Storage interface + exception |
++| `data/services/scan_image_storage_factory.dart` | Conditional import |
++| `data/services/scan_image_storage_io.dart` | Persistent local JPEG |
++| `data/services/scan_image_storage_memory.dart` | In-memory JPEG |
++| `data/services/scan_image_storage_web.dart` | Web factory |
++| `presentation/widgets/camera_capture_view.dart` | Web camera screen + error UX |
++| `presentation/widgets/camera_capture_session.dart` | Web camera interfaces |
++| `presentation/widgets/camera_capture_session_web.dart` | Browser implementation |
++| `presentation/widgets/camera_capture_session_stub.dart` | Non-web guard |
++
++Các path `data/...` trong bảng trên nằm dưới `lib/features/ai_scan/`.
++
++### 16.3 Vision và persistence
++
++| File | Trách nhiệm |
++| --- | --- |
++| `lib/core/services/gemini_vision_service.dart` | HTTP client, result model, validation, error mapping |
++| `lib/features/ai_scan/data/datasources/scan_result_local_datasource.dart` | SQLite/memory result store |
++| `supabase/functions/gemini-vision-scan/index.ts` | Edge handler, prompt/schema, response cleanup |
++| `supabase/functions/gemini-vision-scan/gemini_client.ts` | Model attempts, timeout, retry/failover |
++| `supabase/functions/gemini-vision-scan/gemini_model_health.ts` | Health read/write best effort |
++| `supabase/functions/gemini-vision-scan/bounding_box.ts` | Center-preserving box shrink |
++| `supabase/migrations/20260815141623_add_gemini_model_health.sql` | Health table/RPC/RLS/grants |
++
++### 16.4 Overlay geometry
++
++| File | Trách nhiệm |
++| --- | --- |
++| `lib/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart` | Image load/cache/composition/painter/hit-test |
++| `lib/features/vocab_scan/domain/image_rect_calculator.dart` | contain-fit và normalized box transform |
++| `lib/features/vocab_scan/domain/forbidden_zone_builder.dart` | Inflated object exclusion zones |
++| `lib/features/vocab_scan/domain/label_size_measurer.dart` | Text/card/badge footprint measurement |
++| `lib/features/vocab_scan/domain/label_unit_geometry.dart` | Card/badge/sticker component geometry |
++| `lib/features/vocab_scan/domain/label_candidate_generator.dart` | Ring/angle candidates |
++| `lib/features/vocab_scan/domain/label_angle_ranker.dart` | Openness + center bias |
++| `lib/features/vocab_scan/domain/label_placement_solver.dart` | MRV + fallback tiers |
++| `lib/features/vocab_scan/domain/label_connector_geometry.dart` | Connector route/collision math |
++| `lib/features/vocab_scan/presentation/label_connector_painter.dart` | Dashed curves/arrows |
++
++### 16.5 Placeholder/dead-end source
++
++| File | Hiện trạng |
++| --- | --- |
++| `presentation/widgets/note_template_selector.dart` | `SizedBox.shrink`, TODO |
++| `presentation/screens/storage_album_screen.dart` | Coming soon UI |
++| `presentation/screens/selected_vocab_screen.dart` | Placeholder text |
++| `domain/entities/vocab_entity.dart` | Empty entity |
++| `domain/entities/photo_note_entity.dart` | Empty entity |
++
++Các path rút gọn trong bảng trên nằm dưới `lib/features/ai_scan/`.
++
++## 17. Test map
++
++### 17.1 Flutter tests trực tiếp của scan
++
++| Test file | Bao phủ chính |
++| --- | --- |
++| `test/features/ai_scan/photo_scan_bottom_sheet_test.dart` | picker mapping, pipeline, preview, lỗi, web capture, fullscreen |
++| `test/features/ai_scan/camera_capture_view_test.dart` | camera lifecycle, permission/no-device/error/switch camera |
++| `test/features/ai_scan/scan_provider_test.dart` | read -> Vision -> save ordering và failure |
++| `test/features/ai_scan/scan_flow_controller_test.dart` | optional navigation + error dialog |
++| `test/features/ai_scan/scan_image_compressor_web_test.dart` | JPEG web < 300 KiB |
++| `test/core/services/gemini_vision_service_test.dart` | endpoint/auth/request/parser/ranking/errors/bounds |
++| `test/features/ai_scan/vocab_canvas_overlay_test.dart` | transform/cache/hit-test/fallback/performance/goldens |
++
++### 17.2 Geometry tests
++
++`test/features/vocab_scan/` có unit/golden tests cho:
++
++- forbidden zones;
++- angle ranking;
++- candidate generation;
++- connector intersections/routes;
++- label measurement/unit geometry;
++- MRV placement và fallback;
++- connector painter.
++
++### 17.3 Edge tests
++
++`supabase/functions/gemini-vision-scan/`:
++
++- `gemini_client_test.ts`: model order, 503 retry, failover, timeout, health
++  prioritization, client-status exclusions.
++- `bounding_box_test.ts`: default/custom shrink, center, boundary, malformed box,
++  ratio validation.
++
++### 17.4 Lệnh verification khuyến nghị
++
++Narrow Flutter flow:
++
++```powershell
++flutter test test/features/ai_scan/photo_scan_bottom_sheet_test.dart `
++  test/features/ai_scan/scan_provider_test.dart `
++  test/core/services/gemini_vision_service_test.dart
++```
++
++Toàn bộ scan + geometry:
++
++```powershell
++flutter test test/features/ai_scan test/features/vocab_scan `
++  test/core/services/gemini_vision_service_test.dart
++```
++
++Static checks:
++
++```powershell
++dart format --output=none --set-exit-if-changed lib test
++flutter analyze
++```
++
++Edge tests khi máy có Deno:
++
++```powershell
++deno test supabase/functions/gemini-vision-scan/bounding_box_test.ts `
++  supabase/functions/gemini-vision-scan/gemini_client_test.ts
++```
++
++Máy lập handoff hiện không có `deno` trong PATH; không được tuyên bố Edge tests
++pass nếu chưa chạy trong môi trường có Deno.
++
++Golden tests có thể tạo artifact diff trong
++`test/features/ai_scan/failures/`; không xóa artifact người khác khi chưa xác
++định ownership.
++
++## 18. Checklist cho agent tiếp quản
++
++Trước khi sửa:
++
++1. Đọc `AGENTS.md`.
++2. Đọc tài liệu này, rồi xác nhận lại các file trực tiếp liên quan thay đổi.
++3. Xác định UX đích là inline result hay `/scan-overlay` navigation.
++4. Xác định target platform; web/native có persistence và camera khác nhau.
++5. Kiểm tra working tree, không ghi đè artifact hoặc thay đổi của người khác.
++6. Nếu sửa API contract, cập nhật đồng thời:
++   - Edge response schema/prompt;
++   - Edge cleanup;
++   - `GeminiVisionResult`/`VocabDetection` parser + serializer;
++   - SQLite JSON compatibility;
++   - overlay expectations;
++   - Flutter + Deno tests.
++7. Nếu đổi giới hạn từ, đồng bộ server 12/client 15/solver/golden tests.
++8. Nếu sửa bounding box, nhớ pipeline đang shrink đúng một lần ở Edge; không
++   shrink lần hai ở Flutter.
++9. Nếu hiện thực album, cần thiết kế migration/read API/file cleanup/user
++   ownership/web persistence trước khi nối UI.
++10. Nếu bật label tap/TTS, truyền callback từ screen; không đặt audio side effect
++    trong painter.
++11. Nếu thêm cancellation, xử lý cả HTTP, lifecycle và cleanup file/record.
++12. Xác minh permission/runner files trên thiết bị thật trước release native.
++
++## 19. Regression checklist theo hành vi
++
++- Camera và gallery đều hội tụ vào cùng pipeline sau `PickedScanImage`.
++- Cancel picker không hiện dialog lỗi.
++- Preview gốc xuất hiện trước khi nén xong.
++- Preview đổi sang compressed JPEG trước Vision.
++- Không gọi Vision khi compress/store thất bại.
++- Không lưu result khi Vision thất bại.
++- Access token không tồn tại thì không gửi HTTP.
++- JPEG <= 300 KiB và Base64 dưới Edge limit.
++- Response 200 sai schema không bị coi là empty success.
++- Duplicate word giữ detection có box lớn nhất.
++- Coordinate chạm biên phải/dưới hợp lệ; tràn biên bị reject.
++- Bounding box không bị shrink hai lần.
++- Tối đa 12 từ từ Edge vẫn render ổn; client tolerance 15 không regress.
++- Resize/zoom không recompute placement không cần thiết.
++- Solver lỗi fallback bbox-only, không crash.
++- Fullscreen biến đổi ảnh và overlay cùng nhau.
++- Web camera dispose media tracks khi đóng.
++- Error dialog giữ đúng message chuyên biệt.
++- Không tuyên bố album/TTS/template hoạt động khi chưa nối end-to-end.
++
++## 20. Ưu tiên kỹ thuật nếu tiếp tục phát triển
++
++Đây là backlog được suy ra từ khoảng trống source, **không phải quyền tự động
++thay đổi sản phẩm**:
++
++1. Chốt UX kết quả inline hay route riêng và loại bỏ đường đi mâu thuẫn.
++2. Hoàn thiện native runner/permissions và test trên thiết bị thật.
++3. Bổ sung query/migration/delete/retention cho album local.
++4. Xử lý orphan JPEG và atomicity giữa file/result record.
++5. Thiết kế web persistence nếu Thư viện phải hoạt động trên web.
++6. Nối template selection vào style config hoặc loại bỏ UI giả.
++7. Nối label tap/TTS theo quyết định UX/accessibility.
++8. Thêm cancellation hoặc khóa dismiss trong phase xử lý.
++9. Xác nhận JWT enforcement khi deploy Edge Function.
++10. Cập nhật README/comment model để không còn mô tả Gemini 1.5 cũ.
++
++Mỗi mục trên có thể thay đổi behavior/data/security và phải được người dùng hoặc
++spec phê duyệt trước khi implementation.
+diff --git a/supabase/functions/gemini-vision-scan/deno.json b/supabase/functions/gemini-vision-scan/deno.json
+new file mode 100644
+index 0000000..3847a05
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/deno.json
+@@ -0,0 +1,5 @@
++{
++  "imports": {
++    "edge-runtime": "jsr:@supabase/functions-js@2.112.3/edge-runtime.d.ts"
++  }
++}
+diff --git a/supabase/functions/gemini-vision-scan/deno.lock b/supabase/functions/gemini-vision-scan/deno.lock
+new file mode 100644
+index 0000000..f51c6d7
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/deno.lock
+@@ -0,0 +1,224 @@
++{
++  "version": "5",
++  "specifiers": {
++    "jsr:@supabase/functions-js@2.112.3": "2.112.3",
++    "npm:openai@^4.52.5": "4.104.0"
++  },
++  "jsr": {
++    "@supabase/functions-js@2.112.3": {
++      "integrity": "a61957d4fdadccbe858523bf1396c047a30927b3c0eceb1dab049266640286f3",
++      "dependencies": [
++        "npm:openai"
++      ]
++    }
++  },
++  "npm": {
++    "@types/node-fetch@2.6.13": {
++      "integrity": "sha512-QGpRVpzSaUs30JBSGPjOg4Uveu384erbHBoT1zeONvyCfwQxIkUshLAOqN/k9EjGviPRmWTTe6aH2qySWKTVSw==",
++      "dependencies": [
++        "@types/node",
++        "form-data"
++      ]
++    },
++    "@types/node@18.19.130": {
++      "integrity": "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==",
++      "dependencies": [
++        "undici-types"
++      ]
++    },
++    "abort-controller@3.0.0": {
++      "integrity": "sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==",
++      "dependencies": [
++        "event-target-shim"
++      ]
++    },
++    "agentkeepalive@4.6.0": {
++      "integrity": "sha512-kja8j7PjmncONqaTsB8fQ+wE2mSU2DJ9D4XKoJ5PFWIdRMa6SLSN1ff4mOr4jCbfRSsxR4keIiySJU0N9T5hIQ==",
++      "dependencies": [
++        "humanize-ms"
++      ]
++    },
++    "asynckit@0.4.0": {
++      "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q=="
++    },
++    "call-bind-apply-helpers@1.0.2": {
++      "integrity": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==",
++      "dependencies": [
++        "es-errors",
++        "function-bind"
++      ]
++    },
++    "combined-stream@1.0.8": {
++      "integrity": "sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==",
++      "dependencies": [
++        "delayed-stream"
++      ]
++    },
++    "delayed-stream@1.0.0": {
++      "integrity": "sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ=="
++    },
++    "dunder-proto@1.0.1": {
++      "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
++      "dependencies": [
++        "call-bind-apply-helpers",
++        "es-errors",
++        "gopd"
++      ]
++    },
++    "es-define-property@1.0.1": {
++      "integrity": "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g=="
++    },
++    "es-errors@1.3.0": {
++      "integrity": "sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw=="
++    },
++    "es-object-atoms@1.1.2": {
++      "integrity": "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw==",
++      "dependencies": [
++        "es-errors"
++      ]
++    },
++    "es-set-tostringtag@2.1.0": {
++      "integrity": "sha512-j6vWzfrGVfyXxge+O0x5sh6cvxAog0a/4Rdd2K36zCMV5eJ+/+tOAngRO8cODMNWbVRdVlmGZQL2YS3yR8bIUA==",
++      "dependencies": [
++        "es-errors",
++        "get-intrinsic",
++        "has-tostringtag",
++        "hasown"
++      ]
++    },
++    "event-target-shim@5.0.1": {
++      "integrity": "sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ=="
++    },
++    "form-data-encoder@1.7.2": {
++      "integrity": "sha512-qfqtYan3rxrnCk1VYaA4H+Ms9xdpPqvLZa6xmMgFvhO32x7/3J/ExcTd6qpxM0vH2GdMI+poehyBZvqfMTto8A=="
++    },
++    "form-data@4.0.6": {
++      "integrity": "sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==",
++      "dependencies": [
++        "asynckit",
++        "combined-stream",
++        "es-set-tostringtag",
++        "hasown",
++        "mime-types"
++      ]
++    },
++    "formdata-node@4.4.1": {
++      "integrity": "sha512-0iirZp3uVDjVGt9p49aTaqjk84TrglENEDuqfdlZQ1roC9CWlPk6Avf8EEnZNcAqPonwkG35x4n3ww/1THYAeQ==",
++      "dependencies": [
++        "node-domexception",
++        "web-streams-polyfill"
++      ]
++    },
++    "function-bind@1.1.2": {
++      "integrity": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA=="
++    },
++    "get-intrinsic@1.3.0": {
++      "integrity": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==",
++      "dependencies": [
++        "call-bind-apply-helpers",
++        "es-define-property",
++        "es-errors",
++        "es-object-atoms",
++        "function-bind",
++        "get-proto",
++        "gopd",
++        "has-symbols",
++        "hasown",
++        "math-intrinsics"
++      ]
++    },
++    "get-proto@1.0.1": {
++      "integrity": "sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==",
++      "dependencies": [
++        "dunder-proto",
++        "es-object-atoms"
++      ]
++    },
++    "gopd@1.2.0": {
++      "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="
++    },
++    "has-symbols@1.1.0": {
++      "integrity": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ=="
++    },
++    "has-tostringtag@1.0.2": {
++      "integrity": "sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==",
++      "dependencies": [
++        "has-symbols"
++      ]
++    },
++    "hasown@2.0.4": {
++      "integrity": "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==",
++      "dependencies": [
++        "function-bind"
++      ]
++    },
++    "humanize-ms@1.2.1": {
++      "integrity": "sha512-Fl70vYtsAFb/C06PTS9dZBo7ihau+Tu/DNCk/OyHhea07S+aeMWpFFkUaXRa8fI+ScZbEI8dfSxwY7gxZ9SAVQ==",
++      "dependencies": [
++        "ms"
++      ]
++    },
++    "math-intrinsics@1.1.0": {
++      "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g=="
++    },
++    "mime-db@1.52.0": {
++      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="
++    },
++    "mime-types@2.1.35": {
++      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
++      "dependencies": [
++        "mime-db"
++      ]
++    },
++    "ms@2.1.3": {
++      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="
++    },
++    "node-domexception@1.0.0": {
++      "integrity": "sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==",
++      "deprecated": true
++    },
++    "node-fetch@2.7.0": {
++      "integrity": "sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==",
++      "dependencies": [
++        "whatwg-url"
++      ]
++    },
++    "openai@4.104.0": {
++      "integrity": "sha512-p99EFNsA/yX6UhVO93f5kJsDRLAg+CTA2RBqdHK4RtK8u5IJw32Hyb2dTGKbnnFmnuoBv5r7Z2CURI9sGZpSuA==",
++      "dependencies": [
++        "@types/node",
++        "@types/node-fetch",
++        "abort-controller",
++        "agentkeepalive",
++        "form-data-encoder",
++        "formdata-node",
++        "node-fetch"
++      ],
++      "bin": true
++    },
++    "tr46@0.0.3": {
++      "integrity": "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw=="
++    },
++    "undici-types@5.26.5": {
++      "integrity": "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="
++    },
++    "web-streams-polyfill@4.0.0-beta.3": {
++      "integrity": "sha512-QW95TCTaHmsYfHDybGMwO5IJIM93I/6vTRk+daHTWFPhwh+C8Cg7j7XyKrwrj8Ib6vYXe0ocYNrmzY4xAAN6ug=="
++    },
++    "webidl-conversions@3.0.1": {
++      "integrity": "sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ=="
++    },
++    "whatwg-url@5.0.0": {
++      "integrity": "sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==",
++      "dependencies": [
++        "tr46",
++        "webidl-conversions"
++      ]
++    }
++  },
++  "workspace": {
++    "dependencies": [
++      "jsr:@supabase/functions-js@2.112.3"
++    ]
++  }
++}
+diff --git a/supabase/functions/gemini-vision-scan/detection_hierarchy.ts b/supabase/functions/gemini-vision-scan/detection_hierarchy.ts
+new file mode 100644
+index 0000000..bf962ab
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/detection_hierarchy.ts
+@@ -0,0 +1,173 @@
++export const HIERARCHY_SCHEMA_VERSION = 2;
++export const DETECTION_KINDS = ["object", "part", "unknown"] as const;
++
++export type DetectionKind = typeof DETECTION_KINDS[number];
++
++export interface HierarchyValidationMetrics {
++  duplicateIdCount: number;
++  normalizedRelationshipCount: number;
++}
++
++export interface NormalizedHierarchyResponse {
++  response: Record<string, unknown> & {
++    schema_version: typeof HIERARCHY_SCHEMA_VERSION;
++    words: Record<string, unknown>[];
++  };
++  metrics: HierarchyValidationMetrics;
++}
++
++export class GeminiHierarchyShapeError extends Error {
++  constructor(message: string) {
++    super(message);
++    this.name = "GeminiHierarchyShapeError";
++  }
++}
++
++interface ParsedDetection {
++  record: Record<string, unknown>;
++  id: string;
++  kind: DetectionKind;
++  parentId: string | null;
++}
++
++export function normalizeVersion2Hierarchy(
++  value: unknown,
++): NormalizedHierarchyResponse {
++  if (!isRecord(value)) {
++    throw new GeminiHierarchyShapeError("Response must be an object");
++  }
++  if (value.schema_version !== HIERARCHY_SCHEMA_VERSION) {
++    throw new GeminiHierarchyShapeError(
++      `schema_version must be ${HIERARCHY_SCHEMA_VERSION}`,
++    );
++  }
++  if (!Array.isArray(value.words)) {
++    throw new GeminiHierarchyShapeError("words must be an array");
++  }
++
++  const parsedWords = value.words.map(parseDetectionShape);
++  const idCounts = countIds(parsedWords);
++  const ambiguousIds = new Set(
++    [...idCounts.entries()]
++      .filter(([, count]) => count > 1)
++      .map(([id]) => id),
++  );
++  const usedIds = new Set<string>();
++  let duplicateIdCount = 0;
++
++  const uniqueWords = parsedWords.map((detection, index) => {
++    let id = detection.id;
++    if (usedIds.has(id)) {
++      duplicateIdCount++;
++      id = nextFallbackId(index, usedIds);
++    }
++    usedIds.add(id);
++    return { ...detection, id };
++  });
++  const kindById = new Map(
++    uniqueWords.map((detection) => [detection.id, detection.kind]),
++  );
++  let normalizedRelationshipCount = 0;
++
++  const words = uniqueWords.map((detection) => {
++    const hasValidParent = detection.kind === "part" &&
++      detection.parentId !== null &&
++      detection.parentId !== detection.id &&
++      !ambiguousIds.has(detection.parentId) &&
++      kindById.get(detection.parentId) === "object";
++    const hasValidNoParent = detection.kind !== "part" &&
++      detection.parentId === null;
++
++    if (hasValidParent || hasValidNoParent) {
++      return {
++        ...detection.record,
++        id: detection.id,
++        kind: detection.kind,
++        parent_id: detection.parentId,
++      };
++    }
++
++    normalizedRelationshipCount++;
++    return {
++      ...detection.record,
++      id: detection.id,
++      kind: "unknown",
++      parent_id: null,
++    };
++  });
++
++  return {
++    response: {
++      ...value,
++      schema_version: HIERARCHY_SCHEMA_VERSION,
++      words,
++    },
++    metrics: { duplicateIdCount, normalizedRelationshipCount },
++  };
++}
++
++function parseDetectionShape(
++  value: unknown,
++  index: number,
++): ParsedDetection {
++  if (!isRecord(value)) {
++    throw new GeminiHierarchyShapeError(`words[${index}] must be an object`);
++  }
++
++  const id = value.id;
++  if (typeof id !== "string" || id.trim().length === 0) {
++    throw new GeminiHierarchyShapeError(
++      `words[${index}].id must be a non-empty string`,
++    );
++  }
++
++  const kind = value.kind;
++  if (!isDetectionKind(kind)) {
++    throw new GeminiHierarchyShapeError(
++      `words[${index}].kind must be object, part, or unknown`,
++    );
++  }
++
++  const parentId = value.parent_id;
++  if (
++    parentId !== null &&
++    (typeof parentId !== "string" || parentId.trim().length === 0)
++  ) {
++    throw new GeminiHierarchyShapeError(
++      `words[${index}].parent_id must be null or a non-empty string`,
++    );
++  }
++
++  return {
++    record: value,
++    id: id.trim(),
++    kind,
++    parentId: typeof parentId === "string" ? parentId.trim() : null,
++  };
++}
++
++function countIds(words: ParsedDetection[]): Map<string, number> {
++  const counts = new Map<string, number>();
++  for (const word of words) {
++    counts.set(word.id, (counts.get(word.id) ?? 0) + 1);
++  }
++  return counts;
++}
++
++function nextFallbackId(index: number, usedIds: Set<string>): string {
++  let suffix = index + 1;
++  let candidate = `server-d${suffix}`;
++  while (usedIds.has(candidate)) {
++    candidate = `server-d${++suffix}`;
++  }
++  return candidate;
++}
++
++function isDetectionKind(value: unknown): value is DetectionKind {
++  return typeof value === "string" &&
++    (DETECTION_KINDS as readonly string[]).includes(value);
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === "object" && value !== null && !Array.isArray(value);
++}
+diff --git a/supabase/functions/gemini-vision-scan/detection_ranking.ts b/supabase/functions/gemini-vision-scan/detection_ranking.ts
+new file mode 100644
+index 0000000..b44a5cb
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/detection_ranking.ts
+@@ -0,0 +1,265 @@
++import type { DetectionKind } from "./detection_hierarchy.ts";
++
++export type DetectionRankingStrategy = "legacy_area" | "hierarchy_v2";
++
++export interface DetectionRankingMetrics {
++  strategy: DetectionRankingStrategy;
++  inputCount: number;
++  deduplicatedCount: number;
++  selectedCount: number;
++  selectedObjectCount: number;
++  selectedPartCount: number;
++  selectedFallbackCount: number;
++  normalizedOrphanCount: number;
++}
++
++export interface DetectionRankingResult {
++  words: unknown[];
++  metrics: DetectionRankingMetrics;
++}
++
++interface IndexedDetection {
++  record: Record<string, unknown>;
++  index: number;
++  normalizedWord: string;
++  id: string;
++  kind: DetectionKind;
++  parentId: string | null;
++  area: number;
++  hasChildren: boolean;
++}
++
++export function selectLegacyDetections(
++  words: unknown[],
++  maxWords: number,
++): DetectionRankingResult {
++  const selected = deduplicateLegacyWords(rankWordsByBoxArea(words)).slice(
++    0,
++    maxWords,
++  );
++  return {
++    words: selected,
++    metrics: {
++      strategy: "legacy_area",
++      inputCount: words.length,
++      deduplicatedCount: deduplicateLegacyWords(words).length,
++      selectedCount: selected.length,
++      selectedObjectCount: 0,
++      selectedPartCount: 0,
++      selectedFallbackCount: selected.length,
++      normalizedOrphanCount: 0,
++    },
++  };
++}
++
++export function selectHierarchyDetections(
++  words: Record<string, unknown>[],
++  maxWords: number,
++): DetectionRankingResult {
++  const parentIds = new Set(
++    words
++      .filter((word) =>
++        word.kind === "part" && typeof word.parent_id === "string"
++      )
++      .map((word) => word.parent_id as string),
++  );
++  const indexed = words.map((record, index) =>
++    parseDetection(
++      record,
++      index,
++      parentIds.has(record.id as string),
++    )
++  );
++  const deduplicated = deduplicateHierarchyWords(indexed);
++  const retainedObjectIds = new Set(
++    deduplicated
++      .filter((detection) => detection.kind === "object")
++      .map((detection) => detection.id),
++  );
++
++  let normalizedOrphanCount = 0;
++  const normalized = deduplicated.map((detection) => {
++    if (
++      detection.kind !== "part" ||
++      (detection.parentId !== null && retainedObjectIds.has(detection.parentId))
++    ) {
++      return detection;
++    }
++    normalizedOrphanCount++;
++    return {
++      ...detection,
++      record: {
++        ...detection.record,
++        kind: "unknown",
++        parent_id: null,
++      },
++      kind: "unknown" as const,
++      parentId: null,
++    };
++  });
++
++  const objects = normalized
++    .filter((detection) => detection.kind === "object")
++    .sort(byResponseOrder);
++  const selected = objects.slice(0, maxWords);
++  const selectedObjectIds = new Set(selected.map((detection) => detection.id));
++
++  if (selected.length < maxWords) {
++    const parts = normalized
++      .filter((detection) =>
++        detection.kind === "part" &&
++        detection.parentId !== null &&
++        selectedObjectIds.has(detection.parentId)
++      )
++      .sort(byResponseOrder);
++    selected.push(...parts.slice(0, maxWords - selected.length));
++  }
++
++  if (selected.length < maxWords) {
++    const fallback = normalized
++      .filter((detection) => detection.kind === "unknown")
++      .sort(byAreaThenResponseOrder);
++    selected.push(...fallback.slice(0, maxWords - selected.length));
++  }
++
++  return {
++    words: selected.map((detection) => detection.record),
++    metrics: {
++      strategy: "hierarchy_v2",
++      inputCount: words.length,
++      deduplicatedCount: deduplicated.length,
++      selectedCount: selected.length,
++      selectedObjectCount: selected.filter((word) => word.kind === "object")
++        .length,
++      selectedPartCount: selected.filter((word) => word.kind === "part")
++        .length,
++      selectedFallbackCount: selected.filter((word) => word.kind === "unknown")
++        .length,
++      normalizedOrphanCount,
++    },
++  };
++}
++
++function parseDetection(
++  record: Record<string, unknown>,
++  index: number,
++  hasChildren: boolean,
++): IndexedDetection {
++  const id = typeof record.id === "string" ? record.id : "";
++  const kind = isDetectionKind(record.kind) ? record.kind : "unknown";
++  const parentId = typeof record.parent_id === "string"
++    ? record.parent_id
++    : null;
++  return {
++    record,
++    index,
++    normalizedWord: normalizeWord(record.word),
++    id,
++    kind,
++    parentId,
++    area: readBoxArea(record),
++    hasChildren,
++  };
++}
++
++function deduplicateHierarchyWords(
++  detections: IndexedDetection[],
++): IndexedDetection[] {
++  const order: string[] = [];
++  const preferredByWord = new Map<string, IndexedDetection>();
++
++  for (const detection of detections) {
++    const key = detection.normalizedWord || `\u0000${detection.index}`;
++    const current = preferredByWord.get(key);
++    if (!current) {
++      order.push(key);
++      preferredByWord.set(key, detection);
++      continue;
++    }
++    if (compareDuplicatePreference(detection, current) < 0) {
++      preferredByWord.set(key, detection);
++    }
++  }
++
++  return order.map((key) => preferredByWord.get(key)!);
++}
++
++function compareDuplicatePreference(
++  first: IndexedDetection,
++  second: IndexedDetection,
++): number {
++  if (first.hasChildren !== second.hasChildren) {
++    return first.hasChildren ? -1 : 1;
++  }
++  const byKind = kindPriority(first.kind) - kindPriority(second.kind);
++  if (byKind !== 0) return byKind;
++  const byArea = second.area - first.area;
++  if (byArea !== 0) return byArea;
++  return first.index - second.index;
++}
++
++function kindPriority(kind: DetectionKind): number {
++  switch (kind) {
++    case "object":
++      return 0;
++    case "part":
++      return 1;
++    case "unknown":
++      return 2;
++  }
++}
++
++function byResponseOrder(
++  first: IndexedDetection,
++  second: IndexedDetection,
++): number {
++  return first.index - second.index;
++}
++
++function byAreaThenResponseOrder(
++  first: IndexedDetection,
++  second: IndexedDetection,
++): number {
++  return second.area - first.area || first.index - second.index;
++}
++
++function rankWordsByBoxArea(words: unknown[]): unknown[] {
++  return words
++    .map((word, index) => ({ word, index, area: readBoxArea(word) }))
++    .sort((first, second) =>
++      second.area - first.area || first.index - second.index
++    )
++    .map(({ word }) => word);
++}
++
++function deduplicateLegacyWords(words: unknown[]): unknown[] {
++  const seenWords = new Set<string>();
++  return words.filter((item) => {
++    if (!item || typeof item !== "object") return true;
++    const word = (item as Record<string, unknown>).word;
++    if (typeof word !== "string") return true;
++    const normalizedWord = normalizeWord(word);
++    if (!normalizedWord) return false;
++    if (seenWords.has(normalizedWord)) return false;
++    seenWords.add(normalizedWord);
++    return true;
++  });
++}
++
++function normalizeWord(word: unknown): string {
++  return typeof word === "string" ? word.trim().toLowerCase() : "";
++}
++
++function readBoxArea(word: unknown): number {
++  if (!word || typeof word !== "object") return -1;
++  const box = (word as { box?: unknown }).box;
++  if (!box || typeof box !== "object") return -1;
++  const { w, h } = box as { w?: unknown; h?: unknown };
++  if (typeof w !== "number" || typeof h !== "number") return -1;
++  if (!Number.isFinite(w) || !Number.isFinite(h)) return -1;
++  return w >= 0 && h >= 0 ? w * h : -1;
++}
++
++function isDetectionKind(value: unknown): value is DetectionKind {
++  return value === "object" || value === "part" || value === "unknown";
++}
+diff --git a/supabase/functions/gemini-vision-scan/gemini_model_health_test.ts b/supabase/functions/gemini-vision-scan/gemini_model_health_test.ts
+new file mode 100644
+index 0000000..c4c3c67
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/gemini_model_health_test.ts
+@@ -0,0 +1,33 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++
++import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
++
++test("reuses a warm-worker health read until the cache expires", async () => {
++  let requestCount = 0;
++  let now = 1_000;
++  const store = createSupabaseGeminiHealthStore({
++    supabaseUrl: "https://example.supabase.co",
++    serviceRoleKey: "test-key",
++    cacheTtlMs: 10_000,
++    now: () => now,
++    fetcher: () => {
++      requestCount += 1;
++      return Promise.resolve(
++        Response.json([{ model_name: "model-a", is_healthy: true }]),
++      );
++    },
++  });
++
++  assert.deepEqual(await store.getModelHealth(["model-a"]), [
++    { modelName: "model-a", isHealthy: true },
++  ]);
++  assert.deepEqual(await store.getModelHealth(["model-a"]), [
++    { modelName: "model-a", isHealthy: true },
++  ]);
++  assert.equal(requestCount, 1);
++
++  now += 10_001;
++  await store.getModelHealth(["model-a"]);
++  assert.equal(requestCount, 2);
++});
+diff --git a/supabase/functions/gemini-vision-scan/image_payload.ts b/supabase/functions/gemini-vision-scan/image_payload.ts
+new file mode 100644
+index 0000000..e2869c0
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/image_payload.ts
+@@ -0,0 +1,76 @@
++const MAX_BASE64_IMAGE_LENGTH = 600_000;
++export const MAX_BINARY_IMAGE_BYTES = 450_000;
++
++export class ImagePayloadError extends Error {
++  readonly status: number;
++  readonly code: "invalid_request" | "image_too_large";
++
++  constructor(
++    status: number,
++    code: "invalid_request" | "image_too_large",
++    message: string,
++  ) {
++    super(message);
++    this.name = "ImagePayloadError";
++    this.status = status;
++    this.code = code;
++  }
++}
++
++function encodeBase64(bytes: Uint8Array): string {
++  const chunkSize = 0x8000;
++  const chunks: string[] = [];
++  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
++    chunks.push(
++      String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)),
++    );
++  }
++  return btoa(chunks.join(""));
++}
++
++export async function parseImagePayload(request: Request): Promise<string> {
++  const contentType = request.headers.get("content-type")
++    ?.split(";", 1)[0]
++    .trim()
++    .toLowerCase();
++
++  if (
++    contentType === "image/jpeg" || contentType === "application/octet-stream"
++  ) {
++    const bytes = new Uint8Array(await request.arrayBuffer());
++    if (bytes.length === 0) {
++      throw new ImagePayloadError(400, "invalid_request", "Anh trong");
++    }
++    if (bytes.length > MAX_BINARY_IMAGE_BYTES) {
++      throw new ImagePayloadError(
++        413,
++        "image_too_large",
++        "Anh vuot qua gioi han cho phep",
++      );
++    }
++    return encodeBase64(bytes);
++  }
++
++  let body: unknown;
++  try {
++    body = await request.json();
++  } catch {
++    throw new ImagePayloadError(
++      400,
++      "invalid_request",
++      "Payload anh khong hop le",
++    );
++  }
++  const imageBase64 = (body as { image_base64?: unknown })?.image_base64;
++  if (typeof imageBase64 !== "string" || imageBase64.length === 0) {
++    throw new ImagePayloadError(400, "invalid_request", "Thieu image_base64");
++  }
++  if (imageBase64.length > MAX_BASE64_IMAGE_LENGTH) {
++    throw new ImagePayloadError(
++      413,
++      "image_too_large",
++      "Anh vuot qua gioi han cho phep",
++    );
++  }
++  return imageBase64;
++}
+diff --git a/supabase/functions/gemini-vision-scan/image_payload_test.ts b/supabase/functions/gemini-vision-scan/image_payload_test.ts
+new file mode 100644
+index 0000000..bfcec80
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/image_payload_test.ts
+@@ -0,0 +1,46 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++
++import {
++  ImagePayloadError,
++  MAX_BINARY_IMAGE_BYTES,
++  parseImagePayload,
++} from "./image_payload.ts";
++
++test("parses JPEG bytes without requiring base64 on the client", async () => {
++  const bytes = new Uint8Array([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]);
++  const request = new Request("https://example.test/scan", {
++    method: "POST",
++    headers: { "Content-Type": "image/jpeg" },
++    body: bytes,
++  });
++
++  assert.equal(
++    await parseImagePayload(request),
++    btoa("\xff\xd8\x01\x02\x03\xff\xd9"),
++  );
++});
++
++test("keeps the legacy JSON base64 contract", async () => {
++  const request = new Request("https://example.test/scan", {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ image_base64: "legacy-base64" }),
++  });
++
++  assert.equal(await parseImagePayload(request), "legacy-base64");
++});
++
++test("rejects an oversized binary image before encoding it", async () => {
++  const request = new Request("https://example.test/scan", {
++    method: "POST",
++    headers: { "Content-Type": "image/jpeg" },
++    body: new Uint8Array(MAX_BINARY_IMAGE_BYTES + 1),
++  });
++
++  await assert.rejects(
++    () => parseImagePayload(request),
++    (error: unknown) =>
++      error instanceof ImagePayloadError && error.status === 413,
++  );
++});
+diff --git a/supabase/functions/gemini-vision-scan/scan_prompt.ts b/supabase/functions/gemini-vision-scan/scan_prompt.ts
+new file mode 100644
+index 0000000..d38cf0d
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/scan_prompt.ts
+@@ -0,0 +1,56 @@
++import { HIERARCHY_SCHEMA_VERSION } from "./detection_hierarchy.ts";
++
++export function buildScanPrompt(maxWords: number): string {
++  const denseSceneTarget = Math.min(8, maxWords);
++
++  return `Inspect the entire image systematically, including the center, edges, foreground, and background. Scan left to right and foreground to background before selecting the final items.
++
++Build an internal inventory of all clearly visible independent objects and useful visible object parts. Then return as many distinct and confidently identifiable vocabulary items as possible, up to ${maxWords}.
++
++When ${denseSceneTarget}-${maxWords} distinct items are clearly visible, do not stop after identifying only the most prominent objects. Do not ignore a smaller object solely because larger objects have already been selected.
++
++There is no minimum required count. Do not invent, guess, or duplicate items to fill the result limit. Omit a candidate whenever the visual evidence is insufficient.
++
++Prioritize independent objects first. Use remaining result slots for useful visible parts such as a door, handle, wheel, drawer, or keyboard, provided that the corresponding parent object is also returned.
++
++When multiple visible instances share the same base object type, normally return only the single clearest representative.
++
++Return more than one instance only when they are visually and semantically distinct subtypes that can be named confidently from directly observable evidence, such as "office chair" versus "dining chair", or "spray bottle" versus "water bottle".
++
++Prefer established, natural subtype names over ad-hoc descriptions created only to make labels different. Use visible attributes such as color, material, pattern, shape, or size only when the distinction is unmistakable and materially useful for vocabulary learning. Material and relative size must not be inferred when the image does not provide reliable visual evidence.
++
++Do not invent attributes, functions, brands, materials, or subtypes to fill the result limit. If instances are visually indistinguishable, return only one representative.
++
++Return \`schema_version\` as the integer ${HIERARCHY_SCHEMA_VERSION}.
++
++Assign each selected item a unique sequential number using the field \`number\`, starting from \`1\` and continuing in order (\`1, 2, 3, ...\`) with no duplicates or skipped numbers.
++
++For each detection, also assign a unique immutable string \`id\` in response order (\`d1\`, \`d2\`, ...). The \`id\` is different from the display \`number\` and must never be duplicated. A \`parent_id\` always references \`id\`, never \`number\`.
++
++Classify every detection with exactly one \`kind\`:
++- \`object\`: an independently recognizable physical item. It stays an object when it is inside, on, or beside another object. Use \`parent_id: null\`.
++- \`part\`: a visible physical component of another object returned in this same response. Use that parent object's \`id\` as \`parent_id\`.
++- \`unknown\`: use only when visual evidence is insufficient to safely choose object or part. Use \`parent_id: null\`.
++
++Spatial containment alone is not a parent-part relationship. A shirt inside a wardrobe is an \`object\` with no parent. A wardrobe door or drawer can be a \`part\` of the wardrobe. A bicycle wheel can be a \`part\` of the bicycle. A laptop keyboard can be a \`part\` of the laptop. Never return a part unless its object parent is also returned. Do not create part-of-part relationships.
++
++For each detection, return: its \`number\`, \`id\`, \`kind\`, \`parent_id\`; a natural and accurate English name, lowercase and normally singular; its IPA pronunciation; an accurate, natural Vietnamese meaning that closely matches the actual detection shown; and its bounding box.
++
++Use the most specific object name supported by the visual evidence, but do not infer or guess any subtype, brand, function, or characteristic that is not clearly visible in the image.
++
++Bounding box coordinates must be INTEGERS from 0 to 1000, not decimal values from 0.0 to 1.0. \`x/y\` represent the top-left corner, and \`w/h\` represent the width and height relative to the full image dimensions.
++
++Return the FULL and PIXEL-TIGHT bounding box of the entire visible object.
++
++Each side of the box must closely follow the object's outermost visible pixels:
++- left x: the object's leftmost visible point;
++- right edge: the object's rightmost visible point;
++- top y: the object's highest visible point;
++- bottom edge: the object's lowest visible point.
++
++Include the smallest possible amount of margin or background. Do not enlarge the box to include nearby, overlapping, or visually related objects. For transparent, hollow, or irregularly shaped objects, include only the object's own visible structure and full silhouette; do not treat objects visible through or behind it as part of the object.
++
++Before returning each box, independently verify all four edges. Moving any edge inward must crop the target object, while moving it outward would add unnecessary background.
++
++Return valid JSON only, with no additional explanation, and never return more than ${maxWords} elements in the \`words\` array.`;
++}
+diff --git a/supabase/functions/gemini-vision-scan/scan_prompt_test.ts b/supabase/functions/gemini-vision-scan/scan_prompt_test.ts
+new file mode 100644
+index 0000000..841b584
+--- /dev/null
++++ b/supabase/functions/gemini-vision-scan/scan_prompt_test.ts
+@@ -0,0 +1,35 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++
++import { buildScanPrompt } from "./scan_prompt.ts";
++
++test("prompt requests broad coverage without requiring a fabricated minimum", () => {
++  const prompt = buildScanPrompt(12);
++
++  assert.match(prompt, /Inspect the entire image systematically/);
++  assert.match(prompt, /Scan left to right and foreground to background/);
++  assert.match(prompt, /When 8-12 distinct items are clearly visible/);
++  assert.match(prompt, /do not stop after identifying only the most prominent/);
++  assert.match(prompt, /There is no minimum required count/);
++  assert.match(
++    prompt,
++    /Omit a candidate whenever the visual evidence is insufficient/,
++  );
++  assert.match(prompt, /Prioritize independent objects first/);
++});
++
++test("prompt allows only evidence-backed same-type subtypes", () => {
++  const prompt = buildScanPrompt(12);
++
++  assert.match(prompt, /visually and semantically distinct subtypes/);
++  assert.match(prompt, /directly observable evidence/);
++  assert.match(
++    prompt,
++    /Do not invent attributes, functions, brands, materials, or subtypes/,
++  );
++  assert.match(
++    prompt,
++    /visually indistinguishable, return only one representative/,
++  );
++  assert.match(prompt, /never return more than 12 elements/);
++});
+diff --git a/test/features/ai_scan/silhouette_edge_map_test.dart b/test/features/ai_scan/silhouette_edge_map_test.dart
+new file mode 100644
+index 0000000..a8789e9
+--- /dev/null
++++ b/test/features/ai_scan/silhouette_edge_map_test.dart
+@@ -0,0 +1,107 @@
++import 'dart:typed_data';
++
++import 'package:capy_vocab/core/services/gemini_vision_service.dart';
++import 'package:capy_vocab/features/ai_scan/presentation/layout/silhouette_edge_map.dart';
++import 'package:capy_vocab/features/vocab_scan/domain/label_connector_geometry.dart';
++import 'package:capy_vocab/features/vocab_scan/domain/label_placement_solver.dart';
++import 'package:flutter/widgets.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  group('SilhouetteEdgeMap', () {
++    test('finds the first strong Sobel edge before a shrunken bbox', () {
++      final result = _verticalEdgeMap(edgeX: 40).findAnchor(
++        cardAnchor: const Offset(5, 30),
++        objectRect: const Rect.fromLTWH(50, 15, 30, 30),
++        imageRect: const Rect.fromLTWH(0, 0, 100, 60),
++        fallbackAnchor: const Offset(50, 30),
++      );
++
++      expect(result.usedFallback, isFalse);
++      expect(result.method, AnchorRefinementMethod.sobel);
++      expect(result.anchor.dx, closeTo(40, 3));
++      expect(
++          result.gradientMagnitude!, greaterThan(result.backgroundGradient!));
++    });
++
++    test('rejects a Sobel hit beyond 0.6 object diagonal', () {
++      final result = _verticalEdgeMap(edgeX: 45).findAnchor(
++        cardAnchor: const Offset(5, 30),
++        objectRect: const Rect.fromLTWH(50, 27.5, 5, 5),
++        imageRect: const Rect.fromLTWH(0, 0, 100, 60),
++        fallbackAnchor: const Offset(50, 30),
++      );
++
++      expect(result.anchor, const Offset(50, 30));
++      expect(result.fallbackReason, RayCastFallbackReason.excessiveShift);
++    });
++
++    test('rejects a Sobel hit inside another object inner core', () {
++      final result = _verticalEdgeMap(edgeX: 40).findAnchor(
++        cardAnchor: const Offset(5, 30),
++        objectRect: const Rect.fromLTWH(50, 15, 30, 30),
++        imageRect: const Rect.fromLTWH(0, 0, 100, 60),
++        fallbackAnchor: const Offset(50, 30),
++        otherObjectRects: const [Rect.fromLTWH(30, 20, 20, 20)],
++      );
++
++      expect(result.anchor, const Offset(50, 30));
++      expect(result.fallbackReason, RayCastFallbackReason.otherObjectCore);
++    });
++
++    test('Sobel fallback keeps placement and respects connector cap', () {
++      const placed = PlacedLabel(
++        word: VocabDetection(
++          word: 'object',
++          phonetic: '/object/',
++          meaning: 'vật thể',
++          x: 0.2,
++          y: 0.2,
++          w: 0.6,
++          h: 0.6,
++        ),
++        labelRect: Rect.fromLTWH(0, 40, 10, 20),
++        anchorBox: Rect.fromLTWH(20, 20, 60, 60),
++        quality: PlacementQuality.ideal,
++      );
++      const bbox = ConnectorPath(from: Offset(10, 50), to: Offset(20, 50));
++      final result = refineConnectorPaths(
++        placedLabels: const [placed],
++        bboxPaths: const [bbox],
++        edgeMap: _InvalidEdgeMap.value,
++        imageRect: const Rect.fromLTWH(0, 0, 100, 100),
++      );
++
++      expect(result.connectorPaths.single, isA<ConnectorPath>());
++      expect(result.connectorPaths.single.from, bbox.from);
++      expect(placed.labelRect, const Rect.fromLTWH(0, 40, 10, 20));
++    });
++  });
++}
++
++class _InvalidEdgeMap {
++  static final value = SilhouetteEdgeMap.fromRgba(
++    rgba: Uint8List(0),
++    width: 0,
++    height: 0,
++  );
++}
++
++SilhouetteEdgeMap _verticalEdgeMap({
++  required int edgeX,
++  int width = 100,
++  int height = 60,
++}) {
++  final rgba = Uint8List(width * height * 4);
++  for (var y = 0; y < height; y++) {
++    for (var x = 0; x < width; x++) {
++      final value = x < edgeX ? 20 : 220;
++      final index = (y * width + x) * 4;
++      rgba[index] = value;
++      rgba[index + 1] = value;
++      rgba[index + 2] = value;
++      rgba[index + 3] = 255;
++    }
++  }
++  return SilhouetteEdgeMap.fromRgba(rgba: rgba, width: width, height: height);
++}

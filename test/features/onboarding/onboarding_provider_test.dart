@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:capy_vocab/features/onboarding/data/repositories/onboarding_repository.dart';
+import 'package:capy_vocab/features/onboarding/application/onboarding_status_store.dart';
 import 'package:capy_vocab/features/onboarding/domain/entities/onboarding_data.dart';
 import 'package:capy_vocab/features/onboarding/presentation/providers/onboarding_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -119,6 +120,24 @@ void main() {
     repository.completeCompleter!.complete();
     expect(await firstSubmit, isTrue);
     expect(notifier.state.isSaving, isFalse);
+  });
+
+  test('complete thành công cập nhật cache đúng owner', () async {
+    final repository = _FakeOnboardingRepository();
+    final store = MemoryOnboardingStatusStore();
+    final notifier = OnboardingNotifier(
+      repository: repository,
+      onboardingStatusStore: store,
+      currentUserId: () => 'user-a',
+    );
+    addTearDown(notifier.dispose);
+    addTearDown(store.dispose);
+    await notifier.loadInitialData();
+    await _moveToFinalStep(notifier);
+
+    expect(await notifier.completeOnboarding(), isTrue);
+    expect(store.statusFor('user-a'), OnboardingStatus.complete);
+    expect(store.statusFor('user-b'), OnboardingStatus.unknown);
   });
 
   test('lỗi lưu giữ onboarding chưa hoàn tất và cho phép thử lại', () async {

@@ -16,10 +16,16 @@ class SupabaseService {
   /// Interface lắng nghe kênh Realtime
   static RealtimeChannel channel(String name) => client.channel(name);
 
-  /// Khởi tạo Supabase Client từ cấu hình public đã nạp vào dotenv.
+  /// Khởi tạo Supabase Client; dart-define ưu tiên hơn `.env` cho build Staging.
   static Future<void> initialize() async {
-    final String supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
-    final String supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+    const definedUrl = String.fromEnvironment('SUPABASE_URL');
+    const definedAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    final String supabaseUrl = definedUrl.trim().isNotEmpty
+        ? definedUrl.trim()
+        : dotenv.env['SUPABASE_URL'] ?? '';
+    final String supabaseAnonKey = definedAnonKey.trim().isNotEmpty
+        ? definedAnonKey.trim()
+        : dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
     if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
       debugPrint(

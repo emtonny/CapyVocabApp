@@ -12,17 +12,18 @@ class NoteTemplateSelector extends StatefulWidget {
     required this.onTemplateChanged,
     required this.onCustomStyleChanged,
     this.templateStore = const LabelTemplateStore(),
-    this.isPro = false,
+    bool canUseCustomTemplate = false,
+    @Deprecated('Use canUseCustomTemplate instead.') bool? isPro,
     this.onUpgradeRequested,
     super.key,
-  });
+  }) : canUseCustomTemplate = isPro ?? canUseCustomTemplate;
 
   final NoteLabelTemplate selectedTemplate;
   final LabelVisualStyle customStyle;
   final ValueChanged<NoteLabelTemplate> onTemplateChanged;
   final ValueChanged<LabelVisualStyle> onCustomStyleChanged;
   final LabelTemplateStore templateStore;
-  final bool isPro;
+  final bool canUseCustomTemplate;
   final VoidCallback? onUpgradeRequested;
 
   @override
@@ -39,14 +40,33 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
     super.initState();
     _isEditorOpen = false;
     _loadSavedTemplates();
+    _scheduleFreeFallback();
   }
 
   @override
   void didUpdateWidget(covariant NoteTemplateSelector oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.selectedTemplate != NoteLabelTemplate.custom && _isEditorOpen) {
+    if ((!widget.canUseCustomTemplate ||
+            widget.selectedTemplate != NoteLabelTemplate.custom) &&
+        _isEditorOpen) {
       _isEditorOpen = false;
     }
+    _scheduleFreeFallback();
+  }
+
+  void _scheduleFreeFallback() {
+    if (widget.canUseCustomTemplate ||
+        widget.selectedTemplate != NoteLabelTemplate.custom) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          widget.canUseCustomTemplate ||
+          widget.selectedTemplate != NoteLabelTemplate.custom) {
+        return;
+      }
+      widget.onTemplateChanged(NoteLabelTemplate.standard);
+    });
   }
 
   Future<void> _loadSavedTemplates() async {
@@ -63,13 +83,12 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedSavedIndex =
-        widget.selectedTemplate == NoteLabelTemplate.custom
-            ? _savedTemplates.lastIndexWhere(
-                (template) => template.style == widget.customStyle,
-              )
-            : -1;
-
+    final selectedSavedIndex = widget.canUseCustomTemplate &&
+            widget.selectedTemplate == NoteLabelTemplate.custom
+        ? _savedTemplates.lastIndexWhere(
+            (template) => template.style == widget.customStyle,
+          )
+        : -1;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -150,17 +169,18 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
           _TemplateCard(
             cardKey: const Key('label-template-custom'),
             title: _customTemplateOption.title,
-            subtitle: !widget.isPro && _savedTemplates.isNotEmpty
-                ? 'Thêm mẫu với Pro'
+            subtitle: !widget.canUseCustomTemplate
+                ? 'Dành cho gói Pro'
                 : _customTemplateOption.subtitle,
-            icon: !widget.isPro && _savedTemplates.isNotEmpty
+            icon: !widget.canUseCustomTemplate
                 ? Icons.workspace_premium_rounded
                 : _customTemplateOption.icon,
             cardColor: _customTemplateOption.cardColor,
             iconBgColor: _customTemplateOption.iconBgColor,
             iconColor: _customTemplateOption.iconColor,
             isCompact: false,
-            isSelected: _isEditorOpen,
+            isSelected: widget.canUseCustomTemplate && _isEditorOpen,
+            isLocked: !widget.canUseCustomTemplate,
             onTap: _openCustomEditor,
           ),
         ] else ...[
@@ -201,8 +221,9 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
               if (index < customIndex) {
                 final savedIndex = index - savedStartIndex;
                 final template = _savedTemplates[savedIndex];
-                final isSelected =
-                    savedIndex == selectedSavedIndex && !_isEditorOpen;
+                final isSelected = widget.canUseCustomTemplate &&
+                    savedIndex == selectedSavedIndex &&
+                    !_isEditorOpen;
                 return _TemplateCard(
                   cardKey: Key('saved-label-template-$savedIndex'),
                   title: template.name,
@@ -214,11 +235,14 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
                   iconColor: AppColors.ink,
                   isCompact: true,
                   isSelected: isSelected,
-                  onTap: () {
-                    setState(() => _isEditorOpen = false);
-                    widget.onCustomStyleChanged(template.style);
-                    widget.onTemplateChanged(NoteLabelTemplate.custom);
-                  },
+                  isLocked: !widget.canUseCustomTemplate,
+                  onTap: widget.canUseCustomTemplate
+                      ? () {
+                          setState(() => _isEditorOpen = false);
+                          widget.onCustomStyleChanged(template.style);
+                          widget.onTemplateChanged(NoteLabelTemplate.custom);
+                        }
+                      : _showProTemplatePaywall,
                   onLongPress: () => _confirmDeleteTemplate(template),
                 );
               }
@@ -227,17 +251,18 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
               return _TemplateCard(
                 cardKey: Key('label-template-${option.template.name}'),
                 title: option.title,
-                subtitle: !widget.isPro && _savedTemplates.isNotEmpty
-                    ? 'Thêm mẫu với Pro'
+                subtitle: !widget.canUseCustomTemplate
+                    ? 'Dành cho gói Pro'
                     : option.subtitle,
-                icon: !widget.isPro && _savedTemplates.isNotEmpty
+                icon: !widget.canUseCustomTemplate
                     ? Icons.workspace_premium_rounded
                     : option.icon,
                 cardColor: option.cardColor,
                 iconBgColor: option.iconBgColor,
                 iconColor: option.iconColor,
                 isCompact: true,
-                isSelected: _isEditorOpen,
+                isSelected: widget.canUseCustomTemplate && _isEditorOpen,
+                isLocked: !widget.canUseCustomTemplate,
                 onTap: _openCustomEditor,
               );
             },
@@ -247,7 +272,8 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
         // Expandable Custom Style Editor
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
-          child: widget.selectedTemplate == NoteLabelTemplate.custom &&
+          child: widget.canUseCustomTemplate &&
+                  widget.selectedTemplate == NoteLabelTemplate.custom &&
                   _isEditorOpen
               ? Padding(
                   key: const Key('custom-label-editor'),
@@ -272,8 +298,8 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
   }
 
   void _openCustomEditor() {
-    if (!widget.isPro && _savedTemplates.isNotEmpty) {
-      _showFreeTemplateLimit();
+    if (!widget.canUseCustomTemplate) {
+      _showProTemplatePaywall();
       return;
     }
     setState(() {
@@ -343,7 +369,7 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
     }
   }
 
-  Future<void> _showFreeTemplateLimit() async {
+  Future<void> _showProTemplatePaywall() async {
     final wantsUpgrade = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -359,9 +385,9 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
         actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         icon: const Icon(Icons.workspace_premium_rounded,
             color: Color(0xFFF5A623)),
-        title: const Text('Bạn đã dùng mẫu miễn phí'),
+        title: const Text('Tự thiết kế dành cho Pro'),
         content: const Text(
-          'Gói Free lưu được 1 mẫu tự thiết kế. Nâng cấp Pro để tạo thêm nhiều mẫu phong cách riêng.',
+          'Nâng cấp Pro để mở trình chỉnh sửa, áp dụng và lưu mẫu phong cách riêng. Mẫu Mặc định và Tối giản vẫn miễn phí.',
         ),
         actions: [
           if (widget.onUpgradeRequested != null)
@@ -465,6 +491,7 @@ class _TemplateCard extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     this.isCompact = false,
+    this.isLocked = false,
     this.emoji,
     this.onLongPress,
   });
@@ -479,6 +506,7 @@ class _TemplateCard extends StatelessWidget {
   final bool isSelected;
   final bool isCompact;
   final VoidCallback onTap;
+  final bool isLocked;
   final String? emoji;
   final VoidCallback? onLongPress;
 
@@ -561,8 +589,15 @@ class _TemplateCard extends StatelessWidget {
             ),
           ),
 
-          // Right Checkmark Box (When Selected)
-          if (isSelected) ...[
+          // Right access/selection indicator.
+          if (isLocked) ...[
+            SizedBox(width: isCompact ? 4 : 8),
+            const Icon(
+              Icons.lock_rounded,
+              size: 18,
+              color: Color(0xFFF5A623),
+            ),
+          ] else if (isSelected) ...[
             SizedBox(width: isCompact ? 4 : 8),
             Container(
               width: checkmarkSize,
@@ -623,7 +658,7 @@ class _TemplateCard extends StatelessWidget {
     return Semantics(
       button: true,
       selected: isSelected,
-      label: 'Mẫu $title',
+      label: isLocked ? 'Mẫu $title, chỉ dành cho Pro' : 'Mẫu $title',
       child: Material(
         color: Colors.transparent,
         child: InkWell(

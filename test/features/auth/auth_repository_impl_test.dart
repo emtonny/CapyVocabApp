@@ -6,6 +6,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  test('native file URI omits email redirect instead of reading origin', () {
+    expect(defaultEmailRedirectTo(Uri.parse('file:///')), isNull);
+  });
+
+  test('Web URI uses only its HTTP origin', () {
+    expect(
+      defaultEmailRedirectTo(Uri.parse('https://demo.example/auth?code=1')),
+      'https://demo.example',
+    );
+  });
+
   test('signUp chuyển Web origin xuống Supabase làm redirect URL', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final client = SupabaseClient(

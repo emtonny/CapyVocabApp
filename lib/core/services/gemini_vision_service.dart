@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/random_uuid.dart';
 import 'supabase_service.dart';
 
 typedef AccessTokenProvider = String? Function();
@@ -13,8 +14,13 @@ typedef SupabaseRestUrlProvider = String Function();
 const int maxGeminiVocabularyWords = 15;
 
 abstract interface class VisionScanClient {
-  Future<GeminiVisionResult> analyzeImageBytes(Uint8List compressedImageBytes);
+  Future<GeminiVisionResult> analyzeImageBytes(
+    Uint8List compressedImageBytes, {
+    required String requestId,
+  });
 }
+
+String createScanRequestId() => createRandomUuidV4();
 
 /// Sends an already-compressed local image to the authenticated Vision Edge
 /// Function and converts its 0-1000 boxes into normalized coordinates.
@@ -46,12 +52,19 @@ class GeminiVisionService implements VisionScanClient {
 
   @override
   Future<GeminiVisionResult> analyzeImageBytes(
-    Uint8List compressedImageBytes,
-  ) {
-    return analyzeBase64Image(base64Encode(compressedImageBytes));
+    Uint8List compressedImageBytes, {
+    required String requestId,
+  }) {
+    return analyzeBase64Image(
+      base64Encode(compressedImageBytes),
+      requestId: requestId,
+    );
   }
 
-  Future<GeminiVisionResult> analyzeBase64Image(String imageBase64) async {
+  Future<GeminiVisionResult> analyzeBase64Image(
+    String imageBase64, {
+    String? requestId,
+  }) async {
     final accessToken = _accessTokenProvider()?.trim();
     if (accessToken == null || accessToken.isEmpty) {
       throw const GeminiAuthenticationException(
@@ -68,7 +81,10 @@ class GeminiVisionService implements VisionScanClient {
               'Authorization': 'Bearer $accessToken',
               'Content-Type': 'application/json; charset=utf-8',
             },
-            body: jsonEncode({'image_base64': imageBase64}),
+            body: jsonEncode({
+              'request_id': requestId ?? createScanRequestId(),
+              'image_base64': imageBase64,
+            }),
           )
           .timeout(requestTimeout);
     } on TimeoutException {
@@ -182,6 +198,10 @@ class GeminiVisionResult {
     this.sceneDetections = const [],
     this.imageLanguage = 'en',
     this.confidence = 0.0,
+    this.scanId,
+    this.serviceTier,
+    this.modelUsed,
+    this.rawResponseJson,
   });
 
   factory GeminiVisionResult.empty() => const GeminiVisionResult(
@@ -208,6 +228,13 @@ class GeminiVisionResult {
     return GeminiVisionResult(
       detectedVocabulary: numberDetectionsSequentially(selectedDetections),
       sceneDetections: sceneDetections,
+      scanId: json['scan_id'] is String ? json['scan_id'] as String : null,
+      serviceTier: json['service_tier'] is String
+          ? json['service_tier'] as String
+          : null,
+      modelUsed:
+          json['model_used'] is String ? json['model_used'] as String : null,
+      rawResponseJson: _copyJsonObject(json),
     );
   }
 
@@ -215,15 +242,28 @@ class GeminiVisionResult {
   final List<VocabDetection> sceneDetections;
   final String imageLanguage;
   final double confidence;
+  final String? scanId;
+  final String? serviceTier;
+  final String? modelUsed;
+
+  /// Parsed Edge Function response before client-side ranking/normalization.
+  final Map<String, dynamic>? rawResponseJson;
 
   List<VocabDetection> get words => detectedVocabulary;
   List<VocabDetection> get placementContext =>
       sceneDetections.isEmpty ? detectedVocabulary : sceneDetections;
 
   Map<String, dynamic> toJson() => {
+        if (scanId != null) 'scan_id': scanId,
+        if (serviceTier != null) 'service_tier': serviceTier,
+        if (modelUsed != null) 'model_used': modelUsed,
         'words': detectedVocabulary.map((word) => word.toJson()).toList(),
         'scene_words': placementContext.map((word) => word.toJson()).toList(),
       };
+}
+
+Map<String, dynamic> _copyJsonObject(Map<String, dynamic> source) {
+  return jsonDecode(jsonEncode(source)) as Map<String, dynamic>;
 }
 
 List<VocabDetection> _parseDetectionList(List<dynamic> rawWords) {

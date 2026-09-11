@@ -1,0 +1,2216 @@
+diff --git a/PROJECT_STATUS.md b/PROJECT_STATUS.md
+index 0def0cb..e1433f0 100644
+--- a/PROJECT_STATUS.md
++++ b/PROJECT_STATUS.md
+@@ -1,6 +1,6 @@
+ # Capy Vocab — Project Status & AI Handoff
+ 
+-> Last audited: 2026-08-08
++> Last audited: 2026-08-10
+ > Source of truth for current implementation status, integration boundaries, and next work.
+ > Do not copy secrets, production URLs, access tokens, or service-role keys into this file.
+ 
+@@ -527,3 +527,78 @@ create Production Auth accounts.
+ - `skills-lock.json`
+ - `.env` *(File cấu hình biến môi trường cục bộ)*
+ 
++## 16. Tình trạng dự án ngày 10/08/2026 (Current Project Status)
++
++### A. Trạng thái mã nguồn và đồng bộ GitHub
++
++- Đã fetch và đồng bộ phần thiết kế mới nhất từ `origin/main` thông qua PR #5.
++- Commit đang được kiểm chứng: `abe5d04` (`Merge pull request #5 from emtonny/nam-30-7`).
++- Nhánh local `main` đã khớp hoàn toàn với `origin/main` (`0` commit ahead, `0` commit behind).
++- Working tree hiện ở nhánh `AI-scan`; nội dung tracked đã khớp với `origin/main` và đang ahead `origin/AI-scan` 6 commit. Chưa push thay đổi này lên `origin/AI-scan`.
++### B. Các luồng và giao diện hiện đã có
++
++1. **Khởi động, Auth và Onboarding**
++   - Giữ nguyên luồng `startup -> health check -> auth -> onboarding 5 bước -> home`.
++   - Router tiếp tục bảo vệ luồng theo session và trạng thái `onboarding_completed`.
++   - Giao diện Auth và Onboarding đã có video header, hình nền và bố cục responsive cho mobile/tablet/desktop.
++
++2. **Home và điều hướng chính**
++   - `HomeScreen` đã được thay thế từ placeholder bằng giao diện dashboard phong cách sổ tay Capybara.
++   - Bottom navigation đã điều hướng thật giữa 4 route: `/home`, `/storage`, `/pet-shop`, `/friends`.
++   - Nút Camera trung tâm mở luồng `/scan`; trạng thái tab active được xác định từ route hiện tại.
++   - Toàn bộ route dùng chuyển trang tức thời; `/scan` mở dạng overlay có nền tối mà không chạy hiệu ứng slide.
++
++3. **AI Scan và Vocabulary Overlay**
++   - Photo Scan Bottom Sheet hỗ trợ chọn ảnh/camera, xử lý ảnh và đi qua pipeline scan hiện có.
++   - Kết quả scan được hiển thị bằng notebook-style vocabulary canvas overlay với bounding box, mũi tên, số thứ tự, từ tiếng Anh, IPA và nghĩa tiếng Việt.
++   - Luồng lỗi camera, lỗi nén ảnh, lỗi API và dữ liệu bounding box tiếp tục có test tự động bảo vệ.
++
++4. **Các màn bổ trợ**
++   - `StorageAlbumScreen`, `PetShopScreen` và `FriendsLeaderboardScreen` đã có giao diện đồng bộ và route truy cập.
++   - Các màn này hiện chủ yếu là presentation/coming-soon; nghiệp vụ dữ liệu thật, giao dịch cửa hàng, social/leaderboard realtime và vòng lặp học hoàn chỉnh vẫn chưa được triển khai đầy đủ.
++
++### C. Assets và responsive layout
++
++- Asset bundle hiện dùng khai báo `assets/` trong `pubspec.yaml`.
++- Đã có video `CapyLogin.mp4`, `CapyOnboarding.mp4` và hai ảnh nền `capy_background.png`, `capy_background_mobile.png`.
++- `ResponsiveLayout` đã được thêm để phân nhánh bố cục mobile/tablet/desktop dựa trên không gian hiển thị.
++- Các màn Auth, Onboarding và video header đã được tối ưu lại để sử dụng bộ asset và bố cục responsive mới.
++
++### D. Kết quả kiểm chứng ngày 10/08/2026
++
++```text
++flutter pub get
++  -> thành công
++  -> SDK local resolve meta/test_api thấp hơn lockfile trên GitHub;
++     lockfile được giữ nguyên theo commit abe5d04 để bảo toàn trạng thái đồng bộ
++
++flutter analyze --no-pub
++  -> No issues found
++
++flutter test --no-pub \
++  test/shared/navigation/bottom_nav_bar_test.dart \
++  test/features/ai_scan/photo_scan_bottom_sheet_test.dart
++  -> 7/7 tests passed
++
++flutter test --no-pub
++  -> 56/56 tests passed
++
++flutter build web --no-pub
++  -> build thành công tại build/web
++
++git diff --check
++  -> passed
++
++HEAD...origin/main
++  -> 0 ahead / 0 behind
++```
++
++### E. Cảnh báo và phần việc còn lại
++
++- Web build thành công nhưng còn cảnh báo không chặn về font `CupertinoIcons`; cần kiểm tra lại dependency/asset font nếu UI sử dụng icon Cupertino trên Web.
++- `flutter_tts 4.2.5` còn cảnh báo tương thích WebAssembly từ mã dependency; build Web JavaScript thông thường vẫn thành công.
++- Cần kiểm thử thủ công trên thiết bị thật và nhiều kích thước màn hình để xác nhận video, camera, touch target, overflow và breakpoint responsive.
++- Cần kiểm thử Production cho email confirmation, Auth callback, Supabase RLS/RPC và hành trình đăng ký đến Home.
++- Vòng lặp học chính, dữ liệu Home thật, Storage, Shop, Friends/Leaderboard, Arena, chatbot, notification và thanh toán vẫn là các hạng mục chưa hoàn thiện đầy đủ.
++- Chưa thực hiện commit hoặc push cho lần cập nhật tài liệu ngày 10/08/2026.
++
+diff --git a/lib/features/ai_scan/presentation/controllers/scan_flow_controller.dart b/lib/features/ai_scan/presentation/controllers/scan_flow_controller.dart
+index fa73d89..f763061 100644
+--- a/lib/features/ai_scan/presentation/controllers/scan_flow_controller.dart
++++ b/lib/features/ai_scan/presentation/controllers/scan_flow_controller.dart
+@@ -1,3 +1,5 @@
++import 'dart:typed_data';
++
+ import 'package:flutter/material.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:go_router/go_router.dart';
+@@ -14,8 +16,14 @@ class ScanFlowController {
+     BuildContext context,
+     WidgetRef ref, {
+     required String localPath,
++    Uint8List? imageBytes,
+   }) async {
+-    final record = await scan(context, ref, localPath: localPath);
++    final record = await scan(
++      context,
++      ref,
++      localPath: localPath,
++      imageBytes: imageBytes,
++    );
+     if (record == null || !context.mounted) return;
+ 
+     context.push('/scan-overlay', extra: record);
+@@ -25,9 +33,13 @@ class ScanFlowController {
+     BuildContext context,
+     WidgetRef ref, {
+     required String localPath,
++    Uint8List? imageBytes,
+   }) async {
+     try {
+-      return await ref.read(scanProvider.notifier).scanImage(localPath);
++      return await ref.read(scanProvider.notifier).scanImage(
++            localPath,
++            imageBytes: imageBytes,
++          );
+     } catch (error, stackTrace) {
+       _logError('scan', error, stackTrace);
+       if (!context.mounted) return null;
+diff --git a/lib/features/ai_scan/presentation/providers/scan_provider.dart b/lib/features/ai_scan/presentation/providers/scan_provider.dart
+index c1cf589..c0036ca 100644
+--- a/lib/features/ai_scan/presentation/providers/scan_provider.dart
++++ b/lib/features/ai_scan/presentation/providers/scan_provider.dart
+@@ -1,3 +1,5 @@
++import 'dart:typed_data';
++
+ import 'package:flutter/foundation.dart' show kIsWeb;
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ 
+@@ -42,15 +44,18 @@ class ScanNotifier extends StateNotifier<AsyncValue<ScanResultRecord?>> {
+   final ScanResultStore _resultStore;
+   final ScanImageStorage _imageStorage;
+ 
+-  Future<ScanResultRecord> scanImage(String localPath) async {
++  Future<ScanResultRecord> scanImage(
++    String localPath, {
++    Uint8List? imageBytes,
++  }) async {
+     if (state.isLoading) {
+       throw StateError('A scan is already in progress.');
+     }
+ 
+     state = const AsyncLoading();
+     try {
+-      final imageBytes = await _imageStorage.readBytes(localPath);
+-      final result = await _visionClient.analyzeImageBytes(imageBytes);
++      final bytes = imageBytes ?? await _imageStorage.readBytes(localPath);
++      final result = await _visionClient.analyzeImageBytes(bytes);
+       final record = await _resultStore.save(
+         localPath: localPath,
+         result: result,
+diff --git a/lib/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart b/lib/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart
+index f1dd55b..c2129ce 100644
+--- a/lib/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart
++++ b/lib/features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart
+@@ -174,6 +174,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
+         context,
+         ref,
+         localPath: localPath,
++        imageBytes: compressedBytes,
+       );
+       if (!mounted) return;
+       if (record == null) return;
+diff --git a/supabase/functions/gemini-vision-scan/gemini_client.ts b/supabase/functions/gemini-vision-scan/gemini_client.ts
+index e1e3d4b..ccd5d47 100644
+--- a/supabase/functions/gemini-vision-scan/gemini_client.ts
++++ b/supabase/functions/gemini-vision-scan/gemini_client.ts
+@@ -73,6 +73,7 @@ interface GeminiChainOptions {
+   attemptTimeoutMs?: number;
+   logger?: Logger;
+   healthStore?: GeminiHealthStore;
++  scheduleBackgroundTask?: (task: Promise<void>) => void;
+ }
+ 
+ interface GeminiAttemptOptions {
+@@ -203,6 +204,28 @@ async function recordAttemptHealth(
+   }
+ }
+ 
++async function dispatchAttemptHealth(
++  healthStore: GeminiHealthStore | undefined,
++  logger: Logger,
++  scanId: string,
++  model: string,
++  outcome: "success" | "system_failure",
++  scheduleBackgroundTask: ((task: Promise<void>) => void) | undefined,
++): Promise<void> {
++  const task = recordAttemptHealth(
++    healthStore,
++    logger,
++    scanId,
++    model,
++    outcome,
++  );
++  if (scheduleBackgroundTask) {
++    scheduleBackgroundTask(task);
++    return;
++  }
++  await task;
++}
++
+ export async function fetchGeminiModelChain(
+   options: GeminiChainOptions,
+ ): Promise<GeminiChainResult> {
+@@ -239,20 +262,22 @@ export async function fetchGeminiModelChain(
+         });
+ 
+         if (response.ok) {
+-          await recordAttemptHealth(
++          await dispatchAttemptHealth(
+             options.healthStore,
+             logger,
+             options.scanId,
+             model,
+             "success",
++            options.scheduleBackgroundTask,
+           );
+         } else if (MODEL_HEALTH_FAILURE_STATUSES.has(response.status)) {
+-          await recordAttemptHealth(
++          await dispatchAttemptHealth(
+             options.healthStore,
+             logger,
+             options.scanId,
+             model,
+             "system_failure",
++            options.scheduleBackgroundTask,
+           );
+         }
+ 
+@@ -292,12 +317,13 @@ export async function fetchGeminiModelChain(
+       } catch (error) {
+         if (!(error instanceof GeminiAttemptError)) throw error;
+         lastAttemptError = error;
+-        await recordAttemptHealth(
++        await dispatchAttemptHealth(
+           options.healthStore,
+           logger,
+           options.scanId,
+           model,
+           "system_failure",
++          options.scheduleBackgroundTask,
+         );
+         logger.warn(
+           "Gemini model fallback",
+diff --git a/supabase/functions/gemini-vision-scan/gemini_client_test.ts b/supabase/functions/gemini-vision-scan/gemini_client_test.ts
+index e53be54..7813748 100644
+--- a/supabase/functions/gemini-vision-scan/gemini_client_test.ts
++++ b/supabase/functions/gemini-vision-scan/gemini_client_test.ts
+@@ -428,3 +428,30 @@ test("health cache: successful request on previously unhealthy model invalidates
+   assert.equal(nextRead[0].isHealthy, true);
+ });
+ 
++test("scheduled health telemetry does not block a successful response", async () => {
++  let finishWrite!: () => void;
++  const pendingWrite = new Promise<void>((resolve) => {
++    finishWrite = resolve;
++  });
++  const scheduledTasks: Promise<void>[] = [];
++  const healthStore: GeminiHealthStore = {
++    getModelHealth: () => Promise.resolve([]),
++    recordSuccess: () => pendingWrite,
++    recordSystemFailure: () => Promise.resolve(),
++  };
++
++  const result = await fetchGeminiModelChain({
++    apiKey: "test-key",
++    scanId: "background-health-write",
++    createRequestBody: (model) => ({ model }),
++    fetcher: () => Promise.resolve(successfulResponse()),
++    healthStore,
++    scheduleBackgroundTask: (task) => scheduledTasks.push(task),
++    logger: silentLogger,
++  });
++
++  assert.equal(result.response.status, 200);
++  assert.equal(scheduledTasks.length, 1);
++  finishWrite();
++  await scheduledTasks[0];
++});
+diff --git a/supabase/functions/gemini-vision-scan/gemini_model_health.ts b/supabase/functions/gemini-vision-scan/gemini_model_health.ts
+index 6220989..e8bf345 100644
+--- a/supabase/functions/gemini-vision-scan/gemini_model_health.ts
++++ b/supabase/functions/gemini-vision-scan/gemini_model_health.ts
+@@ -24,6 +24,8 @@ export interface SupabaseGeminiHealthStoreOptions
+   serviceRoleKey: string;
+   fetcher?: Fetcher;
+   requestTimeoutMs?: number;
++  cacheTtlMs?: number;
++  now?: () => number;
+ }
+ 
+ export function createCachedGeminiHealthStore(
+@@ -85,11 +87,17 @@ export function createRawSupabaseGeminiHealthStore(
+   const baseUrl = options.supabaseUrl.replace(/\/+$/, "");
+   const fetcher = options.fetcher ?? fetch;
+   const timeoutMs = options.requestTimeoutMs ?? HEALTH_REQUEST_TIMEOUT_MS;
++  const cacheTtlMs = options.cacheTtlMs ?? HEALTH_CACHE_TTL_MS;
++  const now = options.now ?? Date.now;
+   const headers = {
+     apikey: options.serviceRoleKey,
+     Authorization: `Bearer ${options.serviceRoleKey}`,
+     "Content-Type": "application/json",
+   };
++  let cachedHealth:
++    | { expiresAt: number; rows: readonly GeminiModelHealth[] }
++    | undefined;
++  let healthRequest: Promise<readonly GeminiModelHealth[]> | undefined;
+ 
+   async function request(path: string, init?: RequestInit): Promise<Response> {
+     const controller = new AbortController();
+@@ -126,35 +134,69 @@ export function createRawSupabaseGeminiHealthStore(
+         p_outcome: outcome,
+       }),
+     });
++    if (outcome === "system_failure") {
++      cachedHealth = undefined;
++      return;
++    }
++    const current = cachedHealth;
++    if (!current) return;
++    cachedHealth = {
++      expiresAt: now() + cacheTtlMs,
++      rows: [
++        ...current.rows.filter((row) => row.modelName !== modelName),
++        { modelName, isHealthy: true },
++      ],
++    };
++  }
++
++  function selectRequestedModels(
++    rows: readonly GeminiModelHealth[],
++    modelNames: readonly string[],
++  ): readonly GeminiModelHealth[] {
++    const requestedModels = new Set(modelNames);
++    return rows.filter((row) => requestedModels.has(row.modelName));
++  }
++
++  async function loadHealth(): Promise<readonly GeminiModelHealth[]> {
++    const response = await request(
++      "/rest/v1/gemini_model_health?select=model_name,is_healthy",
++    );
++    const rows: unknown = await response.json();
++    if (!Array.isArray(rows)) {
++      throw new Error("Supabase health response is not an array");
++    }
++    return rows.flatMap((row) => {
++      const candidate = row as GeminiModelHealthRow;
++      if (
++        typeof candidate.model_name !== "string" ||
++        typeof candidate.is_healthy !== "boolean"
++      ) {
++        return [];
++      }
++      return [{
++        modelName: candidate.model_name,
++        isHealthy: candidate.is_healthy,
++      }];
++    });
+   }
+ 
+   return {
+     async getModelHealth(
+       modelNames: readonly string[],
+     ): Promise<readonly GeminiModelHealth[]> {
+-      const response = await request(
+-        "/rest/v1/gemini_model_health?select=model_name,is_healthy",
+-      );
+-      const rows: unknown = await response.json();
+-      if (!Array.isArray(rows)) {
+-        throw new Error("Supabase health response is not an array");
++      const current = cachedHealth;
++      if (current && current.expiresAt > now()) {
++        return selectRequestedModels(current.rows, modelNames);
+       }
+ 
+-      const requestedModels = new Set(modelNames);
+-      return rows.flatMap((row) => {
+-        const candidate = row as GeminiModelHealthRow;
+-        if (
+-          typeof candidate.model_name !== "string" ||
+-          typeof candidate.is_healthy !== "boolean" ||
+-          !requestedModels.has(candidate.model_name)
+-        ) {
+-          return [];
+-        }
+-        return [{
+-          modelName: candidate.model_name,
+-          isHealthy: candidate.is_healthy,
+-        }];
+-      });
++      healthRequest ??= loadHealth();
++      try {
++        const rows = await healthRequest;
++        cachedHealth = { expiresAt: now() + cacheTtlMs, rows };
++        return selectRequestedModels(rows, modelNames);
++      } finally {
++        healthRequest = undefined;
++      }
+     },
+ 
+     recordSuccess(modelName: string): Promise<void> {
+diff --git a/supabase/functions/gemini-vision-scan/index.ts b/supabase/functions/gemini-vision-scan/index.ts
+index 8c770b5..3e463ed 100644
+--- a/supabase/functions/gemini-vision-scan/index.ts
++++ b/supabase/functions/gemini-vision-scan/index.ts
+@@ -1,11 +1,18 @@
+ import "jsr:@supabase/functions-js@2.112.3/edge-runtime.d.ts";
+ 
++// Supabase provides this global at runtime. Declare the narrow API used here
++// so standalone `deno check` validates the function before deployment.
++declare namespace EdgeRuntime {
++  function waitUntil<T>(promise: Promise<T>): Promise<T>;
++}
++
+ import {
+   buildGenerationConfig,
+   fetchGeminiModelChain,
+   GeminiChainError,
+ } from "./gemini_client.ts";
+ import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
++import { ImagePayloadError, parseImagePayload } from "./image_payload.ts";
+ import {
+   type BoundingBox,
+   DEFAULT_BOUNDING_BOX_RATIO,
+@@ -13,6 +20,18 @@ import {
+   rankWordsByBoxArea,
+   shrinkBoundingBox,
+ } from "./bounding_box.ts";
++import {
++  GeminiHierarchyShapeError,
++  HIERARCHY_SCHEMA_VERSION,
++  type HierarchyValidationMetrics,
++  normalizeVersion2Hierarchy,
++} from "./detection_hierarchy.ts";
++import {
++  type DetectionRankingMetrics,
++  selectHierarchyDetections,
++  selectLegacyDetections,
++} from "./detection_ranking.ts";
++import { buildScanPrompt } from "./scan_prompt.ts";
+ 
+ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+@@ -25,10 +44,19 @@ const GEMINI_HEALTH_STORE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+   : undefined;
+ const MAX_WORDS = 12;
+ const REDUCED_BOX_AREA_SCALE = DEFAULT_BOUNDING_BOX_RATIO ** 2;
++const HIERARCHY_RANKING_OVERRIDE = Deno.env.get(
++  "GEMINI_HIERARCHY_RANKING_ENABLED",
++)?.trim().toLowerCase();
+ 
+ const RESPONSE_SCHEMA = {
+   type: "OBJECT",
+   properties: {
++    schema_version: {
++      type: "INTEGER",
++      minimum: HIERARCHY_SCHEMA_VERSION,
++      maximum: HIERARCHY_SCHEMA_VERSION,
++      description: "The response contract version. Always return 2.",
++    },
+     words: {
+       type: "ARRAY",
+       maxItems: MAX_WORDS,
+@@ -40,6 +68,24 @@ const RESPONSE_SCHEMA = {
+             minimum: 1,
+             maximum: MAX_WORDS,
+           },
++          id: {
++            type: "STRING",
++            minLength: 1,
++            description:
++              "A unique immutable scan-local ID such as d1. It is not the display number.",
++          },
++          kind: {
++            type: "STRING",
++            enum: ["object", "part", "unknown"],
++            description:
++              "object for an independent item, part for a physical component of a returned object, or unknown when evidence is insufficient.",
++          },
++          parent_id: {
++            type: "STRING",
++            nullable: true,
++            description:
++              "For kind part, the immutable ID of its returned object parent; otherwise null.",
++          },
+           word: { type: "STRING" },
+           phonetic: { type: "STRING" },
+           meaning_vi: { type: "STRING" },
+@@ -56,7 +102,7 @@ const RESPONSE_SCHEMA = {
+       },
+     },
+   },
+-  required: ["words"],
++  required: ["schema_version", "words"],
+ };
+ 
+ const PROMPT =
+@@ -135,7 +181,6 @@ function deduplicateWords(words: unknown[]): unknown[] {
+     return true;
+   });
+ }
+-
+ function shrinkDetectedWordBox(word: unknown): unknown {
+   if (!word || typeof word !== "object") return word;
+   const box = normalizeBoundingBox(word);
+@@ -150,6 +195,14 @@ function shrinkDetectedWordBox(word: unknown): unknown {
+   };
+ }
+ 
++function usesHierarchyRanking(requestUrl: string): boolean {
++  if (HIERARCHY_RANKING_OVERRIDE === "true") return true;
++  if (HIERARCHY_RANKING_OVERRIDE === "false") return false;
++  return new URL(requestUrl).pathname.endsWith(
++    "/gemini-vision-scan-canary",
++  );
++}
++
+ Deno.serve(async (req) => {
+   const scanId = crypto.randomUUID();
+   const corsHeaders = {
+@@ -176,33 +229,7 @@ Deno.serve(async (req) => {
+   }
+ 
+   try {
+-    const { image_base64 } = await req.json();
+-
+-    if (!image_base64 || typeof image_base64 !== "string") {
+-      return new Response(
+-        JSON.stringify({
+-          error: "invalid_request",
+-          message: "Thieu image_base64",
+-        }),
+-        {
+-          status: 400,
+-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+-        },
+-      );
+-    }
+-
+-    if (image_base64.length > 600000) {
+-      return new Response(
+-        JSON.stringify({
+-          error: "image_too_large",
+-          message: "Anh vuot qua gioi han cho phep",
+-        }),
+-        {
+-          status: 413,
+-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+-        },
+-      );
+-    }
++    const image_base64 = await parseImagePayload(req);
+ 
+     const geminiResult = await fetchGeminiModelChain({
+       apiKey: GEMINI_API_KEY,
+@@ -219,6 +246,7 @@ Deno.serve(async (req) => {
+         generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
+       }),
+       healthStore: GEMINI_HEALTH_STORE,
++      scheduleBackgroundTask: (task) => EdgeRuntime.waitUntil(task),
+     });
+     const { response: geminiRes, model, modelsTried, attemptsForModel } =
+       geminiResult;
+@@ -343,20 +371,59 @@ Deno.serve(async (req) => {
+       );
+     }
+ 
++    let rawHierarchyMetrics: HierarchyValidationMetrics;
++    try {
++      const normalized = normalizeVersion2Hierarchy(parsed);
++      parsed = normalized.response;
++      rawHierarchyMetrics = normalized.metrics;
++    } catch (error) {
++      if (!(error instanceof GeminiHierarchyShapeError)) throw error;
++      console.error(
++        "Gemini hierarchy shape invalid",
++        JSON.stringify({ scanId, model, reason: error.message }),
++      );
++      return new Response(
++        JSON.stringify({
++          error: "invalid_hierarchy_response",
++          message: "Ket qua quan he vat the khong hop le, vui long thu lai",
++        }),
++        {
++          status: 422,
++          headers: { ...corsHeaders, "Content-Type": "application/json" },
++        },
++      );
++    }
++
++    const hierarchyRankingEnabled = usesHierarchyRanking(req.url);
++    let rankingMetrics: DetectionRankingMetrics | null = null;
+     if (Array.isArray(parsed.words)) {
+-      // Rank using Gemini's full boxes, then shrink exactly once before the
++      // Select using Gemini's full boxes, then shrink exactly once before the
+       // response reaches Flutter or local persistence.
+-      parsed.words = deduplicateWords(rankWordsByBoxArea(parsed.words)).slice(
+-        0,
+-        MAX_WORDS,
+-      ).map((word: unknown, index: number) => {
+-        const wordWithReducedBox = shrinkDetectedWordBox(word);
+-        return wordWithReducedBox && typeof wordWithReducedBox === "object"
+-          ? { ...wordWithReducedBox, number: index + 1 }
+-          : wordWithReducedBox;
+-      });
++      const ranking = hierarchyRankingEnabled
++        ? selectHierarchyDetections(parsed.words, MAX_WORDS)
++        : selectLegacyDetections(parsed.words, MAX_WORDS);
++      rankingMetrics = ranking.metrics;
++      const selectedWords = ranking.words.map(
++        (word: unknown, index: number) => {
++          const wordWithReducedBox = shrinkDetectedWordBox(word);
++          return wordWithReducedBox && typeof wordWithReducedBox === "object"
++            ? { ...wordWithReducedBox, number: index + 1 }
++            : wordWithReducedBox;
++        },
++      );
++      parsed = { ...parsed, words: selectedWords };
+     }
+ 
++    const selectedHierarchy = normalizeVersion2Hierarchy(parsed);
++    parsed = {
++      ...selectedHierarchy.response,
++      scan_id: scanId,
++      model_used: model,
++      ranking_strategy: hierarchyRankingEnabled
++        ? "hierarchy_v2"
++        : "legacy_area",
++    };
++
+     const words = Array.isArray(parsed.words) ? parsed.words : [];
+     logSuspiciousBoxes(words, scanId);
+     console.log(
+@@ -370,6 +437,11 @@ Deno.serve(async (req) => {
+         finishReason: finishReason ?? null,
+         usageMetadata: usage ?? null,
+         wordCount: words.length,
++        hierarchyValidation: {
++          raw: rawHierarchyMetrics,
++          selected: selectedHierarchy.metrics,
++        },
++        ranking: rankingMetrics,
+       }),
+     );
+ 
+@@ -378,6 +450,15 @@ Deno.serve(async (req) => {
+       headers: { ...corsHeaders, "Content-Type": "application/json" },
+     });
+   } catch (err) {
++    if (err instanceof ImagePayloadError) {
++      return new Response(
++        JSON.stringify({ error: err.code, message: err.message }),
++        {
++          status: err.status,
++          headers: { ...corsHeaders, "Content-Type": "application/json" },
++        },
++      );
++    }
+     const isChainError = err instanceof GeminiChainError;
+     const isTimeout = isChainError && err.kind === "timeout";
+     console.error("gemini-vision-scan error:", err);
+diff --git a/supabase/schema/legacy_migrations/20260730_align_secure_schema.sql b/supabase/schema/legacy_migrations/20260730_align_secure_schema.sql
+deleted file mode 100644
+index 9968244..0000000
+--- a/supabase/schema/legacy_migrations/20260730_align_secure_schema.sql
++++ /dev/null
+@@ -1,399 +0,0 @@
+--- =============================================================================
+--- CAPY VOCAB APP - MIGRATION: ALIGN LIVE DATABASE WITH FINAL SECURE SCHEMA
+--- Apply once to project: vmxonxqxrlkssdzsucrg
+--- Date: 2026-07-30
+---
+--- Review Flutter impact before applying:
+--- - photo_notes bucket becomes private
+--- - direct writes to economy/shop/inventory/subscriptions/arena results blocked
+--- - users table SELECT becomes own-row only; use get_public_profiles() for public data
+--- =============================================================================
+-
+-BEGIN;
+-
+--- Remove duplicate phone-format constraint seen on Production.
+-ALTER TABLE public.users
+-    DROP CONSTRAINT IF EXISTS users_phone_check;
+-
+-
+--- =============================================================================
+--- ROW LEVEL SECURITY + COLUMN PRIVILEGES (HARDENED TARGET)
+--- =============================================================================
+-
+-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.lessons ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.vocabularies ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.user_vocab_progress ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.photo_notes ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.photo_note_vocabularies ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.solo_arena_matches ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.pet_items ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.user_pet_inventory ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.friends ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.shop_purchases ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+-
+--- Remove old/broad policies so this file is rerunnable.
+-DROP POLICY IF EXISTS "Public profiles are viewable by authenticated users" ON public.users;
+-DROP POLICY IF EXISTS "Users can insert their own profile" ON public.users;
+-DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
+-DROP POLICY IF EXISTS "Users view own profile" ON public.users;
+-DROP POLICY IF EXISTS "Users update own profile" ON public.users;
+-
+-DROP POLICY IF EXISTS "Users manage their own settings" ON public.user_settings;
+-DROP POLICY IF EXISTS "Lessons are viewable by all" ON public.lessons;
+-DROP POLICY IF EXISTS "Vocabularies are viewable by all" ON public.vocabularies;
+-DROP POLICY IF EXISTS "Pet items are viewable by all" ON public.pet_items;
+-DROP POLICY IF EXISTS "Users manage their own SRS progress" ON public.user_vocab_progress;
+-DROP POLICY IF EXISTS "Users manage their own photo notes" ON public.photo_notes;
+-DROP POLICY IF EXISTS "Users manage photo note vocabs" ON public.photo_note_vocabularies;
+-
+-DROP POLICY IF EXISTS "Match players can view match" ON public.solo_arena_matches;
+-DROP POLICY IF EXISTS "Authenticated users can create match" ON public.solo_arena_matches;
+-DROP POLICY IF EXISTS "Players can update their match" ON public.solo_arena_matches;
+-
+-DROP POLICY IF EXISTS "Users manage their pet inventory" ON public.user_pet_inventory;
+-DROP POLICY IF EXISTS "Users view their purchases" ON public.shop_purchases;
+-
+-DROP POLICY IF EXISTS "Users view their friend connections" ON public.friends;
+-DROP POLICY IF EXISTS "Users manage friend requests" ON public.friends;
+-DROP POLICY IF EXISTS "Users create friend requests" ON public.friends;
+-DROP POLICY IF EXISTS "Users update received friend requests" ON public.friends;
+-DROP POLICY IF EXISTS "Users delete friend connections" ON public.friends;
+-
+-DROP POLICY IF EXISTS "Users manage their chat messages" ON public.chat_messages;
+-DROP POLICY IF EXISTS "Users read own chat messages" ON public.chat_messages;
+-DROP POLICY IF EXISTS "Users create own chat messages" ON public.chat_messages;
+-DROP POLICY IF EXISTS "Users delete own chat messages" ON public.chat_messages;
+-
+-DROP POLICY IF EXISTS "Users view their subscriptions" ON public.subscriptions;
+-DROP POLICY IF EXISTS "Users manage their notifications" ON public.notifications;
+-DROP POLICY IF EXISTS "Users read own notifications" ON public.notifications;
+-DROP POLICY IF EXISTS "Users update own notification state" ON public.notifications;
+-DROP POLICY IF EXISTS "Users delete own notifications" ON public.notifications;
+-
+--- ---------------------------------------------------------------------------
+--- users: private profile row; client may edit profile columns only.
+--- Sensitive/economic columns are protected with column privileges below.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users view own profile"
+-ON public.users FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = id);
+-
+-CREATE POLICY "Users update own profile"
+-ON public.users FOR UPDATE TO authenticated
+-USING ((SELECT auth.uid()) = id)
+-WITH CHECK ((SELECT auth.uid()) = id);
+-
+--- Profiles are created by handle_new_user(); direct client INSERT is unnecessary.
+-REVOKE INSERT, DELETE ON public.users FROM authenticated;
+-REVOKE UPDATE ON public.users FROM authenticated;
+-GRANT SELECT ON public.users TO authenticated;
+-GRANT UPDATE (
+-    display_name,
+-    avatar_url,
+-    username,
+-    age,
+-    phone,
+-    account_role,
+-    onboarding_completed,
+-    updated_at
+-) ON public.users TO authenticated;
+-
+--- Safe public profile projection for leaderboard/friends.
+-CREATE OR REPLACE FUNCTION public.get_public_profiles(profile_ids UUID[] DEFAULT NULL)
+-RETURNS TABLE (
+-    id UUID,
+-    display_name TEXT,
+-    username TEXT,
+-    avatar_url TEXT,
+-    study_points INT,
+-    streak_days INT,
+-    user_level INT
+-)
+-LANGUAGE sql
+-STABLE
+-SECURITY DEFINER
+-SET search_path = public
+-AS $$
+-    SELECT
+-        u.id,
+-        u.display_name,
+-        u.username,
+-        u.avatar_url,
+-        u.study_points,
+-        u.streak_days,
+-        u.user_level
+-    FROM public.users u
+-    WHERE profile_ids IS NULL OR u.id = ANY(profile_ids);
+-$$;
+-
+-REVOKE ALL ON FUNCTION public.get_public_profiles(UUID[]) FROM PUBLIC;
+-GRANT EXECUTE ON FUNCTION public.get_public_profiles(UUID[]) TO authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- User-owned regular data.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users manage their own settings"
+-ON public.user_settings FOR ALL TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Lessons are viewable by all"
+-ON public.lessons FOR SELECT TO anon, authenticated
+-USING (true);
+-
+-CREATE POLICY "Vocabularies are viewable by all"
+-ON public.vocabularies FOR SELECT TO anon, authenticated
+-USING (true);
+-
+-CREATE POLICY "Pet items are viewable by all"
+-ON public.pet_items FOR SELECT TO anon, authenticated
+-USING (true);
+-
+-CREATE POLICY "Users manage their own SRS progress"
+-ON public.user_vocab_progress FOR ALL TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users manage their own photo notes"
+-ON public.photo_notes FOR ALL TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users manage photo note vocabs"
+-ON public.photo_note_vocabularies FOR ALL TO authenticated
+-USING (
+-    EXISTS (
+-        SELECT 1 FROM public.photo_notes pn
+-        WHERE pn.id = photo_note_id
+-          AND pn.user_id = (SELECT auth.uid())
+-    )
+-)
+-WITH CHECK (
+-    EXISTS (
+-        SELECT 1 FROM public.photo_notes pn
+-        WHERE pn.id = photo_note_id
+-          AND pn.user_id = (SELECT auth.uid())
+-    )
+-);
+-
+--- ---------------------------------------------------------------------------
+--- Arena: clients can read and create waiting rooms, but cannot directly
+--- modify score, winner, bet, guest or status. Use trusted RPC/Edge Function.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Match players can view match"
+-ON public.solo_arena_matches FOR SELECT TO authenticated
+-USING (
+-    (SELECT auth.uid()) = host_user_id
+-    OR (SELECT auth.uid()) = guest_user_id
+-    OR status = 'waiting'
+-);
+-
+-CREATE POLICY "Authenticated users can create match"
+-ON public.solo_arena_matches FOR INSERT TO authenticated
+-WITH CHECK (
+-    (SELECT auth.uid()) = host_user_id
+-    AND guest_user_id IS NULL
+-    AND winner_id IS NULL
+-    AND host_score = 0
+-    AND guest_score = 0
+-    AND status = 'waiting'
+-);
+-
+-REVOKE UPDATE, DELETE ON public.solo_arena_matches FROM authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Shop/inventory: users may read only. All writes must be trusted server-side.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users view their inventory"
+-ON public.user_pet_inventory FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users view their purchases"
+-ON public.shop_purchases FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-REVOKE INSERT, UPDATE, DELETE ON public.user_pet_inventory FROM authenticated;
+-REVOKE INSERT, UPDATE, DELETE ON public.shop_purchases FROM authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Friends: requester creates; recipient may change status only.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users view their friend connections"
+-ON public.friends FOR SELECT TO authenticated
+-USING (
+-    (SELECT auth.uid()) = user_id
+-    OR (SELECT auth.uid()) = friend_id
+-);
+-
+-CREATE POLICY "Users create friend requests"
+-ON public.friends FOR INSERT TO authenticated
+-WITH CHECK (
+-    (SELECT auth.uid()) = user_id
+-    AND user_id <> friend_id
+-    AND status = 'pending'
+-);
+-
+-CREATE POLICY "Users update received friend requests"
+-ON public.friends FOR UPDATE TO authenticated
+-USING ((SELECT auth.uid()) = friend_id)
+-WITH CHECK (
+-    (SELECT auth.uid()) = friend_id
+-    AND user_id <> friend_id
+-    AND status IN ('accepted', 'rejected')
+-);
+-
+-CREATE POLICY "Users delete friend connections"
+-ON public.friends FOR DELETE TO authenticated
+-USING (
+-    (SELECT auth.uid()) = user_id
+-    OR (SELECT auth.uid()) = friend_id
+-);
+-
+-REVOKE UPDATE ON public.friends FROM authenticated;
+-GRANT UPDATE (status) ON public.friends TO authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Chat: user can create normal messages only; AI responses require backend.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users read own chat messages"
+-ON public.chat_messages FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users create own chat messages"
+-ON public.chat_messages FOR INSERT TO authenticated
+-WITH CHECK (
+-    (SELECT auth.uid()) = user_id
+-    AND is_ai_response = FALSE
+-);
+-
+-CREATE POLICY "Users delete own chat messages"
+-ON public.chat_messages FOR DELETE TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-REVOKE UPDATE ON public.chat_messages FROM authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Subscriptions: read only from client.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users view their subscriptions"
+-ON public.subscriptions FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-REVOKE INSERT, UPDATE, DELETE ON public.subscriptions FROM authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Notifications: backend creates; client reads, marks read, or deletes.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users read own notifications"
+-ON public.notifications FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users update own notification state"
+-ON public.notifications FOR UPDATE TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users delete own notifications"
+-ON public.notifications FOR DELETE TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-REVOKE INSERT ON public.notifications FROM authenticated;
+-REVOKE UPDATE ON public.notifications FROM authenticated;
+-GRANT UPDATE (is_read) ON public.notifications TO authenticated;
+-
+--- =============================================================================
+--- REALTIME
+--- =============================================================================
+-DO $$
+-BEGIN
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_publication_tables
+-        WHERE pubname = 'supabase_realtime'
+-          AND schemaname = 'public'
+-          AND tablename = 'solo_arena_matches'
+-    ) THEN
+-        ALTER PUBLICATION supabase_realtime ADD TABLE public.solo_arena_matches;
+-    END IF;
+-
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_publication_tables
+-        WHERE pubname = 'supabase_realtime'
+-          AND schemaname = 'public'
+-          AND tablename = 'chat_messages'
+-    ) THEN
+-        ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
+-    END IF;
+-
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_publication_tables
+-        WHERE pubname = 'supabase_realtime'
+-          AND schemaname = 'public'
+-          AND tablename = 'notifications'
+-    ) THEN
+-        ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+-    END IF;
+-END
+-$$;
+-
+--- =============================================================================
+--- STORAGE
+--- =============================================================================
+-INSERT INTO storage.buckets (id, name, public)
+-VALUES ('photo_notes', 'photo_notes', FALSE)
+-ON CONFLICT (id) DO UPDATE
+-SET name = EXCLUDED.name,
+-    public = EXCLUDED.public;
+-
+-DROP POLICY IF EXISTS "Public Access Photo Notes" ON storage.objects;
+-DROP POLICY IF EXISTS "User Upload Photo Notes" ON storage.objects;
+-DROP POLICY IF EXISTS "Users read own photo notes" ON storage.objects;
+-DROP POLICY IF EXISTS "Users update own photo notes" ON storage.objects;
+-DROP POLICY IF EXISTS "Users delete own photo notes" ON storage.objects;
+-
+-CREATE POLICY "Users read own photo notes"
+-ON storage.objects FOR SELECT TO authenticated
+-USING (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
+-
+-CREATE POLICY "User Upload Photo Notes"
+-ON storage.objects FOR INSERT TO authenticated
+-WITH CHECK (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
+-
+-CREATE POLICY "Users update own photo notes"
+-ON storage.objects FOR UPDATE TO authenticated
+-USING (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-)
+-WITH CHECK (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
+-
+-CREATE POLICY "Users delete own photo notes"
+-ON storage.objects FOR DELETE TO authenticated
+-USING (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
+-
+--- =============================================================================
+--- NOTES FOR FLUTTER
+--- =============================================================================
+--- 1) Upload path must be: <auth.uid()>/<filename>
+--- 2) Bucket is private. Read images with createSignedUrl(), not getPublicUrl().
+--- 3) Do not update users.study_points/total_coins/streak_days/user_level directly.
+--- 4) Purchases, inventory grants, subscriptions, AI replies, notifications and
+---    arena results must be written through service-role backend/RPC/Edge Function.
+-
+-COMMIT;
+\ No newline at end of file
+diff --git a/supabase/schema/legacy_migrations/20260730_complete_onboarding_rpc.sql b/supabase/schema/legacy_migrations/20260730_complete_onboarding_rpc.sql
+deleted file mode 100644
+index 3f93b4f..0000000
+--- a/supabase/schema/legacy_migrations/20260730_complete_onboarding_rpc.sql
++++ /dev/null
+@@ -1,121 +0,0 @@
+--- Atomically completes the five-step onboarding flow for the current user.
+-CREATE OR REPLACE FUNCTION public.complete_onboarding(
+-    p_display_name TEXT,
+-    p_username TEXT,
+-    p_age INT,
+-    p_phone TEXT,
+-    p_account_role TEXT,
+-    p_reminder_time TEXT,
+-    p_daily_target_words INT
+-)
+-RETURNS BOOLEAN
+-LANGUAGE plpgsql
+-SECURITY INVOKER
+-SET search_path = ''
+-AS $$
+-DECLARE
+-    v_user_id UUID := (SELECT auth.uid());
+-    v_updated_rows INT;
+-BEGIN
+-    IF v_user_id IS NULL THEN
+-        RAISE EXCEPTION 'Authentication required'
+-            USING ERRCODE = '28000';
+-    END IF;
+-
+-    IF BTRIM(COALESCE(p_display_name, '')) = '' THEN
+-        RAISE EXCEPTION 'Display name is required'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF BTRIM(COALESCE(p_username, '')) !~ '^[a-zA-Z0-9_]{3,20}$' THEN
+-        RAISE EXCEPTION 'Invalid username'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_age IS NULL OR p_age < 1 OR p_age > 120 THEN
+-        RAISE EXCEPTION 'Age must be between 1 and 120'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_phone IS NULL OR p_phone !~ '^0[0-9]{9}$' THEN
+-        RAISE EXCEPTION 'Invalid phone number'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_account_role IS NULL
+-       OR p_account_role NOT IN ('personal', 'parent') THEN
+-        RAISE EXCEPTION 'Invalid account role'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_reminder_time IS NULL
+-       OR p_reminder_time !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
+-        RAISE EXCEPTION 'Invalid reminder time'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_daily_target_words IS NULL OR p_daily_target_words <= 0 THEN
+-        RAISE EXCEPTION 'Daily target must be greater than zero'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    UPDATE public.users
+-    SET
+-        display_name = BTRIM(p_display_name),
+-        username = LOWER(BTRIM(p_username)),
+-        age = p_age,
+-        phone = p_phone,
+-        account_role = p_account_role,
+-        updated_at = NOW()
+-    WHERE id = v_user_id;
+-
+-    GET DIAGNOSTICS v_updated_rows = ROW_COUNT;
+-    IF v_updated_rows <> 1 THEN
+-        RAISE EXCEPTION 'User profile not found'
+-            USING ERRCODE = 'P0002';
+-    END IF;
+-
+-    INSERT INTO public.user_settings (
+-        user_id,
+-        reminder_time,
+-        daily_target_words
+-    )
+-    VALUES (
+-        v_user_id,
+-        p_reminder_time,
+-        p_daily_target_words
+-    )
+-    ON CONFLICT (user_id) DO UPDATE
+-    SET
+-        reminder_time = EXCLUDED.reminder_time,
+-        daily_target_words = EXCLUDED.daily_target_words;
+-
+-    UPDATE public.users
+-    SET
+-        onboarding_completed = TRUE,
+-        updated_at = NOW()
+-    WHERE id = v_user_id;
+-
+-    RETURN TRUE;
+-END;
+-$$;
+-
+-REVOKE ALL ON FUNCTION public.complete_onboarding(
+-    TEXT,
+-    TEXT,
+-    INT,
+-    TEXT,
+-    TEXT,
+-    TEXT,
+-    INT
+-) FROM PUBLIC, anon;
+-
+-GRANT EXECUTE ON FUNCTION public.complete_onboarding(
+-    TEXT,
+-    TEXT,
+-    INT,
+-    TEXT,
+-    TEXT,
+-    TEXT,
+-    INT
+-) TO authenticated;
+diff --git a/supabase/schema/supabase_schema_final_secure.sql b/supabase/schema/supabase_schema_final_secure.sql
+index 1b76493..502cfed 100644
+--- a/supabase/schema/supabase_schema_final_secure.sql
++++ b/supabase/schema/supabase_schema_final_secure.sql
+@@ -1,24 +1,17 @@
++-- Schema Snapshot: supabase_schema_final_secure.sql
++-- Viết toàn bộ schema SQL định năng tại đây
+ -- =============================================================================
+--- CAPY VOCAB APP - SUPABASE SCHEMA (SYNCED FROM LIVE PROJECT)
+--- Project ref: vmxonxqxrlkssdzsucrg
+--- Snapshot date: 2026-07-30
+---
+--- Purpose:
+---   - Recreate the current public schema on a fresh Supabase project.
+---   - Keep RLS fixes currently deployed to production.
+---   - Include Auth -> public.users profile trigger and Storage configuration.
+---
+--- IMPORTANT:
+---   - Run on a fresh project or as a reviewed migration.
+---   - This file does not insert application seed data.
++-- CAPY VOCAB - SUPABASE POSTGRESQL DATABASE SCHEMA & ROW LEVEL SECURITY (RLS)
++-- Includes 12 base entities from database_design.html + 3 additional tables:
++-- shop_purchases, subscriptions, notifications (Total: 15 tables)
+ -- =============================================================================
+ 
++-- Enable UUID Extension
+ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+ 
+--- =============================================================================
+--- TABLES
+--- =============================================================================
+-
++-- -----------------------------------------------------------------------------
++-- 1. TABLE: users
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.users (
+     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+     email TEXT UNIQUE NOT NULL,
+@@ -29,31 +22,23 @@ CREATE TABLE IF NOT EXISTS public.users (
+     total_coins INT DEFAULT 100 CHECK (total_coins >= 0),
+     user_level INT DEFAULT 1 CHECK (user_level >= 1),
+     created_at TIMESTAMPTZ DEFAULT NOW(),
+-    updated_at TIMESTAMPTZ DEFAULT NOW(),
+-    username TEXT UNIQUE,
+-    age INT CHECK (age IS NULL OR age BETWEEN 1 AND 120),
+-    phone TEXT,
+-    account_role TEXT CHECK (
+-        account_role IS NULL OR account_role IN ('personal', 'parent')
+-    ),
+-    onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
+-    CONSTRAINT users_phone_format_check CHECK (
+-        phone IS NULL OR phone ~ '^0[0-9]{9}$'
+-    )
++    updated_at TIMESTAMPTZ DEFAULT NOW()
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 2. TABLE: user_settings (1-1 with users)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.user_settings (
+     user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+     theme_mode TEXT DEFAULT 'light' CHECK (theme_mode IN ('light', 'dark')),
+     daily_target_words INT DEFAULT 10 CHECK (daily_target_words > 0),
+     reminder_time TEXT DEFAULT '20:00',
+-    study_end_time TEXT DEFAULT '21:00' CHECK (
+-        study_end_time IS NULL
+-        OR study_end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+-    ),
+     sound_effects_enabled BOOLEAN DEFAULT TRUE
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 3. TABLE: lessons
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.lessons (
+     id TEXT PRIMARY KEY,
+     title TEXT NOT NULL,
+@@ -62,6 +47,9 @@ CREATE TABLE IF NOT EXISTS public.lessons (
+     min_points_required INT DEFAULT 0
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 4. TABLE: vocabularies
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.vocabularies (
+     id TEXT PRIMARY KEY,
+     lesson_id TEXT NOT NULL REFERENCES public.lessons(id) ON DELETE CASCADE,
+@@ -72,6 +60,9 @@ CREATE TABLE IF NOT EXISTS public.vocabularies (
+     audio_url TEXT
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 5. TABLE: user_vocab_progress (SRS)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.user_vocab_progress (
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+     vocab_id TEXT NOT NULL REFERENCES public.vocabularies(id) ON DELETE CASCADE,
+@@ -82,6 +73,9 @@ CREATE TABLE IF NOT EXISTS public.user_vocab_progress (
+     PRIMARY KEY (user_id, vocab_id)
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 6. TABLE: photo_notes (AI Vision Scan Album)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.photo_notes (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+@@ -91,12 +85,18 @@ CREATE TABLE IF NOT EXISTS public.photo_notes (
+     created_at TIMESTAMPTZ DEFAULT NOW()
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 7. TABLE: photo_note_vocabularies (N-N photo_notes <-> vocabularies)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.photo_note_vocabularies (
+     photo_note_id UUID NOT NULL REFERENCES public.photo_notes(id) ON DELETE CASCADE,
+     vocab_id TEXT NOT NULL REFERENCES public.vocabularies(id) ON DELETE CASCADE,
+     PRIMARY KEY (photo_note_id, vocab_id)
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 8. TABLE: solo_arena_matches (1v1 Realtime Arena)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.solo_arena_matches (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     host_user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+@@ -105,14 +105,15 @@ CREATE TABLE IF NOT EXISTS public.solo_arena_matches (
+     winner_id UUID REFERENCES public.users(id),
+     host_score INT DEFAULT 0,
+     guest_score INT DEFAULT 0,
+-    status TEXT DEFAULT 'waiting' CHECK (
+-        status IN ('waiting', 'in_progress', 'completed', 'cancelled')
+-    ),
++    status TEXT DEFAULT 'waiting' CHECK (status IN ('waiting', 'in_progress', 'completed', 'cancelled')),
+     matched_at TIMESTAMPTZ DEFAULT NOW(),
+     created_at TIMESTAMPTZ DEFAULT NOW(),
+     finished_at TIMESTAMPTZ
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 9. TABLE: pet_items (Capybara Pet Shop Catalogue)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.pet_items (
+     id TEXT PRIMARY KEY,
+     item_name TEXT NOT NULL,
+@@ -122,6 +123,9 @@ CREATE TABLE IF NOT EXISTS public.pet_items (
+     icon_url TEXT
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 10. TABLE: user_pet_inventory
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.user_pet_inventory (
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+     item_id TEXT NOT NULL REFERENCES public.pet_items(id) ON DELETE CASCADE,
+@@ -130,16 +134,20 @@ CREATE TABLE IF NOT EXISTS public.user_pet_inventory (
+     PRIMARY KEY (user_id, item_id)
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 11. TABLE: friends
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.friends (
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+     friend_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+-    status TEXT DEFAULT 'pending' CHECK (
+-        status IN ('pending', 'accepted', 'rejected')
+-    ),
++    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+     created_at TIMESTAMPTZ DEFAULT NOW(),
+     PRIMARY KEY (user_id, friend_id)
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 12. TABLE: chat_messages (AI Chatbot)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.chat_messages (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+@@ -148,6 +156,9 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
+     timestamp TIMESTAMPTZ DEFAULT NOW()
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 13. TABLE: shop_purchases (Bảng bổ sung - Lịch sử mua sắm)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.shop_purchases (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+@@ -158,18 +169,22 @@ CREATE TABLE IF NOT EXISTS public.shop_purchases (
+     created_at TIMESTAMPTZ DEFAULT NOW()
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 14. TABLE: subscriptions (Bảng bổ sung - Gói Pro)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.subscriptions (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+     plan_type TEXT NOT NULL,
+-    status TEXT DEFAULT 'active' CHECK (
+-        status IN ('active', 'expired', 'cancelled')
+-    ),
++    status TEXT DEFAULT 'active' CHECK (status IN ('active', 'expired', 'cancelled')),
+     start_date TIMESTAMPTZ DEFAULT NOW(),
+     end_date TIMESTAMPTZ NOT NULL,
+     created_at TIMESTAMPTZ DEFAULT NOW()
+ );
+ 
++-- -----------------------------------------------------------------------------
++-- 15. TABLE: notifications (Bảng bổ sung - Thông báo)
++-- -----------------------------------------------------------------------------
+ CREATE TABLE IF NOT EXISTS public.notifications (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+@@ -180,99 +195,19 @@ CREATE TABLE IF NOT EXISTS public.notifications (
+     created_at TIMESTAMPTZ DEFAULT NOW()
+ );
+ 
+--- Ensure columns introduced after the original schema exist on older databases.
+-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS username TEXT;
+-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS age INT;
+-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS account_role TEXT;
+-ALTER TABLE public.users
+-    ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
+-
+--- =============================================================================
+--- CONSTRAINTS / INDEXES
+--- =============================================================================
+-
+-CREATE UNIQUE INDEX IF NOT EXISTS users_username_key
+-    ON public.users (username);
+-CREATE UNIQUE INDEX IF NOT EXISTS users_phone_key
+-    ON public.users (phone);
+-CREATE INDEX IF NOT EXISTS idx_users_leaderboard
+-    ON public.users (study_points DESC, streak_days DESC);
+-CREATE INDEX IF NOT EXISTS idx_vocab_srs_due
+-    ON public.user_vocab_progress (user_id, next_review_at ASC);
+-CREATE INDEX IF NOT EXISTS idx_photo_notes_user
+-    ON public.photo_notes (user_id, created_at DESC);
+-CREATE INDEX IF NOT EXISTS idx_chat_messages_user
+-    ON public.chat_messages (user_id, timestamp ASC);
+-
+--- Add newer checks only when they do not already exist.
+-DO $$
+-BEGIN
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_constraint
+-        WHERE conname = 'users_age_check'
+-          AND conrelid = 'public.users'::regclass
+-    ) THEN
+-        ALTER TABLE public.users
+-            ADD CONSTRAINT users_age_check
+-            CHECK (age IS NULL OR age BETWEEN 1 AND 120);
+-    END IF;
+-
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_constraint
+-        WHERE conname = 'users_phone_format_check'
+-          AND conrelid = 'public.users'::regclass
+-    ) THEN
+-        ALTER TABLE public.users
+-            ADD CONSTRAINT users_phone_format_check
+-            CHECK (phone IS NULL OR phone ~ '^0[0-9]{9}$');
+-    END IF;
+-
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_constraint
+-        WHERE conname = 'users_account_role_check'
+-          AND conrelid = 'public.users'::regclass
+-    ) THEN
+-        ALTER TABLE public.users
+-            ADD CONSTRAINT users_account_role_check
+-            CHECK (account_role IS NULL OR account_role IN ('personal', 'parent'));
+-    END IF;
+-END
+-$$;
+-
+ -- =============================================================================
+--- AUTH PROFILE SYNC
++-- INDEXES FOR QUERY OPTIMIZATION
+ -- =============================================================================
+-
+-CREATE OR REPLACE FUNCTION public.handle_new_user()
+-RETURNS TRIGGER
+-LANGUAGE plpgsql
+-SECURITY DEFINER
+-SET search_path = public
+-AS $$
+-BEGIN
+-    INSERT INTO public.users (id, email, display_name)
+-    VALUES (
+-        NEW.id,
+-        NEW.email,
+-        COALESCE(
+-            NEW.raw_user_meta_data ->> 'display_name',
+-            SPLIT_PART(NEW.email, '@', 1)
+-        )
+-    );
+-    RETURN NEW;
+-END;
+-$$;
+-
+-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+-CREATE TRIGGER on_auth_user_created
+-AFTER INSERT ON auth.users
+-FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
++CREATE INDEX IF NOT EXISTS idx_users_leaderboard ON public.users (study_points DESC, streak_days DESC);
++CREATE INDEX IF NOT EXISTS idx_vocab_srs_due ON public.user_vocab_progress (user_id, next_review_at ASC);
++CREATE INDEX IF NOT EXISTS idx_photo_notes_user ON public.photo_notes (user_id, created_at DESC);
++CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON public.chat_messages (user_id, timestamp ASC);
+ 
+ -- =============================================================================
+--- ROW LEVEL SECURITY + COLUMN PRIVILEGES (HARDENED TARGET)
++-- ROW LEVEL SECURITY (RLS) POLICIES
+ -- =============================================================================
+ 
++-- Enable RLS on all tables
+ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+ ALTER TABLE public.lessons ENABLE ROW LEVEL SECURITY;
+@@ -289,514 +224,93 @@ ALTER TABLE public.shop_purchases ENABLE ROW LEVEL SECURITY;
+ ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ 
+--- Remove old/broad policies so this file is rerunnable.
+-DROP POLICY IF EXISTS "Public profiles are viewable by authenticated users" ON public.users;
+-DROP POLICY IF EXISTS "Users can insert their own profile" ON public.users;
+-DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
+-DROP POLICY IF EXISTS "Users view own profile" ON public.users;
+-DROP POLICY IF EXISTS "Users update own profile" ON public.users;
+-
+-DROP POLICY IF EXISTS "Users manage their own settings" ON public.user_settings;
+-DROP POLICY IF EXISTS "Lessons are viewable by all" ON public.lessons;
+-DROP POLICY IF EXISTS "Vocabularies are viewable by all" ON public.vocabularies;
+-DROP POLICY IF EXISTS "Pet items are viewable by all" ON public.pet_items;
+-DROP POLICY IF EXISTS "Users manage their own SRS progress" ON public.user_vocab_progress;
+-DROP POLICY IF EXISTS "Users manage their own photo notes" ON public.photo_notes;
+-DROP POLICY IF EXISTS "Users manage photo note vocabs" ON public.photo_note_vocabularies;
+-
+-DROP POLICY IF EXISTS "Match players can view match" ON public.solo_arena_matches;
+-DROP POLICY IF EXISTS "Authenticated users can create match" ON public.solo_arena_matches;
+-DROP POLICY IF EXISTS "Players can update their match" ON public.solo_arena_matches;
+-
+-DROP POLICY IF EXISTS "Users manage their pet inventory" ON public.user_pet_inventory;
+-DROP POLICY IF EXISTS "Users view their purchases" ON public.shop_purchases;
+-
+-DROP POLICY IF EXISTS "Users view their friend connections" ON public.friends;
+-DROP POLICY IF EXISTS "Users manage friend requests" ON public.friends;
+-DROP POLICY IF EXISTS "Users create friend requests" ON public.friends;
+-DROP POLICY IF EXISTS "Users update received friend requests" ON public.friends;
+-DROP POLICY IF EXISTS "Users delete friend connections" ON public.friends;
+-
+-DROP POLICY IF EXISTS "Users manage their chat messages" ON public.chat_messages;
+-DROP POLICY IF EXISTS "Users read own chat messages" ON public.chat_messages;
+-DROP POLICY IF EXISTS "Users create own chat messages" ON public.chat_messages;
+-DROP POLICY IF EXISTS "Users delete own chat messages" ON public.chat_messages;
+-
+-DROP POLICY IF EXISTS "Users view their subscriptions" ON public.subscriptions;
+-DROP POLICY IF EXISTS "Users manage their notifications" ON public.notifications;
+-DROP POLICY IF EXISTS "Users read own notifications" ON public.notifications;
+-DROP POLICY IF EXISTS "Users update own notification state" ON public.notifications;
+-DROP POLICY IF EXISTS "Users delete own notifications" ON public.notifications;
+-
+--- ---------------------------------------------------------------------------
+--- users: private profile row; client may edit profile columns only.
+--- Sensitive/economic columns are protected with column privileges below.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users view own profile"
+-ON public.users FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = id);
+-
+-CREATE POLICY "Users update own profile"
+-ON public.users FOR UPDATE TO authenticated
+-USING ((SELECT auth.uid()) = id)
+-WITH CHECK ((SELECT auth.uid()) = id);
+-
+--- Profiles are created by handle_new_user(); direct client INSERT is unnecessary.
+-REVOKE INSERT, DELETE ON public.users FROM authenticated;
+-REVOKE UPDATE ON public.users FROM authenticated;
+-GRANT SELECT ON public.users TO authenticated;
+-GRANT UPDATE (
+-    display_name,
+-    avatar_url,
+-    username,
+-    age,
+-    phone,
+-    account_role,
+-    onboarding_completed,
+-    updated_at
+-) ON public.users TO authenticated;
+-
+--- Safe public profile projection for leaderboard/friends.
+-CREATE OR REPLACE FUNCTION public.get_public_profiles(profile_ids UUID[] DEFAULT NULL)
+-RETURNS TABLE (
+-    id UUID,
+-    display_name TEXT,
+-    username TEXT,
+-    avatar_url TEXT,
+-    study_points INT,
+-    streak_days INT,
+-    user_level INT
+-)
+-LANGUAGE sql
+-STABLE
+-SECURITY DEFINER
+-SET search_path = public
+-AS $$
+-    SELECT
+-        u.id,
+-        u.display_name,
+-        u.username,
+-        u.avatar_url,
+-        u.study_points,
+-        u.streak_days,
+-        u.user_level
+-    FROM public.users u
+-    WHERE profile_ids IS NULL OR u.id = ANY(profile_ids);
+-$$;
+-
+-REVOKE ALL ON FUNCTION public.get_public_profiles(UUID[]) FROM PUBLIC;
+-GRANT EXECUTE ON FUNCTION public.get_public_profiles(UUID[]) TO authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- User-owned regular data.
+--- ---------------------------------------------------------------------------
++-- 1. users: All authenticated users can read (for profiles & leaderboards), owner can update
++CREATE POLICY "Public profiles are viewable by authenticated users"
++ON public.users FOR SELECT USING (auth.role() = 'authenticated');
++
++CREATE POLICY "Users can insert their own profile"
++ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
++
++CREATE POLICY "Users can update their own profile"
++ON public.users FOR UPDATE USING (auth.uid() = id);
++
++-- 2. user_settings: Owner access only
+ CREATE POLICY "Users manage their own settings"
+-ON public.user_settings FOR ALL TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
+-
+--- Complete onboarding in one transaction. SECURITY INVOKER keeps RLS and
+--- column privileges active, while auth.uid() fixes ownership to the caller.
+--- The extra argument changes the PostgreSQL function identity, so remove the
+--- previous seven-argument overload before creating the new contract.
+-DROP FUNCTION IF EXISTS public.complete_onboarding(
+-    TEXT,
+-    TEXT,
+-    INT,
+-    TEXT,
+-    TEXT,
+-    TEXT,
+-    INT
+-);
++ON public.user_settings FOR ALL USING (auth.uid() = user_id);
+ 
+-CREATE OR REPLACE FUNCTION public.complete_onboarding(
+-    p_display_name TEXT,
+-    p_username TEXT,
+-    p_age INT,
+-    p_phone TEXT,
+-    p_account_role TEXT,
+-    p_reminder_time TEXT,
+-    p_study_end_time TEXT,
+-    p_daily_target_words INT
+-)
+-RETURNS BOOLEAN
+-LANGUAGE plpgsql
+-SECURITY INVOKER
+-SET search_path = ''
+-AS $$
+-DECLARE
+-    v_user_id UUID := (SELECT auth.uid());
+-    v_updated_rows INT;
+-BEGIN
+-    IF v_user_id IS NULL THEN
+-        RAISE EXCEPTION 'Authentication required'
+-            USING ERRCODE = '28000';
+-    END IF;
+-
+-    IF BTRIM(COALESCE(p_display_name, '')) = '' THEN
+-        RAISE EXCEPTION 'Display name is required'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF BTRIM(COALESCE(p_username, '')) !~ '^[a-zA-Z0-9_]{3,20}$' THEN
+-        RAISE EXCEPTION 'Invalid username'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_age IS NULL OR p_age < 1 OR p_age > 120 THEN
+-        RAISE EXCEPTION 'Age must be between 1 and 120'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_phone IS NULL OR p_phone !~ '^0[0-9]{9}$' THEN
+-        RAISE EXCEPTION 'Invalid phone number'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_account_role IS NULL
+-       OR p_account_role NOT IN ('personal', 'parent') THEN
+-        RAISE EXCEPTION 'Invalid account role'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_reminder_time IS NULL
+-       OR p_reminder_time !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
+-        RAISE EXCEPTION 'Invalid reminder time'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_study_end_time IS NULL
+-       OR p_study_end_time !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
+-        RAISE EXCEPTION 'Invalid study end time'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_study_end_time::TIME <= p_reminder_time::TIME THEN
+-        RAISE EXCEPTION 'Study end time must be after reminder time'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    IF p_daily_target_words IS NULL OR p_daily_target_words <= 0 THEN
+-        RAISE EXCEPTION 'Daily target must be greater than zero'
+-            USING ERRCODE = '22023';
+-    END IF;
+-
+-    UPDATE public.users
+-    SET
+-        display_name = BTRIM(p_display_name),
+-        username = LOWER(BTRIM(p_username)),
+-        age = p_age,
+-        phone = p_phone,
+-        account_role = p_account_role,
+-        updated_at = NOW()
+-    WHERE id = v_user_id;
+-
+-    GET DIAGNOSTICS v_updated_rows = ROW_COUNT;
+-    IF v_updated_rows <> 1 THEN
+-        RAISE EXCEPTION 'User profile not found'
+-            USING ERRCODE = 'P0002';
+-    END IF;
+-
+-    INSERT INTO public.user_settings (
+-        user_id,
+-        reminder_time,
+-        study_end_time,
+-        daily_target_words
+-    )
+-    VALUES (
+-        v_user_id,
+-        p_reminder_time,
+-        p_study_end_time,
+-        p_daily_target_words
+-    )
+-    ON CONFLICT (user_id) DO UPDATE
+-    SET
+-        reminder_time = EXCLUDED.reminder_time,
+-        study_end_time = EXCLUDED.study_end_time,
+-        daily_target_words = EXCLUDED.daily_target_words;
+-
+-    UPDATE public.users
+-    SET
+-        onboarding_completed = TRUE,
+-        updated_at = NOW()
+-    WHERE id = v_user_id;
+-
+-    RETURN TRUE;
+-END;
+-$$;
+-
+-REVOKE ALL ON FUNCTION public.complete_onboarding(
+-    TEXT,
+-    TEXT,
+-    INT,
+-    TEXT,
+-    TEXT,
+-    TEXT,
+-    TEXT,
+-    INT
+-) FROM PUBLIC, anon;
+-
+-GRANT EXECUTE ON FUNCTION public.complete_onboarding(
+-    TEXT,
+-    TEXT,
+-    INT,
+-    TEXT,
+-    TEXT,
+-    TEXT,
+-    TEXT,
+-    INT
+-) TO authenticated;
+-
+-CREATE POLICY "Lessons are viewable by all"
+-ON public.lessons FOR SELECT TO anon, authenticated
+-USING (true);
+-
+-CREATE POLICY "Vocabularies are viewable by all"
+-ON public.vocabularies FOR SELECT TO anon, authenticated
+-USING (true);
+-
+-CREATE POLICY "Pet items are viewable by all"
+-ON public.pet_items FOR SELECT TO anon, authenticated
+-USING (true);
++-- 3. lessons & 4. vocabularies & 9. pet_items: Read-only for authenticated users
++CREATE POLICY "Lessons are viewable by all" ON public.lessons FOR SELECT USING (true);
++CREATE POLICY "Vocabularies are viewable by all" ON public.vocabularies FOR SELECT USING (true);
++CREATE POLICY "Pet items are viewable by all" ON public.pet_items FOR SELECT USING (true);
+ 
++-- 5. user_vocab_progress: Owner access only
+ CREATE POLICY "Users manage their own SRS progress"
+-ON public.user_vocab_progress FOR ALL TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
++ON public.user_vocab_progress FOR ALL USING (auth.uid() = user_id);
+ 
++-- 6. photo_notes & 7. photo_note_vocabularies: Owner access only
+ CREATE POLICY "Users manage their own photo notes"
+-ON public.photo_notes FOR ALL TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
++ON public.photo_notes FOR ALL USING (auth.uid() = user_id);
+ 
+ CREATE POLICY "Users manage photo note vocabs"
+-ON public.photo_note_vocabularies FOR ALL TO authenticated
+-USING (
+-    EXISTS (
+-        SELECT 1 FROM public.photo_notes pn
+-        WHERE pn.id = photo_note_id
+-          AND pn.user_id = (SELECT auth.uid())
+-    )
+-)
+-WITH CHECK (
+-    EXISTS (
+-        SELECT 1 FROM public.photo_notes pn
+-        WHERE pn.id = photo_note_id
+-          AND pn.user_id = (SELECT auth.uid())
+-    )
++ON public.photo_note_vocabularies FOR ALL USING (
++    EXISTS (SELECT 1 FROM public.photo_notes WHERE id = photo_note_id AND user_id = auth.uid())
+ );
+ 
+--- ---------------------------------------------------------------------------
+--- Arena: clients can read and create waiting rooms, but cannot directly
+--- modify score, winner, bet, guest or status. Use trusted RPC/Edge Function.
+--- ---------------------------------------------------------------------------
++-- 8. solo_arena_matches: Players in match can read/update
+ CREATE POLICY "Match players can view match"
+-ON public.solo_arena_matches FOR SELECT TO authenticated
+-USING (
+-    (SELECT auth.uid()) = host_user_id
+-    OR (SELECT auth.uid()) = guest_user_id
+-    OR status = 'waiting'
++ON public.solo_arena_matches FOR SELECT USING (
++    auth.uid() = host_user_id OR auth.uid() = guest_user_id OR status = 'waiting'
+ );
+ 
+ CREATE POLICY "Authenticated users can create match"
+-ON public.solo_arena_matches FOR INSERT TO authenticated
+-WITH CHECK (
+-    (SELECT auth.uid()) = host_user_id
+-    AND guest_user_id IS NULL
+-    AND winner_id IS NULL
+-    AND host_score = 0
+-    AND guest_score = 0
+-    AND status = 'waiting'
+-);
++ON public.solo_arena_matches FOR INSERT WITH CHECK (auth.uid() = host_user_id);
+ 
+-REVOKE UPDATE, DELETE ON public.solo_arena_matches FROM authenticated;
++CREATE POLICY "Players can update their match"
++ON public.solo_arena_matches FOR UPDATE USING (
++    auth.uid() = host_user_id OR auth.uid() = guest_user_id
++);
+ 
+--- ---------------------------------------------------------------------------
+--- Shop/inventory: users may read only. All writes must be trusted server-side.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users view their inventory"
+-ON public.user_pet_inventory FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
++-- 10. user_pet_inventory & 13. shop_purchases: Owner access only
++CREATE POLICY "Users manage their pet inventory"
++ON public.user_pet_inventory FOR ALL USING (auth.uid() = user_id);
+ 
+ CREATE POLICY "Users view their purchases"
+-ON public.shop_purchases FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
++ON public.shop_purchases FOR ALL USING (auth.uid() = user_id);
+ 
+-REVOKE INSERT, UPDATE, DELETE ON public.user_pet_inventory FROM authenticated;
+-REVOKE INSERT, UPDATE, DELETE ON public.shop_purchases FROM authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Friends: requester creates; recipient may change status only.
+--- ---------------------------------------------------------------------------
++-- 11. friends: Either party in friend relationship can read/manage
+ CREATE POLICY "Users view their friend connections"
+-ON public.friends FOR SELECT TO authenticated
+-USING (
+-    (SELECT auth.uid()) = user_id
+-    OR (SELECT auth.uid()) = friend_id
+-);
++ON public.friends FOR SELECT USING (auth.uid() = user_id OR auth.uid() = friend_id);
+ 
+-CREATE POLICY "Users create friend requests"
+-ON public.friends FOR INSERT TO authenticated
+-WITH CHECK (
+-    (SELECT auth.uid()) = user_id
+-    AND user_id <> friend_id
+-    AND status = 'pending'
+-);
++CREATE POLICY "Users manage friend requests"
++ON public.friends FOR ALL USING (auth.uid() = user_id OR auth.uid() = friend_id);
+ 
+-CREATE POLICY "Users update received friend requests"
+-ON public.friends FOR UPDATE TO authenticated
+-USING ((SELECT auth.uid()) = friend_id)
+-WITH CHECK (
+-    (SELECT auth.uid()) = friend_id
+-    AND user_id <> friend_id
+-    AND status IN ('accepted', 'rejected')
+-);
++-- 12. chat_messages: Owner access only
++CREATE POLICY "Users manage their chat messages"
++ON public.chat_messages FOR ALL USING (auth.uid() = user_id);
+ 
+-CREATE POLICY "Users delete friend connections"
+-ON public.friends FOR DELETE TO authenticated
+-USING (
+-    (SELECT auth.uid()) = user_id
+-    OR (SELECT auth.uid()) = friend_id
+-);
+-
+-REVOKE UPDATE ON public.friends FROM authenticated;
+-GRANT UPDATE (status) ON public.friends TO authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Chat: user can create normal messages only; AI responses require backend.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users read own chat messages"
+-ON public.chat_messages FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users create own chat messages"
+-ON public.chat_messages FOR INSERT TO authenticated
+-WITH CHECK (
+-    (SELECT auth.uid()) = user_id
+-    AND is_ai_response = FALSE
+-);
+-
+-CREATE POLICY "Users delete own chat messages"
+-ON public.chat_messages FOR DELETE TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-REVOKE UPDATE ON public.chat_messages FROM authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Subscriptions: read only from client.
+--- ---------------------------------------------------------------------------
++-- 14. subscriptions & 15. notifications: Owner access only
+ CREATE POLICY "Users view their subscriptions"
+-ON public.subscriptions FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
++ON public.subscriptions FOR SELECT USING (auth.uid() = user_id);
+ 
+-REVOKE INSERT, UPDATE, DELETE ON public.subscriptions FROM authenticated;
+-
+--- ---------------------------------------------------------------------------
+--- Notifications: backend creates; client reads, marks read, or deletes.
+--- ---------------------------------------------------------------------------
+-CREATE POLICY "Users read own notifications"
+-ON public.notifications FOR SELECT TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users update own notification state"
+-ON public.notifications FOR UPDATE TO authenticated
+-USING ((SELECT auth.uid()) = user_id)
+-WITH CHECK ((SELECT auth.uid()) = user_id);
+-
+-CREATE POLICY "Users delete own notifications"
+-ON public.notifications FOR DELETE TO authenticated
+-USING ((SELECT auth.uid()) = user_id);
+-
+-REVOKE INSERT ON public.notifications FROM authenticated;
+-REVOKE UPDATE ON public.notifications FROM authenticated;
+-GRANT UPDATE (is_read) ON public.notifications TO authenticated;
++CREATE POLICY "Users manage their notifications"
++ON public.notifications FOR ALL USING (auth.uid() = user_id);
+ 
+ -- =============================================================================
+--- REALTIME
++-- SUPABASE REALTIME PUBLICATION ENABLEMENT
+ -- =============================================================================
+-DO $$
+-BEGIN
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_publication_tables
+-        WHERE pubname = 'supabase_realtime'
+-          AND schemaname = 'public'
+-          AND tablename = 'solo_arena_matches'
+-    ) THEN
+-        ALTER PUBLICATION supabase_realtime ADD TABLE public.solo_arena_matches;
+-    END IF;
+-
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_publication_tables
+-        WHERE pubname = 'supabase_realtime'
+-          AND schemaname = 'public'
+-          AND tablename = 'chat_messages'
+-    ) THEN
+-        ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
+-    END IF;
+-
+-    IF NOT EXISTS (
+-        SELECT 1 FROM pg_publication_tables
+-        WHERE pubname = 'supabase_realtime'
+-          AND schemaname = 'public'
+-          AND tablename = 'notifications'
+-    ) THEN
+-        ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+-    END IF;
+-END
+-$$;
++ALTER PUBLICATION supabase_realtime ADD TABLE public.solo_arena_matches;
++ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
++ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+ 
+ -- =============================================================================
+--- STORAGE
++-- SUPABASE STORAGE BUCKET CONFIGURATION
+ -- =============================================================================
+ INSERT INTO storage.buckets (id, name, public)
+-VALUES ('photo_notes', 'photo_notes', FALSE)
+-ON CONFLICT (id) DO UPDATE
+-SET name = EXCLUDED.name,
+-    public = EXCLUDED.public;
+-
+-DROP POLICY IF EXISTS "Public Access Photo Notes" ON storage.objects;
+-DROP POLICY IF EXISTS "User Upload Photo Notes" ON storage.objects;
+-DROP POLICY IF EXISTS "Users read own photo notes" ON storage.objects;
+-DROP POLICY IF EXISTS "Users update own photo notes" ON storage.objects;
+-DROP POLICY IF EXISTS "Users delete own photo notes" ON storage.objects;
+-
+-CREATE POLICY "Users read own photo notes"
+-ON storage.objects FOR SELECT TO authenticated
+-USING (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
++VALUES ('photo_notes', 'photo_notes', true)
++ON CONFLICT (id) DO NOTHING;
+ 
+-CREATE POLICY "User Upload Photo Notes"
+-ON storage.objects FOR INSERT TO authenticated
+-WITH CHECK (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
++CREATE POLICY "Public Access Photo Notes"
++ON storage.objects FOR SELECT USING (bucket_id = 'photo_notes');
+ 
+-CREATE POLICY "Users update own photo notes"
+-ON storage.objects FOR UPDATE TO authenticated
+-USING (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-)
+-WITH CHECK (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
+-
+-CREATE POLICY "Users delete own photo notes"
+-ON storage.objects FOR DELETE TO authenticated
+-USING (
+-    bucket_id = 'photo_notes'
+-    AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+-);
+-
+--- =============================================================================
+--- NOTES FOR FLUTTER
+--- =============================================================================
+--- 1) Upload path must be: <auth.uid()>/<filename>
+--- 2) Bucket is private. Read images with createSignedUrl(), not getPublicUrl().
+--- 3) Do not update users.study_points/total_coins/streak_days/user_level directly.
+--- 4) Purchases, inventory grants, subscriptions, AI replies, notifications and
+---    arena results must be written through service-role backend/RPC/Edge Function.
++CREATE POLICY "User Upload Photo Notes"
++ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'photo_notes' AND auth.role() = 'authenticated');
+diff --git a/test/core/services/gemini_vision_service_test.dart b/test/core/services/gemini_vision_service_test.dart
+index 863e767..6538351 100644
+--- a/test/core/services/gemini_vision_service_test.dart
++++ b/test/core/services/gemini_vision_service_test.dart
+@@ -1,4 +1,5 @@
+ import 'dart:convert';
++import 'dart:typed_data';
+ 
+ import 'package:capy_vocab/core/services/gemini_vision_service.dart';
+ import 'package:flutter_test/flutter_test.dart';
+@@ -100,6 +101,31 @@ void main() {
+     expect(result.toJson()['scene_words'], result.toJson()['words']);
+   });
+ 
++  test('analyzeImageBytes gửi JSON base64 tương thích Edge production',
++      () async {
++    final imageBytes = Uint8List.fromList([0xff, 0xd8, 0x01, 0x02, 0xff, 0xd9]);
++    late http.Request capturedRequest;
++    final service = GeminiVisionService(
++      httpClient: MockClient((request) async {
++        capturedRequest = request;
++        return http.Response(jsonEncode({'words': []}), 200);
++      }),
++      accessTokenProvider: () => 'valid-user-jwt',
++      endpoint: _testEndpoint,
++    );
++
++    await service.analyzeImageBytes(imageBytes);
++
++    expect(
++      capturedRequest.headers['content-type'],
++      'application/json; charset=utf-8',
++    );
++    expect(
++      jsonDecode(capturedRequest.body),
++      {'image_base64': base64Encode(imageBytes)},
++    );
++  });
++
+   test('trùng word chỉ giữ box riêng lẻ lớn nhất và bảo toàn scene context',
+       () {
+     final result = GeminiVisionResult.fromJson({
+diff --git a/test/features/ai_scan/scan_provider_test.dart b/test/features/ai_scan/scan_provider_test.dart
+index 2ca12b5..d75c04e 100644
+--- a/test/features/ai_scan/scan_provider_test.dart
++++ b/test/features/ai_scan/scan_provider_test.dart
+@@ -84,6 +84,50 @@ void main() {
+     expect(saveCount, 0);
+     expect(container.read(scanProvider).hasError, isTrue);
+   });
++
++  test('buffer nén có sẵn được gửi thẳng tới Vision, không đọc lại file',
++      () async {
++    final compressedBytes = Uint8List.fromList([4, 5, 6]);
++    var storageReadCount = 0;
++    final storage = _FakeScanImageStorage(
++      bytes: Uint8List(1),
++      onRead: () => storageReadCount++,
++    );
++    late Uint8List receivedBytes;
++    final container = ProviderContainer(
++      overrides: [
++        scanImageStorageProvider.overrideWithValue(storage),
++        visionScanClientProvider.overrideWithValue(
++          _FakeVisionScanClient(
++            onAnalyze: (bytes) async {
++              receivedBytes = bytes;
++              return const GeminiVisionResult(detectedVocabulary: []);
++            },
++          ),
++        ),
++        scanResultStoreProvider.overrideWithValue(
++          _FakeScanResultStore(
++            onSave: (localPath, result) async => ScanResultRecord(
++              id: 8,
++              localPath: localPath,
++              vocabJson: '{}',
++              result: result,
++              createdAt: DateTime.utc(2026, 8, 24),
++            ),
++          ),
++        ),
++      ],
++    );
++    addTearDown(container.dispose);
++
++    await container.read(scanProvider.notifier).scanImage(
++          'image.jpg',
++          imageBytes: compressedBytes,
++        );
++
++    expect(storageReadCount, 0);
++    expect(receivedBytes, same(compressedBytes));
++  });
+ }
+ 
+ const _word = VocabDetection(
+@@ -109,12 +153,16 @@ class _FakeVisionScanClient implements VisionScanClient {
+ }
+ 
+ class _FakeScanImageStorage implements ScanImageStorage {
+-  const _FakeScanImageStorage({required this.bytes});
++  const _FakeScanImageStorage({required this.bytes, this.onRead});
+ 
+   final Uint8List bytes;
++  final void Function()? onRead;
+ 
+   @override
+-  Future<Uint8List> readBytes(String localPath) async => bytes;
++  Future<Uint8List> readBytes(String localPath) async {
++    onRead?.call();
++    return bytes;
++  }
+ 
+   @override
+   Future<String> saveJpeg(Uint8List bytes) => throw UnimplementedError();

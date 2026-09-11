@@ -25,7 +25,7 @@ void main() {
 
     await _pumpHarness(
       tester,
-      visionClient: _FakeVisionScanClient((bytes) async {
+      visionClient: _FakeVisionScanClient((bytes, requestId) async {
         calls.add('vision');
         return result;
       }),
@@ -46,7 +46,7 @@ void main() {
     await _pumpHarness(
       tester,
       visionClient: _FakeVisionScanClient(
-        (bytes) async => throw const GeminiQuotaException(
+        (bytes, requestId) async => throw const GeminiQuotaException(
           'Hệ thống đang bận, thử lại sau',
         ),
       ),
@@ -132,15 +132,24 @@ const _word = VocabDetection(
 class _FakeVisionScanClient implements VisionScanClient {
   const _FakeVisionScanClient(this.onAnalyze);
 
-  final Future<GeminiVisionResult> Function(Uint8List bytes) onAnalyze;
+  final Future<GeminiVisionResult> Function(
+    Uint8List bytes,
+    String requestId,
+  ) onAnalyze;
 
   @override
-  Future<GeminiVisionResult> analyzeImageBytes(Uint8List compressedImageBytes) {
-    return onAnalyze(compressedImageBytes);
+  Future<GeminiVisionResult> analyzeImageBytes(
+    Uint8List compressedImageBytes, {
+    required String requestId,
+  }) {
+    return onAnalyze(compressedImageBytes, requestId);
   }
 }
 
 class _FakeScanImageStorage implements ScanImageStorage {
+  @override
+  Future<void> delete(String localPath) async {}
+
   @override
   Future<Uint8List> readBytes(String localPath) async => Uint8List(1);
 
@@ -157,10 +166,7 @@ class _FakeScanResultStore implements ScanResultStore {
   ) onSave;
 
   @override
-  Future<ScanResultRecord> save({
-    required String localPath,
-    required GeminiVisionResult result,
-  }) {
-    return onSave(localPath, result);
+  Future<ScanResultRecord> save(ScanSaveRequest request) {
+    return onSave(request.localPath, request.result);
   }
 }

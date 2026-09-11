@@ -3,6 +3,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/repositories/auth_repository.dart';
 
+String? defaultEmailRedirectTo(Uri baseUri) {
+  if (baseUri.scheme != 'http' && baseUri.scheme != 'https') return null;
+  return baseUri.origin;
+}
+
 class AuthRepositoryImpl implements AuthRepository {
   static const mobileLoginRedirectUrl = 'capyvocab://login-callback/';
   static const mobileResetRedirectUrl = 'capyvocab://reset-password/';

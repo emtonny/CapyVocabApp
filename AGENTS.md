@@ -37,6 +37,11 @@ redefine its shared rules. Repository-local reusable skills are canonically
 stored in `.claude/skills` as defined in
 [Local Skill Discovery](#61-local-skill-discovery).
 
+For every task that changes database schemas, migrations, local media,
+offline Library persistence, Supabase synchronization, consent/retention, or
+ML dataset lineage, the agent MUST read `db_status.md` before planning and MUST
+update its status and dated change log in the same increment.
+
 The agent MUST:
 
 - Treat this file as persistent repository-level instructions.

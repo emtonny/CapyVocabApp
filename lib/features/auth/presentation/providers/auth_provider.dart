@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/services/supabase_service.dart';
+import '../../../onboarding/application/onboarding_status_store.dart';
+import '../../../onboarding/presentation/providers/onboarding_status_provider.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 
@@ -93,10 +97,16 @@ class AuthNotifier extends StateNotifier<AsyncValue<Session?>> {
   AuthNotifier({
     required AuthRepository repository,
     required Session? initialSession,
+    required OnboardingStatusStore onboardingStatusStore,
+    required OnboardingStatusRefresher onboardingStatusRefresher,
   })  : _repository = repository,
+        _onboardingStatusStore = onboardingStatusStore,
+        _onboardingStatusRefresher = onboardingStatusRefresher,
         super(AsyncData(initialSession));
 
   final AuthRepository _repository;
+  final OnboardingStatusStore _onboardingStatusStore;
+  final OnboardingStatusRefresher _onboardingStatusRefresher;
 
   Future<Session?> signInWithPassword({
     required String email,
@@ -111,6 +121,10 @@ class AuthNotifier extends StateNotifier<AsyncValue<Session?>> {
         password: password,
       );
       state = AsyncData(response.session);
+      final userId = response.session?.user.id;
+      if (userId != null) {
+        unawaited(_onboardingStatusRefresher.refresh(userId));
+      }
       return response.session;
     } catch (error, stackTrace) {
       state = AsyncError(AuthFailure.from(error), stackTrace);
@@ -132,6 +146,13 @@ class AuthNotifier extends StateNotifier<AsyncValue<Session?>> {
         password: password,
         displayName: displayName.trim(),
       );
+      final userId = response.user?.id;
+      if (userId != null) {
+        await _onboardingStatusStore.setStatus(
+          userId,
+          OnboardingStatus.incomplete,
+        );
+      }
       state = AsyncData(response.session);
       return response.session;
     } catch (error, stackTrace) {
@@ -158,6 +179,8 @@ final authProvider =
   return AuthNotifier(
     repository: ref.watch(authRepositoryProvider),
     initialSession: SupabaseService.auth.currentSession,
+    onboardingStatusStore: ref.watch(onboardingStatusStoreProvider),
+    onboardingStatusRefresher: ref.watch(onboardingStatusRefresherProvider),
   );
 });
 

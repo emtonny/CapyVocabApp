@@ -15,6 +15,7 @@ dependencies:
 
   # HTTP Networking cho Gemini 1.5 Flash API
   http: ^1.2.1
+  crypto: ^3.0.7
 
   # Nén ảnh JPEG trước khi gửi Gemini (resize tối đa 1024×1024, < 300 KB)
   flutter_image_compress: ^2.3.0
@@ -23,6 +24,8 @@ dependencies:
 
   # SQLite cục bộ — cache kết quả AI Scan (local_path + vocab_json, không liên quan Supabase)
   sqflite: ^2.3.3
+  # D1 Web adapter: SQLite WASM persisted in browser IndexedDB.
+  sqflite_common_ffi_web: 1.1.1
 
   # State management
   flutter_riverpod: ^2.5.1
@@ -54,6 +57,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # SQLite VM harness for deterministic schema/migration integration tests.
+  sqflite_common_ffi: 2.4.0+3
 
 flutter:
   uses-material-design: true
@@ -61,5 +66,7 @@ flutter:
     - assets/config/client.config
     - assets/
     - assets/images/
+    # Browser-test URL for SQLite WASM; production also serves web/sqlite3.wasm.
+    - web/sqlite3.wasm
 
   # TODO: khai báo fonts/assets (mascot svg, icon linh vật, âm thanh) tại đây

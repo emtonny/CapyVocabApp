@@ -16,7 +16,6 @@ void main() {
 
     var selectedTemplate = NoteLabelTemplate.standard;
     var customStyle = LabelVisualStyle.customDefault;
-    var upgradeRequests = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -27,13 +26,13 @@ void main() {
               child: NoteTemplateSelector(
                 selectedTemplate: selectedTemplate,
                 customStyle: customStyle,
+                canUseCustomTemplate: true,
                 onTemplateChanged: (template) {
                   setState(() => selectedTemplate = template);
                 },
                 onCustomStyleChanged: (style) {
                   setState(() => customStyle = style);
                 },
-                onUpgradeRequested: () => upgradeRequests++,
               ),
             ),
           ),
@@ -137,17 +136,61 @@ void main() {
     expect(_isTemplateCardSelected(tester, customCard), isFalse);
 
     await _tapVisible(tester, const Key('label-template-custom'));
+    expect(find.byKey(const Key('custom-label-editor')), findsOneWidget);
+    expect(
+      find.byKey(const Key('label-template-pro-limit-dialog')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Free dùng Mặc định và Tối giản, Tự thiết kế mở paywall', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    var selectedTemplate = NoteLabelTemplate.standard;
+    var upgradeRequests = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: NoteTemplateSelector(
+                selectedTemplate: selectedTemplate,
+                customStyle: LabelVisualStyle.customDefault,
+                onTemplateChanged: (template) {
+                  setState(() => selectedTemplate = template);
+                },
+                onCustomStyleChanged: (_) {},
+                onUpgradeRequested: () => upgradeRequests++,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(tester, const Key('label-template-minimal'));
+    expect(selectedTemplate, NoteLabelTemplate.minimal);
+    await _tapVisible(tester, const Key('label-template-standard'));
+    expect(selectedTemplate, NoteLabelTemplate.standard);
+
+    await _tapVisible(tester, const Key('label-template-custom'));
     expect(
       find.byKey(const Key('label-template-pro-limit-dialog')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('custom-label-editor')), findsNothing);
+    expect(selectedTemplate, NoteLabelTemplate.standard);
+
     await tester.tap(
       find.byKey(const Key('upgrade-label-template-pro-button')),
     );
     await tester.pumpAndSettle();
     expect(upgradeRequests, 1);
-    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Pro có thể mở editor để tạo thêm sau khi đã có mẫu', (
@@ -171,7 +214,7 @@ void main() {
               child: NoteTemplateSelector(
                 selectedTemplate: selectedTemplate,
                 customStyle: customStyle,
-                isPro: true,
+                canUseCustomTemplate: true,
                 onTemplateChanged: (template) {
                   setState(() => selectedTemplate = template);
                 },
@@ -211,6 +254,7 @@ void main() {
               child: NoteTemplateSelector(
                 selectedTemplate: selectedTemplate,
                 customStyle: customStyle,
+                canUseCustomTemplate: true,
                 onTemplateChanged: (template) {
                   setState(() => selectedTemplate = template);
                 },
@@ -251,6 +295,7 @@ void main() {
               child: NoteTemplateSelector(
                 selectedTemplate: NoteLabelTemplate.custom,
                 customStyle: style,
+                canUseCustomTemplate: true,
                 onTemplateChanged: (_) {},
                 onCustomStyleChanged: (value) {
                   setState(() => style = value);
@@ -298,6 +343,7 @@ void main() {
               child: NoteTemplateSelector(
                 selectedTemplate: selectedTemplate,
                 customStyle: customStyle,
+                canUseCustomTemplate: true,
                 onTemplateChanged: (template) {
                   setState(() => selectedTemplate = template);
                 },
@@ -321,8 +367,7 @@ void main() {
     expect(_isTemplateCardSelected(tester, customCard), isFalse);
   });
 
-  testWidgets(
-      'nhấn giữ mẫu đã lưu cho phép xoá mẫu để tạo mẫu mới trên gói Free', (
+  testWidgets('Free có thể xoá mẫu cũ nhưng Tự thiết kế vẫn bị khóa', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -369,13 +414,79 @@ void main() {
     // The template should be gone
     expect(find.byKey(const Key('saved-label-template-0')), findsNothing);
 
-    // Free user can now tap "Tự thiết kế" to open editor
+    // Xóa dữ liệu cũ không cấp capability Pro cho tài khoản Free.
     await _tapVisible(tester, const Key('label-template-custom'));
-    expect(find.byKey(const Key('custom-label-editor')), findsOneWidget);
+    expect(find.byKey(const Key('custom-label-editor')), findsNothing);
     expect(
-        find.byKey(const Key('label-template-pro-limit-dialog')), findsNothing);
+      find.byKey(const Key('label-template-pro-limit-dialog')),
+      findsOneWidget,
+    );
   });
 
+  testWidgets('hết Pro fallback Mặc định, giữ mẫu và restore dùng lại được', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    const store = LabelTemplateStore();
+    final savedStyle = LabelVisualStyle.customDefault.copyWith(
+      borderColor: Colors.deepPurple,
+    );
+    await store.save(name: 'Mẫu Pro đã lưu', style: savedStyle);
+
+    var selectedTemplate = NoteLabelTemplate.custom;
+    var customStyle = LabelVisualStyle.customDefault;
+    var canUseCustomTemplate = true;
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: NoteTemplateSelector(
+                  selectedTemplate: selectedTemplate,
+                  customStyle: customStyle,
+                  canUseCustomTemplate: canUseCustomTemplate,
+                  onTemplateChanged: (template) {
+                    setState(() => selectedTemplate = template);
+                  },
+                  onCustomStyleChanged: (style) {
+                    setState(() => customStyle = style);
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('saved-label-template-0')), findsOneWidget);
+
+    rebuild(() => canUseCustomTemplate = false);
+    await tester.pumpAndSettle();
+    expect(selectedTemplate, NoteLabelTemplate.standard);
+    expect(find.byKey(const Key('saved-label-template-0')), findsOneWidget);
+
+    await _tapVisible(tester, const Key('saved-label-template-0'));
+    expect(
+      find.byKey(const Key('label-template-pro-limit-dialog')),
+      findsOneWidget,
+    );
+    expect(selectedTemplate, NoteLabelTemplate.standard);
+    await tester
+        .tap(find.byKey(const Key('upgrade-label-template-pro-button')));
+    await tester.pumpAndSettle();
+
+    rebuild(() => canUseCustomTemplate = true);
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, const Key('saved-label-template-0'));
+    expect(selectedTemplate, NoteLabelTemplate.custom);
+    expect(customStyle, savedStyle);
+  });
   testWidgets('mở dialog tự chọn màu, lăn slider đổi màu và áp dụng thành công',
       (
     tester,
@@ -392,6 +503,7 @@ void main() {
               child: NoteTemplateSelector(
                 selectedTemplate: NoteLabelTemplate.custom,
                 customStyle: customStyle,
+                canUseCustomTemplate: true,
                 onTemplateChanged: (_) {},
                 onCustomStyleChanged: (style) {
                   setState(() => customStyle = style);
@@ -445,6 +557,7 @@ void main() {
               child: NoteTemplateSelector(
                 selectedTemplate: selectedTemplate,
                 customStyle: customStyle,
+                canUseCustomTemplate: true,
                 onTemplateChanged: (template) {
                   setState(() => selectedTemplate = template);
                 },

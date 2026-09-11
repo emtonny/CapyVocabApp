@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/services/supabase_service.dart';
+import '../../application/onboarding_status_store.dart';
 import '../../data/repositories/onboarding_repository.dart';
 import '../../domain/entities/onboarding_data.dart';
+import 'onboarding_status_provider.dart';
 
 const _usernamePattern = r'^[a-zA-Z0-9_]{3,20}$';
 const _phonePattern = r'^0[0-9]{9}$';
@@ -82,11 +85,19 @@ class OnboardingState {
 }
 
 class OnboardingNotifier extends StateNotifier<OnboardingState> {
-  OnboardingNotifier({required OnboardingRepository repository})
-      : _repository = repository,
+  OnboardingNotifier({
+    required OnboardingRepository repository,
+    OnboardingStatusStore? onboardingStatusStore,
+    String? Function()? currentUserId,
+  })  : _repository = repository,
+        _onboardingStatusStore =
+            onboardingStatusStore ?? MemoryOnboardingStatusStore(),
+        _currentUserId = currentUserId ?? (() => null),
         super(const OnboardingState());
 
   final OnboardingRepository _repository;
+  final OnboardingStatusStore _onboardingStatusStore;
+  final String? Function() _currentUserId;
 
   Future<void> loadInitialData() async {
     if (!state.isInitializing) {
@@ -233,6 +244,13 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     try {
       final normalized = state.data.normalized();
       await _repository.completeOnboarding(normalized);
+      final userId = _currentUserId();
+      if (userId != null) {
+        await _onboardingStatusStore.setStatus(
+          userId,
+          OnboardingStatus.complete,
+        );
+      }
       state = state.copyWith(
         data: normalized,
         isSaving: false,
@@ -486,6 +504,8 @@ final onboardingProvider =
     StateNotifierProvider<OnboardingNotifier, OnboardingState>((ref) {
   final notifier = OnboardingNotifier(
     repository: ref.watch(onboardingRepositoryProvider),
+    onboardingStatusStore: ref.watch(onboardingStatusStoreProvider),
+    currentUserId: () => SupabaseService.auth.currentUser?.id,
   );
   unawaited(notifier.loadInitialData());
   return notifier;

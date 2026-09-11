@@ -5,15 +5,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/entitlements/entitlement_provider.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../shared/widgets/graph_paper_background.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../onboarding/application/onboarding_status_store.dart';
+import '../../../onboarding/presentation/providers/onboarding_status_provider.dart';
+import '../providers/cloud_backup_consent_provider.dart';
 
 typedef ResetOnboarding = Future<void> Function();
 
 final resetOnboardingProvider = Provider<ResetOnboarding>(
   (ref) => () async {
-    await SupabaseService.client.rpc('reset_my_onboarding');
+    final userId = SupabaseService.auth.currentUser?.id;
+    await resetOnboardingAndUpdateCache(
+      userId: userId,
+      resetRemote: () => SupabaseService.client.rpc('reset_my_onboarding'),
+      store: ref.read(onboardingStatusStoreProvider),
+    );
   },
 );
 
@@ -28,6 +37,131 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isResettingOnboarding = false;
   bool _isLoggingOut = false;
+  bool _isUpdatingCloudBackup = false;
+  bool _isBackfillingCloudBackup = false;
+
+  Future<void> _changeCloudBackupConsent(bool enabled) async {
+    if (enabled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cloud_upload_rounded, color: AppColors.duoBlue),
+              SizedBox(width: 8),
+              Expanded(child: Text('Bật sao lưu đám mây?')),
+            ],
+          ),
+          content: const Text(
+            'Ảnh và dữ liệu của các bài quét mới sẽ được tải lên vùng riêng tư '
+            'trên Supabase. Bản trong máy vẫn dùng được khi mất mạng.\n\n'
+            'Bài đã lưu trước đó chỉ được tải lên khi bạn chọn “Sao lưu bài '
+            'đã có”. Đồng ý này không cho phép dùng dữ liệu để huấn luyện AI '
+            'trên thiết bị.',
+          ),
+          actions: [
+            TextButton(
+              key: const Key('cloud-backup-cancel-button'),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Để sau'),
+            ),
+            FilledButton(
+              key: const Key('cloud-backup-confirm-button'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Đồng ý và bật'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() => _isUpdatingCloudBackup = true);
+    try {
+      await ref.read(setCloudBackupConsentProvider)(enabled);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enabled
+                ? 'Đã bật sao lưu. Bài cũ chỉ tải lên khi bạn chọn.'
+                : 'Đã tắt tải lên. Dữ liệu cloud hiện có chưa bị xóa.',
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Failed to update cloud backup consent: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể cập nhật sao lưu. Vui lòng thử lại.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdatingCloudBackup = false);
+    }
+  }
+
+  Future<void> _backfillExistingPhotoNotes() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sao lưu các bài đã có?'),
+        content: const Text(
+          'Chỉ các bài đang còn trong Thư viện, có đủ ảnh trên máy hoặc dùng '
+          'ảnh đã nằm trên cloud mới được xếp để sao lưu. Ảnh bị thiếu và bài '
+          'trong thùng rác sẽ được bỏ qua. Dữ liệu này không được dùng để '
+          'train AI.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('cloud-backup-backfill-cancel-button'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            key: const Key('cloud-backup-backfill-confirm-button'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Xác nhận sao lưu'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isBackfillingCloudBackup = true);
+    try {
+      final result = await ref.read(backfillExistingPhotoNotesProvider)();
+      if (!mounted) return;
+      final message = switch (result) {
+        (:final queuedCount, :final missingMediaCount)
+            when queuedCount > 0 && missingMediaCount > 0 =>
+          'Đã xếp $queuedCount bài cũ để sao lưu; bỏ qua '
+              '$missingMediaCount bài thiếu ảnh.',
+        (:final queuedCount, missingMediaCount: _) when queuedCount > 0 =>
+          'Đã xếp $queuedCount bài cũ để sao lưu.',
+        (queuedCount: _, :final missingMediaCount) when missingMediaCount > 0 =>
+          'Không có bài đủ điều kiện; $missingMediaCount bài đang thiếu ảnh.',
+        _ => 'Không có bài cũ nào cần sao lưu.',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Failed to backfill cloud backup: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể xếp bài cũ để sao lưu. Vui lòng thử lại.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isBackfillingCloudBackup = false);
+    }
+  }
 
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
@@ -175,7 +309,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final entitlements = ref.watch(entitlementProvider);
     final user = SupabaseService.auth.currentUser;
+    final libraryUserId = ref.watch(currentLibraryUserIdProvider);
+    final cloudBackupConsent = ref.watch(cloudBackupConsentProvider);
+    final cloudBackupEnabled = cloudBackupConsent.maybeWhen(
+      data: (account) => account?.cloudBackupEnabled ?? false,
+      orElse: () => false,
+    );
+    final cloudBackupLoading = cloudBackupConsent.isLoading;
+    final cloudBackupError = cloudBackupConsent.hasError;
     final metadata = user?.userMetadata;
     final displayName =
         (metadata?['display_name'] as String?)?.trim().isNotEmpty == true
@@ -289,16 +432,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                displayName,
-                                style: const TextStyle(
-                                  fontFamily: 'Fredoka',
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF3C2A21),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      displayName,
+                                      style: const TextStyle(
+                                        fontFamily: 'Fredoka',
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF3C2A21),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (entitlements.can(
+                                    AppCapability.aiScanAdvanced,
+                                  )) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      key: const Key('pro-badge'),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.creamyYuzu,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text(
+                                        'PRO',
+                                        style: TextStyle(
+                                          color: Color(0xFF5D4037),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -359,6 +532,125 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           title: 'Phiên bản',
                           subtitle: '1.0.0',
                         ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  const Text(
+                    'Dữ liệu và quyền riêng tư',
+                    style: TextStyle(
+                      fontFamily: 'Fredoka',
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF8D6E63),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF9F2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFFE8D5BC),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        SwitchListTile.adaptive(
+                          key: const Key('cloud-backup-switch'),
+                          value: cloudBackupEnabled,
+                          onChanged: libraryUserId == null ||
+                                  cloudBackupLoading ||
+                                  _isUpdatingCloudBackup ||
+                                  _isBackfillingCloudBackup
+                              ? null
+                              : _changeCloudBackupConsent,
+                          secondary: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: AppColors.duoBlue.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: _isUpdatingCloudBackup
+                                ? const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.duoBlue,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.cloud_upload_outlined,
+                                    color: AppColors.duoBlue,
+                                    size: 20,
+                                  ),
+                          ),
+                          title: const Text(
+                            'Sao lưu đám mây',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF3C2A21),
+                            ),
+                          ),
+                          subtitle: Text(
+                            libraryUserId == null
+                                ? 'Đăng nhập để bật sao lưu'
+                                : cloudBackupError
+                                    ? 'Không đọc được trạng thái trên máy'
+                                    : cloudBackupEnabled
+                                        ? 'Bài mới tự sao lưu; bài cũ chỉ khi bạn chọn'
+                                        : 'Chỉ lưu trên thiết bị',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF8D6E63),
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                        ),
+                        if (cloudBackupEnabled)
+                          ListTile(
+                            key: const Key('cloud-backup-backfill-button'),
+                            enabled: !_isUpdatingCloudBackup &&
+                                !_isBackfillingCloudBackup,
+                            leading: const Icon(
+                              Icons.cloud_sync_outlined,
+                              color: AppColors.duoBlue,
+                            ),
+                            title: const Text('Sao lưu bài đã có'),
+                            subtitle: const Text(
+                              'Chỉ sao lưu bài đủ ảnh sau khi bạn xác nhận',
+                            ),
+                            trailing: _isBackfillingCloudBackup
+                                ? const SizedBox.square(
+                                    dimension: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.chevron_right_rounded),
+                            onTap: _isBackfillingCloudBackup
+                                ? null
+                                : _backfillExistingPhotoNotes,
+                          ),
+                        if (cloudBackupError)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              key: const Key('cloud-backup-retry-button'),
+                              onPressed: () =>
+                                  ref.invalidate(cloudBackupConsentProvider),
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Thử lại'),
+                            ),
+                          ),
                       ],
                     ),
                   ),

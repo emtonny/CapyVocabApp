@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:capy_vocab/core/services/gemini_vision_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:http/testing.dart';
 final _testEndpoint = Uri.parse(
   'https://test-project.supabase.co/functions/v1/gemini-vision-scan',
 );
+const _requestId = '123e4567-e89b-42d3-a456-426614174000';
 
 void main() {
   test('timeout client đủ dài để Edge Function thử toàn bộ model chain', () {
@@ -64,7 +66,10 @@ void main() {
       endpoint: _testEndpoint,
     );
 
-    final result = await service.analyzeBase64Image('compressed-base64');
+    final result = await service.analyzeBase64Image(
+      'compressed-base64',
+      requestId: _requestId,
+    );
 
     expect(capturedRequest.method, 'POST');
     expect(capturedRequest.url, _testEndpoint);
@@ -74,7 +79,10 @@ void main() {
     );
     expect(
       jsonDecode(capturedRequest.body),
-      {'image_base64': 'compressed-base64'},
+      {
+        'request_id': _requestId,
+        'image_base64': 'compressed-base64',
+      },
     );
     expect(result.words, hasLength(1));
     expect(result.words.single.number, 1);
@@ -98,6 +106,61 @@ void main() {
       ],
     );
     expect(result.toJson()['scene_words'], result.toJson()['words']);
+  });
+
+  test('analyzeImageBytes gửi JSON base64 tương thích Edge production',
+      () async {
+    final imageBytes = Uint8List.fromList([0xff, 0xd8, 0x01, 0x02, 0xff, 0xd9]);
+    late http.Request capturedRequest;
+    final service = GeminiVisionService(
+      httpClient: MockClient((request) async {
+        capturedRequest = request;
+        return http.Response(jsonEncode({'words': []}), 200);
+      }),
+      accessTokenProvider: () => 'valid-user-jwt',
+      endpoint: _testEndpoint,
+    );
+
+    await service.analyzeImageBytes(imageBytes, requestId: _requestId);
+
+    expect(
+      capturedRequest.headers['content-type'],
+      'application/json; charset=utf-8',
+    );
+    expect(
+      jsonDecode(capturedRequest.body),
+      {
+        'request_id': _requestId,
+        'image_base64': base64Encode(imageBytes),
+      },
+    );
+  });
+
+  test('giữ raw response trước client ranking để làm scan evidence', () {
+    final response = <String, dynamic>{
+      'schema_version': 2,
+      'words': <dynamic>[
+        <String, dynamic>{
+          'number': 1,
+          'id': 'd1',
+          'kind': 'object',
+          'parent_id': null,
+          'word': 'cup',
+          'phonetic': '/kʌp/',
+          'meaning_vi': 'cái cốc',
+          'box': <String, dynamic>{'x': 100, 'y': 100, 'w': 200, 'h': 200},
+        },
+      ],
+    };
+
+    final result = GeminiVisionResult.fromJson(response);
+    (response['words']! as List<dynamic>).clear();
+
+    expect(result.rawResponseJson!['schema_version'], 2);
+    final rawWords = result.rawResponseJson!['words']! as List<dynamic>;
+    expect(rawWords, hasLength(1));
+    expect(rawWords.single, containsPair('kind', 'object'));
+    expect(result.words, hasLength(1));
   });
 
   test('trùng word chỉ giữ box riêng lẻ lớn nhất và bảo toàn scene context',
@@ -208,6 +271,40 @@ void main() {
         'box': {'x': 300, 'y': 100, 'w': 100, 'h': 200},
       },
     ]);
+  });
+
+  test('response scan cũ chỉ có words vẫn tương thích', () {
+    final result = GeminiVisionResult.fromJson({'words': <dynamic>[]});
+
+    expect(result.words, isEmpty);
+    expect(result.scanId, isNull);
+    expect(result.serviceTier, isNull);
+    expect(result.modelUsed, isNull);
+    expect(result.toJson(), {
+      'words': <dynamic>[],
+      'scene_words': <dynamic>[],
+    });
+  });
+
+  test('response scan mới đọc metadata tier và model mà không đổi words', () {
+    final result = GeminiVisionResult.fromJson({
+      'scan_id': 'scan-123',
+      'service_tier': 'pro',
+      'model_used': 'gemini-3.7-flash',
+      'words': <dynamic>[],
+    });
+
+    expect(result.words, isEmpty);
+    expect(result.scanId, 'scan-123');
+    expect(result.serviceTier, 'pro');
+    expect(result.modelUsed, 'gemini-3.7-flash');
+    expect(result.toJson(), {
+      'scan_id': 'scan-123',
+      'service_tier': 'pro',
+      'model_used': 'gemini-3.7-flash',
+      'words': <dynamic>[],
+      'scene_words': <dynamic>[],
+    });
   });
 
   test('không gửi request khi không có access token', () async {

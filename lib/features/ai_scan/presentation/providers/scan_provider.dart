@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/gemini_vision_service.dart';
+import '../../../library/data/local/sqlite_library_store.dart';
+import '../../../library/data/local/sqlite_library_store_factory.dart';
 import '../../data/datasources/scan_result_local_datasource.dart';
 import '../../data/services/scan_image_compressor.dart';
 import '../../data/services/scan_image_picker.dart';
@@ -24,8 +29,20 @@ final visionScanClientProvider = Provider<VisionScanClient>(
   (ref) => GeminiVisionService(),
 );
 
+final libraryStoreProvider = FutureProvider<SqliteLibraryStore>((ref) async {
+  final store = await createDefaultSqliteLibraryStore(
+    idGenerator: createScanRequestId,
+  );
+  ref.onDispose(() => unawaited(store.dispose()));
+  return store;
+});
+
 final scanResultStoreProvider = Provider<ScanResultStore>(
-  (ref) => kIsWeb ? MemoryScanResultStore() : ScanResultLocalDataSource(),
+  (ref) => kIsWeb
+      ? MemoryScanResultStore()
+      : ScanResultLocalDataSource(
+          openLibraryStore: () => ref.read(libraryStoreProvider.future),
+        ),
 );
 
 class ScanNotifier extends StateNotifier<AsyncValue<ScanResultRecord?>> {
@@ -33,37 +50,71 @@ class ScanNotifier extends StateNotifier<AsyncValue<ScanResultRecord?>> {
     required VisionScanClient visionClient,
     required ScanResultStore resultStore,
     required ScanImageStorage imageStorage,
+    String Function()? requestIdGenerator,
+    DateTime Function()? clock,
   })  : _visionClient = visionClient,
         _resultStore = resultStore,
         _imageStorage = imageStorage,
+        _requestIdGenerator = requestIdGenerator ?? createScanRequestId,
+        _clock = clock ?? (() => DateTime.now().toUtc()),
         super(const AsyncData(null));
 
   final VisionScanClient _visionClient;
   final ScanResultStore _resultStore;
   final ScanImageStorage _imageStorage;
+  final String Function() _requestIdGenerator;
+  final DateTime Function() _clock;
+  String? _retryLocalPath;
+  String? _retryRequestId;
 
-  Future<ScanResultRecord> scanImage(String localPath) async {
+  Future<ScanResultRecord> scanImage(
+    String localPath, {
+    Uint8List? imageBytes,
+    ScanImageSource captureSource = ScanImageSource.gallery,
+    String templateId = 'standard',
+  }) async {
     if (state.isLoading) {
       throw StateError('A scan is already in progress.');
     }
 
     state = const AsyncLoading();
+    final requestId = _retryLocalPath == localPath && _retryRequestId != null
+        ? _retryRequestId!
+        : _requestIdGenerator();
+    final startedAt = _clock().toUtc();
     try {
-      final imageBytes = await _imageStorage.readBytes(localPath);
-      final result = await _visionClient.analyzeImageBytes(imageBytes);
-      final record = await _resultStore.save(
-        localPath: localPath,
-        result: result,
+      final bytes = imageBytes ?? await _imageStorage.readBytes(localPath);
+      final result = await _visionClient.analyzeImageBytes(
+        bytes,
+        requestId: requestId,
       );
+      final record = await _resultStore.save(ScanSaveRequest(
+        localPath: localPath,
+        imageBytes: bytes,
+        result: result,
+        requestId: requestId,
+        captureSource: captureSource,
+        templateId: templateId,
+        startedAt: startedAt,
+        completedAt: _clock().toUtc(),
+      ));
+      _retryLocalPath = null;
+      _retryRequestId = null;
       state = AsyncData(record);
       return record;
     } catch (error, stackTrace) {
+      _retryLocalPath = localPath;
+      _retryRequestId = requestId;
       state = AsyncError(error, stackTrace);
       rethrow;
     }
   }
 
-  void clear() => state = const AsyncData(null);
+  void clear() {
+    _retryLocalPath = null;
+    _retryRequestId = null;
+    state = const AsyncData(null);
+  }
 }
 
 final scanProvider =

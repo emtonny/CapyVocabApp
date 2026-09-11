@@ -1,15 +1,24 @@
-import "jsr:@supabase/functions-js@2.112.3/edge-runtime.d.ts";
+import "edge-runtime";
+
+// Supabase provides this global at runtime. Declare the narrow API used here
+// so standalone `deno check` validates the function before deployment.
+declare namespace EdgeRuntime {
+  function waitUntil<T>(promise: Promise<T>): Promise<T>;
+}
 
 import {
   buildGenerationConfig,
-  buildOpenAiRequestBody,
   fetchGeminiModelChain,
   GeminiChainError,
-  isOpenAiCompatible,
-  normalizeDetectedWordFields,
-  resolveGeminiGatewayConfig,
+  GeminiCircuitOpenError,
 } from "./gemini_client.ts";
 import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
+import { ImagePayloadError, parseScanPayload } from "./image_payload.ts";
+import {
+  createSupabaseScanLedgerStore,
+  ScanLedgerUnavailableError,
+  type ScanReservation,
+} from "./scan_ledger.ts";
 import {
   type BoundingBox,
   DEFAULT_BOUNDING_BOX_RATIO,
@@ -17,27 +26,73 @@ import {
   rankWordsByBoxArea,
   shrinkBoundingBox,
 } from "./bounding_box.ts";
+import {
+  GeminiHierarchyShapeError,
+  HIERARCHY_SCHEMA_VERSION,
+  type HierarchyValidationMetrics,
+  normalizeVersion2Hierarchy,
+} from "./detection_hierarchy.ts";
+import {
+  type DetectionRankingMetrics,
+  selectHierarchyDetections,
+  selectLegacyDetections,
+} from "./detection_ranking.ts";
+import { buildScanPrompt } from "./scan_prompt.ts";
+import { resolveModelPolicy } from "./model_policy.ts";
+import {
+  authenticateRequest,
+  RequestAuthenticationError,
+  resolveSupabasePublicApiKey,
+} from "../_shared/auth.ts";
+import {
+  APP_CAPABILITIES,
+  CapabilityDeniedError,
+  createSupabaseEntitlementStore,
+  EntitlementResolutionError,
+  requireCapability,
+} from "../_shared/entitlements.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-const { baseUrl: GEMINI_BASE_URL, model: GEMINI_MODEL } =
-  resolveGeminiGatewayConfig(
-    Deno.env.get("GEMINI_BASE_URL"),
-    Deno.env.get("GEMINI_MODEL"),
-  );
+const GEMINI_API_BASE_URL = Deno.env.get("GEMINI_API_BASE_URL")?.trim() ||
+  undefined;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const SUPABASE_PUBLIC_API_KEY = resolveSupabasePublicApiKey((name) =>
+  Deno.env.get(name)
+);
+const ENTITLEMENT_STORE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createSupabaseEntitlementStore({
+    supabaseUrl: SUPABASE_URL,
+    serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+  })
+  : undefined;
 const GEMINI_HEALTH_STORE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createSupabaseGeminiHealthStore({
     supabaseUrl: SUPABASE_URL,
     serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
   })
   : undefined;
+const SCAN_LEDGER_STORE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createSupabaseScanLedgerStore({
+    supabaseUrl: SUPABASE_URL,
+    serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+  })
+  : undefined;
 const MAX_WORDS = 12;
 const REDUCED_BOX_AREA_SCALE = DEFAULT_BOUNDING_BOX_RATIO ** 2;
+const HIERARCHY_RANKING_OVERRIDE = Deno.env.get(
+  "GEMINI_HIERARCHY_RANKING_ENABLED",
+)?.trim().toLowerCase();
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
+    schema_version: {
+      type: "INTEGER",
+      minimum: HIERARCHY_SCHEMA_VERSION,
+      maximum: HIERARCHY_SCHEMA_VERSION,
+      description: "The response contract version. Always return 2.",
+    },
     words: {
       type: "ARRAY",
       maxItems: MAX_WORDS,
@@ -48,6 +103,24 @@ const RESPONSE_SCHEMA = {
             type: "INTEGER",
             minimum: 1,
             maximum: MAX_WORDS,
+          },
+          id: {
+            type: "STRING",
+            minLength: 1,
+            description:
+              "A unique immutable scan-local ID such as d1. It is not the display number.",
+          },
+          kind: {
+            type: "STRING",
+            enum: ["object", "part", "unknown"],
+            description:
+              "object for an independent item, part for a physical component of a returned object, or unknown when evidence is insufficient.",
+          },
+          parent_id: {
+            type: "STRING",
+            nullable: true,
+            description:
+              "For kind part, the immutable ID of its returned object parent; otherwise null.",
           },
           word: { type: "STRING" },
           phonetic: { type: "STRING" },
@@ -65,7 +138,7 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["words"],
+  required: ["schema_version", "words"],
 };
 
 const PROMPT =
@@ -144,18 +217,6 @@ function deduplicateWords(words: unknown[]): unknown[] {
     return true;
   });
 }
-
-function cleanJsonText(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith("```")) {
-    return trimmed
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/, "")
-      .trim();
-  }
-  return trimmed;
-}
-
 function shrinkDetectedWordBox(word: unknown): unknown {
   if (!word || typeof word !== "object") return word;
   const box = normalizeBoundingBox(word);
@@ -170,101 +231,243 @@ function shrinkDetectedWordBox(word: unknown): unknown {
   };
 }
 
+function usesHierarchyRanking(requestUrl: string): boolean {
+  if (HIERARCHY_RANKING_OVERRIDE === "true") return true;
+  if (HIERARCHY_RANKING_OVERRIDE === "false") return false;
+  return new URL(requestUrl).pathname.endsWith(
+    "/gemini-vision-scan-canary",
+  );
+}
+
+function readUsageCount(usage: unknown, field: string): number | null {
+  if (!usage || typeof usage !== "object") return null;
+  const value = (usage as Record<string, unknown>)[field];
+  return Number.isInteger(value) && Number(value) >= 0 ? Number(value) : null;
+}
+
 Deno.serve(async (req) => {
   const scanId = crypto.randomUUID();
+  const requestStartedAt = Date.now();
+  let ledgerRequest: {
+    readonly userId: string;
+    readonly clientRequestId: string;
+    readonly reservation: ScanReservation;
+  } | undefined;
+  let upstreamAttempts = 0;
+  let modelUsed: string | null = null;
+  let usageForLedger: unknown;
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, x-client-info, apikey, content-type, x-request-id",
+    "Access-Control-Expose-Headers": "Retry-After, X-Idempotency-Replayed",
   };
+
+  async function completeFailure(errorCode: string): Promise<void> {
+    if (!ledgerRequest || !SCAN_LEDGER_STORE) return;
+    try {
+      await SCAN_LEDGER_STORE.completeFailure({
+        userId: ledgerRequest.userId,
+        clientRequestId: ledgerRequest.clientRequestId,
+        baseAttemptCount: ledgerRequest.reservation.attemptCount,
+        baseInputTokenCount: ledgerRequest.reservation.inputTokenCount,
+        baseOutputTokenCount: ledgerRequest.reservation.outputTokenCount,
+        baseTotalTokenCount: ledgerRequest.reservation.totalTokenCount,
+        upstreamAttempts,
+        modelUsed,
+        latencyMs: Date.now() - requestStartedAt,
+        inputTokenCount: readUsageCount(usageForLedger, "promptTokenCount"),
+        outputTokenCount: readUsageCount(
+          usageForLedger,
+          "candidatesTokenCount",
+        ),
+        totalTokenCount: readUsageCount(usageForLedger, "totalTokenCount"),
+        errorCode,
+      });
+    } catch (error) {
+      console.error("Scan ledger failure completion failed", {
+        scanId,
+        clientRequestId: ledgerRequest.clientRequestId,
+        error,
+      });
+    }
+  }
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  if (!GEMINI_API_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_PUBLIC_API_KEY) {
     return new Response(
       JSON.stringify({
-        error: "server_misconfigured",
-        message: "GEMINI_API_KEY chua duoc dat",
+        error: "auth_unavailable",
+        message: "Dich vu xac thuc chua san sang",
       }),
       {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 503,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Retry-After": "3",
+        },
       },
     );
   }
 
   try {
-    const { image_base64 } = await req.json();
+    const authenticatedUser = await authenticateRequest(req, {
+      supabaseUrl: SUPABASE_URL,
+      publicApiKey: SUPABASE_PUBLIC_API_KEY,
+    });
+    if (!ENTITLEMENT_STORE) {
+      throw new EntitlementResolutionError(
+        "Subscription database configuration is unavailable",
+      );
+    }
+    const entitlements = await requireCapability(
+      authenticatedUser.id,
+      APP_CAPABILITIES.aiScanBasic,
+      ENTITLEMENT_STORE,
+    );
+    const modelPolicy = resolveModelPolicy(entitlements.tier);
 
-    if (!image_base64 || typeof image_base64 !== "string") {
+    if (!GEMINI_API_KEY) {
       return new Response(
         JSON.stringify({
-          error: "invalid_request",
-          message: "Thieu image_base64",
+          error: "server_misconfigured",
+          message: "GEMINI_API_KEY chua duoc dat",
         }),
         {
-          status: 400,
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
     }
 
-    if (image_base64.length > 600000) {
+    if (!SCAN_LEDGER_STORE) {
+      throw new ScanLedgerUnavailableError(
+        "Scan ledger database configuration is unavailable",
+      );
+    }
+
+    const payload = await parseScanPayload(req);
+    const reservation = await SCAN_LEDGER_STORE.reserve({
+      userId: authenticatedUser.id,
+      clientRequestId: payload.clientRequestId,
+      serviceTier: entitlements.tier,
+    });
+
+    if (reservation.decision === "replay") {
+      return new Response(JSON.stringify(reservation.resultJson), {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "X-Idempotency-Replayed": "true",
+        },
+      });
+    }
+    if (reservation.decision === "in_progress") {
       return new Response(
         JSON.stringify({
-          error: "image_too_large",
-          message: "Anh vuot qua gioi han cho phep",
+          error: "request_in_progress",
+          message: "Yeu cau quet nay dang duoc xu ly",
+          request_id: payload.clientRequestId,
         }),
         {
-          status: 413,
+          status: 409,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": "2",
+          },
+        },
+      );
+    }
+    if (reservation.decision === "expired") {
+      return new Response(
+        JSON.stringify({
+          error: "request_result_expired",
+          message: "Ket qua cu da het han, vui long tao thao tac quet moi",
+          request_id: payload.clientRequestId,
+        }),
+        {
+          status: 409,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         },
       );
     }
 
-    const isOpenAi = isOpenAiCompatible(GEMINI_BASE_URL);
-    const modelChain = [GEMINI_MODEL];
+    ledgerRequest = {
+      userId: authenticatedUser.id,
+      clientRequestId: payload.clientRequestId,
+      reservation,
+    };
 
     const geminiResult = await fetchGeminiModelChain({
       apiKey: GEMINI_API_KEY,
       scanId,
-      baseUrl: GEMINI_BASE_URL,
-      modelChain,
-      createRequestBody: (model) =>
-        isOpenAi
-          ? buildOpenAiRequestBody(model, PROMPT, image_base64)
-          : {
-            contents: [
+      modelPolicy,
+      createRequestBody: (model) => ({
+        contents: [
+          {
+            parts: [
+              { text: PROMPT },
               {
-                parts: [
-                  { text: PROMPT },
-                  {
-                    inline_data: {
-                      mime_type: "image/jpeg",
-                      data: image_base64,
-                    },
-                  },
-                ],
+                inline_data: {
+                  mime_type: "image/jpeg",
+                  data: payload.imageBase64,
+                },
               },
             ],
-            generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
           },
+        ],
+        generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
+      }),
       healthStore: GEMINI_HEALTH_STORE,
+      scheduleBackgroundTask: (task) => EdgeRuntime.waitUntil(task),
+      apiBaseUrl: GEMINI_API_BASE_URL,
     });
-    const { response: geminiRes, model, modelsTried, attemptsForModel } =
-      geminiResult;
+    const {
+      response: geminiRes,
+      model,
+      modelsTried,
+      attemptsForModel,
+      quotaKind,
+    } = geminiResult;
+    upstreamAttempts = geminiResult.upstreamAttempts;
+    modelUsed = model;
 
     if (geminiRes.status === 429) {
+      const quotaErrorCode = quotaKind && quotaKind !== "unknown"
+        ? `quota_${quotaKind}_exceeded`
+        : "quota_exceeded";
+      await completeFailure(quotaErrorCode);
+      const retryAfter = geminiRes.headers.get("retry-after");
+      console.warn(
+        "Gemini quota exhausted",
+        JSON.stringify({
+          scanId,
+          serviceTier: modelPolicy.tier,
+          model,
+          quotaKind: quotaKind ?? "unknown",
+          upstreamAttempts,
+          latencyMs: Date.now() - requestStartedAt,
+        }),
+      );
       return new Response(
         JSON.stringify({
           error: "quota_exceeded",
           message: "He thong dang ban, thu lai sau",
+          request_id: payload.clientRequestId,
         }),
         {
           status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+          },
         },
       );
     }
@@ -282,6 +485,7 @@ Deno.serve(async (req) => {
           body: errText.slice(0, 500),
         }),
       );
+      await completeFailure("upstream_unavailable");
       return new Response(
         JSON.stringify({
           error: "upstream_unavailable",
@@ -289,6 +493,7 @@ Deno.serve(async (req) => {
             "Dich vu Gemini tam thoi khong kha dung, vui long thu lai sau",
           upstream_status: geminiRes.status,
           scan_id: scanId,
+          request_id: payload.clientRequestId,
         }),
         {
           status: 503,
@@ -313,12 +518,14 @@ Deno.serve(async (req) => {
           body: errText.slice(0, 500),
         }),
       );
+      await completeFailure("gemini_error");
       return new Response(
         JSON.stringify({
           error: "gemini_error",
           message: `Khong the phan tich anh (status ${geminiRes.status})`,
           upstream_status: geminiRes.status,
           scan_id: scanId,
+          request_id: payload.clientRequestId,
         }),
         {
           status: 502,
@@ -328,15 +535,10 @@ Deno.serve(async (req) => {
     }
 
     const geminiData = await geminiRes.json();
-    const finishReason =
-      geminiData?.choices?.[0]?.finish_reason ??
-      geminiData?.candidates?.[0]?.finishReason;
-    const usage =
-      geminiData?.usage ??
-      geminiData?.usageMetadata;
-    const rawText =
-      geminiData?.choices?.[0]?.message?.content ??
-      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const finishReason = geminiData?.candidates?.[0]?.finishReason;
+    const usage = geminiData?.usageMetadata;
+    usageForLedger = usage;
+    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) {
       console.error(
@@ -345,10 +547,12 @@ Deno.serve(async (req) => {
         "usage:",
         JSON.stringify(usage),
       );
+      await completeFailure("empty_response");
       return new Response(
         JSON.stringify({
           error: "empty_response",
           message: "Khong nhan dien duoc tu vung nao",
+          request_id: payload.clientRequestId,
         }),
         {
           status: 422,
@@ -359,7 +563,7 @@ Deno.serve(async (req) => {
 
     let parsed;
     try {
-      parsed = JSON.parse(cleanJsonText(rawText));
+      parsed = JSON.parse(rawText);
     } catch {
       console.error(
         "JSON parse failed, finishReason:",
@@ -369,11 +573,13 @@ Deno.serve(async (req) => {
         "raw:",
         rawText.slice(0, 200),
       );
+      await completeFailure("truncated_response");
       return new Response(
         JSON.stringify({
           error: "truncated_response",
           message:
             "Ket qua bi cat ngan do qua nhieu du lieu, vui long thu lai voi anh don gian hon",
+          request_id: payload.clientRequestId,
         }),
         {
           status: 422,
@@ -382,20 +588,62 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (Array.isArray(parsed.words)) {
-      // Rank using Gemini's full boxes, then shrink exactly once before the
-      // response reaches Flutter or local persistence.
-      const normalizedWords = parsed.words.map(normalizeDetectedWordFields);
-      parsed.words = deduplicateWords(rankWordsByBoxArea(normalizedWords)).slice(
-        0,
-        MAX_WORDS,
-      ).map((word: unknown, index: number) => {
-        const wordWithReducedBox = shrinkDetectedWordBox(word);
-        return wordWithReducedBox && typeof wordWithReducedBox === "object"
-          ? { ...wordWithReducedBox, number: index + 1 }
-          : wordWithReducedBox;
-      });
+    let rawHierarchyMetrics: HierarchyValidationMetrics;
+    try {
+      const normalized = normalizeVersion2Hierarchy(parsed);
+      parsed = normalized.response;
+      rawHierarchyMetrics = normalized.metrics;
+    } catch (error) {
+      if (!(error instanceof GeminiHierarchyShapeError)) throw error;
+      console.error(
+        "Gemini hierarchy shape invalid",
+        JSON.stringify({ scanId, model, reason: error.message }),
+      );
+      await completeFailure("invalid_hierarchy_response");
+      return new Response(
+        JSON.stringify({
+          error: "invalid_hierarchy_response",
+          message: "Ket qua quan he vat the khong hop le, vui long thu lai",
+          request_id: payload.clientRequestId,
+        }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
+
+    const hierarchyRankingEnabled = usesHierarchyRanking(req.url);
+    let rankingMetrics: DetectionRankingMetrics | null = null;
+    if (Array.isArray(parsed.words)) {
+      // Select using Gemini's full boxes, then shrink exactly once before the
+      // response reaches Flutter or local persistence.
+      const ranking = hierarchyRankingEnabled
+        ? selectHierarchyDetections(parsed.words, MAX_WORDS)
+        : selectLegacyDetections(parsed.words, MAX_WORDS);
+      rankingMetrics = ranking.metrics;
+      const selectedWords = ranking.words.map(
+        (word: unknown, index: number) => {
+          const wordWithReducedBox = shrinkDetectedWordBox(word);
+          return wordWithReducedBox && typeof wordWithReducedBox === "object"
+            ? { ...wordWithReducedBox, number: index + 1 }
+            : wordWithReducedBox;
+        },
+      );
+      parsed = { ...parsed, words: selectedWords };
+    }
+
+    const selectedHierarchy = normalizeVersion2Hierarchy(parsed);
+    parsed = {
+      ...selectedHierarchy.response,
+      scan_id: scanId,
+      request_id: payload.clientRequestId,
+      model_used: model,
+      service_tier: entitlements.tier,
+      ranking_strategy: hierarchyRankingEnabled
+        ? "hierarchy_v2"
+        : "legacy_area",
+    };
 
     const words = Array.isArray(parsed.words) ? parsed.words : [];
     logSuspiciousBoxes(words, scanId);
@@ -403,6 +651,7 @@ Deno.serve(async (req) => {
       "Gemini scan success",
       JSON.stringify({
         scanId,
+        serviceTier: entitlements.tier,
         model,
         modelsTried,
         failedModelsBeforeSuccess: modelsTried - 1,
@@ -410,16 +659,150 @@ Deno.serve(async (req) => {
         finishReason: finishReason ?? null,
         usageMetadata: usage ?? null,
         wordCount: words.length,
+        hierarchyValidation: {
+          raw: rawHierarchyMetrics,
+          selected: selectedHierarchy.metrics,
+        },
+        ranking: rankingMetrics,
       }),
     );
+
+    try {
+      await SCAN_LEDGER_STORE.completeSuccess({
+        userId: authenticatedUser.id,
+        clientRequestId: payload.clientRequestId,
+        baseAttemptCount: reservation.attemptCount,
+        baseInputTokenCount: reservation.inputTokenCount,
+        baseOutputTokenCount: reservation.outputTokenCount,
+        baseTotalTokenCount: reservation.totalTokenCount,
+        upstreamAttempts,
+        modelUsed: model,
+        latencyMs: Date.now() - requestStartedAt,
+        inputTokenCount: readUsageCount(usage, "promptTokenCount"),
+        outputTokenCount: readUsageCount(usage, "candidatesTokenCount"),
+        totalTokenCount: readUsageCount(usage, "totalTokenCount"),
+        wordCount: words.length,
+        resultJson: parsed,
+      });
+    } catch (error) {
+      console.error("Scan ledger success completion failed", {
+        scanId,
+        clientRequestId: payload.clientRequestId,
+        error,
+      });
+    }
 
     return new Response(JSON.stringify(parsed), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    if (err instanceof RequestAuthenticationError) {
+      return new Response(
+        JSON.stringify({ error: err.code, message: err.message }),
+        {
+          status: err.status,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            ...(err.status === 503 ? { "Retry-After": "3" } : {}),
+          },
+        },
+      );
+    }
+    if (err instanceof EntitlementResolutionError) {
+      console.error("Entitlement resolution failed", { scanId, error: err });
+      return new Response(
+        JSON.stringify({
+          error: "entitlement_unavailable",
+          message: "Khong the kiem tra quyen su dung, vui long thu lai sau",
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": "3",
+          },
+        },
+      );
+    }
+    if (err instanceof ScanLedgerUnavailableError) {
+      console.error("Scan ledger reservation failed", { scanId, error: err });
+      return new Response(
+        JSON.stringify({
+          error: "scan_ledger_unavailable",
+          message: "Khong the bao toan yeu cau quet, vui long thu lai sau",
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": "3",
+          },
+        },
+      );
+    }
+    if (err instanceof CapabilityDeniedError) {
+      return new Response(
+        JSON.stringify({
+          error: "capability_required",
+          message: "Tai khoan khong co quyen su dung tinh nang nay",
+        }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (err instanceof ImagePayloadError) {
+      return new Response(
+        JSON.stringify({ error: err.code, message: err.message }),
+        {
+          status: err.status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (err instanceof GeminiCircuitOpenError) {
+      upstreamAttempts = err.upstreamAttempts;
+      modelUsed = err.model;
+      await completeFailure("circuit_open");
+      console.warn(
+        "Gemini model pools unavailable",
+        JSON.stringify({
+          scanId,
+          model: err.model,
+          modelsTried: err.modelsTried,
+          upstreamAttempts: err.upstreamAttempts,
+          retryAfterSeconds: err.retryAfterSeconds,
+        }),
+      );
+      return new Response(
+        JSON.stringify({
+          error: "upstream_unavailable",
+          message:
+            "Dich vu Gemini tam thoi khong kha dung, vui long thu lai sau",
+          scan_id: scanId,
+        }),
+        {
+          status: 503,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": String(err.retryAfterSeconds ?? 3),
+          },
+        },
+      );
+    }
     const isChainError = err instanceof GeminiChainError;
     const isTimeout = isChainError && err.kind === "timeout";
+    if (isChainError) {
+      upstreamAttempts = err.upstreamAttempts;
+      modelUsed = err.model;
+    }
+    await completeFailure(isTimeout ? "timeout" : "internal_error");
     console.error("gemini-vision-scan error:", err);
     return new Response(
       JSON.stringify({

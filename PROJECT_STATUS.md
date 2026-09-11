@@ -1,6 +1,6 @@
 # Capy Vocab — Project Status & AI Handoff
 
-> Last audited: 2026-08-08
+> Last audited: 2026-09-11
 > Source of truth for current implementation status, integration boundaries, and next work.
 > Do not copy secrets, production URLs, access tokens, or service-role keys into this file.
 
@@ -11,19 +11,19 @@ project:
   version: 0.1.0
   current_milestone: "Phase 2 — First usable learning loop"
   phase_1_code_status: "implemented"
-  phase_1_acceptance_status: "pending production manual test and security audit"
-  product_status: "authentication, onboarding, photo scan bottom sheet, and tab navigation routing implemented"
+  phase_1_acceptance_status: "Production M3A/M4.5 cloud contract verified; broader release acceptance pending"
+  product_status: "offline Library, consent-gated cloud sync/pull/manual media restore, authentication, onboarding, and photo scan implemented"
   release_ready: false
 backend:
   provider: Supabase
   production_connection: "reachable from the configured Flutter environment"
-  public_tables_detected: 15
+  library_cloud_contract: "M3A + M4.5 applied and owner-isolation verified on Production"
 frontend:
-  working_user_flow: "startup -> health check -> email/password auth -> five-step onboarding -> guarded /home -> bottom tab routing & photo scan"
+  working_user_flow: "offline-tolerant startup -> email/password auth -> five-step onboarding -> guarded /home -> bottom tab routing & photo scan"
   first_blocking_placeholder: "/home"
 tests:
-  automated: "56 Flutter unit & widget tests"
-  last_result: "56/56 passing on 2026-08-08"
+  automated: "351 default tests plus 1 opt-in live sync test"
+  last_result: "Gate 3 Production sync/pull/purge and two-user RLS/Storage runtime passed on 2026-09-11"
 ```
 
 ## 1. Executive summary
@@ -32,12 +32,26 @@ The project has completed the code portion of the **technical foundation
 phase** and has started the **first usable learning loop**. It is not yet an
 MVP.
 
+### Update log — 2026-09-11 (Production Library Gate 3)
+
+1. After explicit owner approval, M3A and M4.5 were applied to Production by
+   explicit project ref without relinking the repository.
+2. Production migration history is 21/21 and post-apply dry-run is up to date.
+   The `photo_notes` bucket is private and normalized Library/change-feed
+   tables exist.
+3. Full runtime fixture verification passed private upload, normalized JSON,
+   metadata pull to a second SQLite database, permanent purge and cleanup.
+4. Two-user RLS/Storage verification passed owner access and denied cross-user
+   row insert/read plus Storage upload/read; owner signed URL returned 200.
+5. Final audit contains 0 fixture rows, objects or Auth users. Default runtime
+   sync remains compile-time OFF; no Production app build/release was made.
+
 The application can currently:
 
 1. Load its environment configuration.
 2. Initialize the Supabase Flutter client with a publishable key.
-3. Test access to the production Data API before opening the main app.
-4. Show a retry screen when the health check fails.
+3. Open local UI without requiring a successful remote health request.
+4. Keep Library sync failures out of the app bootstrap path.
 5. Sign up and sign in with email/password.
 6. Present distinct authentication errors.
 7. Persist/read the Supabase session.
@@ -52,6 +66,163 @@ After authentication, incomplete profiles enter onboarding and completed
 profiles open `/home`. Learning,
 scanning, games, arena, shop, friends, chat, notifications, and settings are
 in progress.
+
+### Update log — 2026-09-02 (Library offline storage)
+
+1. M1 added a pure-Dart Library domain contract for offline Photo Notes,
+   scan evidence, annotation, albums, learning/SRS, sync outbox, consent audit,
+   and on-device-training lineage.
+2. D1 is approved. M2A uses `sqflite` on native, FFI for tests and SQLite
+   WASM/IndexedDB on Web; the Web build contains its worker and WASM assets.
+3. Version-1 `scan_results` migration was tested to preserve every legacy row
+   and queue account-aware import without inventing an owner for old data.
+4. SQLite integration tests cover tenant foreign keys, transaction rollback,
+   immutable evidence, append-only learning events, consent constraints, ML
+   provenance, and single-active-model enforcement.
+5. M2B implements SQLite codecs and all six Library/Album/Learning/Sync/
+   Training/Consent repository contracts, including consent-gated atomic
+   outbox and training lineage invalidation.
+6. Native `scan_results` now opens the shared version-2 database and queues
+   every new legacy row transactionally; importer completion remains explicitly
+   owner-gated.
+7. Verification on 2026-09-02: `flutter analyze` reported no issues,
+   `flutter build web` passed, and the complete Flutter suite passed 250/250.
+8. D2–D10 remain pending. Chrome IndexedDB runtime verification is blocked by
+   the local Chrome test runner; physical-device benchmark, media commit
+   recovery, automatic legacy conversion and Library UI wiring remain open.
+
+### Update log — 2026-09-03 (M2C native scan persistence)
+
+1. Native AI Scan now maps each successful Gemini response into the normalized
+   M2B MediaAsset, ScanRun, VocabDetection and PhotoNote aggregate.
+2. The raw Edge Function response is retained before client ranking so schema
+   metadata and detection hierarchy remain immutable scan evidence for future
+   evaluation and on-device ML lineage.
+3. The compatibility `scan_results` row, normalized aggregate and imported
+   legacy queue link commit in one owner-scoped SQLite transaction; a failure
+   rolls all of them back.
+4. New local accounts default all cloud/personalization/federated consent flags
+   to false, while existing consent state is preserved.
+5. AI predictions are not promoted to user annotations or training examples.
+6. Verification on 2026-09-03: `flutter analyze --no-pub` found no issues, the
+   complete Flutter suite passed 252/252, and `flutter build web --no-pub`
+   succeeded.
+7. This milestone does not upload image or JSON data to Supabase. Sync worker,
+   two-phase media recovery, Library UI, old ownerless-row import and the
+   on-device trainer remain separate follow-up milestones.
+
+### Update log — 2026-09-03 (M3A private cloud contract)
+
+1. D2 and D3 were approved: active notes keep local display/model-input media,
+   original media is opt-in/quota-bound, and cloud backup defaults OFF.
+2. An additive Supabase migration now defines normalized media/scan/detection/
+   annotation tables and extends legacy `photo_notes` without deleting rows.
+3. The `photo_notes` bucket contract is private and owner-prefixed for read,
+   insert, update and delete; public URLs are no longer the client contract.
+4. Flutter Storage uses deterministic `{userId}/{mediaAssetId}/{variant}` keys,
+   returns object paths and creates short-lived signed URLs for reads.
+5. M3A source is implemented but not applied to Production. Runtime upload and
+   outbox processing remain M3B.
+6. Verification: `flutter analyze --no-pub` found no issues, the full Flutter
+   suite passed 259/259, and `flutter build web --no-pub` succeeded.
+7. The original 15-table schema was recovered as the first migration. Baseline
+   plus all 19 incremental migrations applied successfully on Free Staging;
+   local/remote history matches 20/20 and the remote is up to date.
+8. Two-user Staging verification passed for normalized row isolation, private
+   Storage ownership, owner upload and signed URL creation. Test users, rows and
+   objects were removed. Production remains unchanged.
+9. Post-Staging regression: `flutter analyze --no-pub` found no issues and the
+   full Flutter suite passed 260/260.
+
+### Update log — 2026-09-04 (M3B local sync worker)
+
+1. Added a bounded, dependency-aware outbox worker with consent and owner-auth
+   gates, retry/backoff, stale-running recovery and auth unblock on sign-in.
+2. Added a native Supabase gateway for the five normalized M3A entities.
+3. Media sync now uses deterministic two-phase upload: Storage object upsert,
+   database metadata upsert, then local remote-path/status commit.
+4. Photo Note operations now wait for media, scan and all detection/annotation
+   evidence; purge completes its tombstone only after remote delete succeeds.
+5. Targeted M3B/SQLite/Storage tests passed 20/20 and targeted analyzer found
+   no issues; full analyzer was clean and the Flutter suite passed 267/267.
+   Runtime scheduling and Staging worker E2E remain follow-ups; Production was
+   not changed.
+
+### Update log — 2026-09-04 (M3C runtime sync and offline startup)
+
+1. Removed the remote health preflight from app bootstrap so a network outage
+   no longer blocks local SQLite/media access or the rest of the UI.
+2. Added a runtime coordinator driven by auth, cloud consent, outbox changes,
+   SQLite `next_attempt_at` and app resume; logout and consent OFF cancel wake
+   timers.
+3. Added the native app-documents media resolver and a fail-closed Web factory.
+4. Sync runtime is protected by `LIBRARY_SYNC_ENABLED` and defaults to `false`;
+   this prevents an app still configured for Production from using the M3A
+   contract before Production migration/backfill approval.
+5. Targeted tests passed 23/23, full analyzer reported no issues, full Flutter
+   regression passed 273/273, and Web build with the flag enabled succeeded.
+6. Concurrent auth transitions are generation-guarded so an older owner
+   subscription cannot survive a rapid logout/account switch.
+7. Staging worker E2E, consent UI and Production rollout remain pending. No
+   remote environment was changed in this increment.
+
+### Update log — 2026-09-04 (real Staging worker E2E)
+
+1. Added an opt-in test that runs the real SQLite store, outbox worker and
+   Supabase gateway against the verified linked Staging project.
+2. The worker completed 5/5 dependency operations, uploaded and downloaded two
+   real private JPEG variants, and round-tripped media, raw scan JSON,
+   detection, annotation and Photo Note rows through the owner session.
+3. Media and raw-JSON SHA-256 values matched the real fixture bytes/content.
+   Storage objects, all test rows and the temporary Auth user were removed;
+   deterministic cleanup paths are registered before upload.
+4. The runner refuses the wrong linked project, unhealthy status, more than two
+   active projects or migration drift, and never prints or stores API keys.
+5. Four live runs passed. Full analyzer was clean; the default suite passed
+   273 tests and skipped the single opt-in live test as designed. Production
+   remained unlinked and unchanged.
+
+### Update log — 2026-09-04 (cloud-backup consent UI)
+
+1. Settings now exposes an account-scoped cloud-backup switch backed by
+   SQLite. Opt-in requires an explicit dialog; logout/loading/error states fail
+   closed and an SQLite read error offers retry.
+2. Each actual change appends a consent audit event with old/new values,
+   `privacy-v1`, source action, UTC timestamp and applied enforcement state.
+   First use bootstraps a fail-closed local account without overwriting a
+   concurrently created account.
+   Consent and scan request IDs share a core secure UUID v4 utility rather than
+   coupling Settings to the Gemini service.
+3. Consent copy states that only new scans are queued, local copies stay
+   offline-readable, old cloud data is not auto-purged, and cloud backup does
+   not grant on-device/federated training consent.
+4. Supabase URL/anon key can be supplied by dart-define for a Staging build
+   without editing `.env`; the smoke runner validates linked Staging and uses a
+   temporary define file that is always deleted.
+5. Consent/Settings tests passed 13/13, full analyzer was clean, and the full
+   suite passed 279 tests with one live test skipped. Live Staging worker E2E
+   passed again with cleanup.
+6. This blocker was resolved on 2026-09-05: the Android v2 host now uses
+   `com.capyvocab.app`; a sync-enabled Staging APK built, installed and passed
+   startup/background/resume smoke on CPH2375. Authenticated consent-to-upload
+   on the device remains pending. Production remained unlinked and unchanged.
+
+### Update log — 2026-09-05 (Android Staging device smoke)
+
+1. Scaffolded the Flutter Android v2 host with the owner-approved namespace and
+   application ID `com.capyvocab.app`, plus Android Internet permission.
+2. Extended the fail-closed Staging runner with Android build/device targets.
+   It injects sync configuration through a temporary file, removes that file,
+   and suppresses Gradle command echo while credentials are present.
+3. A debug Staging APK built and installed on CPH2375 (Android 13). Supabase
+   initialized, and HOME/resume kept the same process without a fatal log.
+4. The first native launch exposed an auth redirect bug because `file:///` has
+   no HTTP origin. Native auth now omits the email redirect while Web keeps its
+   HTTP(S) origin; hot restart, six auth tests, analyzer and the 281-test full
+   suite passed (one opt-in Staging test skipped).
+5. The device remained unauthenticated, so consent interaction and an outbox
+   upload originating from the device are still pending. Production was not
+   linked or changed.
 
 ### Update log — 2026-08-08
 
@@ -154,8 +325,8 @@ experience.
 | --- | --- | --- |
 | Supabase initialization | ✅ Working | Uses `publishableKey` in `lib/core/services/supabase_service.dart` |
 | Production Data API reachability | ✅ Working | Audit received HTTP 200 from all 15 table endpoints |
-| Startup health gate | ✅ Working | `lib/main.dart` blocks the normal app when `testConnection()` returns false |
-| Retry UI | ✅ Working | Retry calls `SupabaseService.testConnection()` |
+| Offline-tolerant startup | ✅ Working | `lib/main.dart` initializes the client without a remote preflight; network failure does not block local UI |
+| Cloud degraded retry | 🟡 Partial | Library outbox retries by SQLite schedule/app resume when enabled; no global connectivity indicator yet |
 | Email/password repository | ✅ Working | Sign-up, sign-in, sign-out implemented |
 | Riverpod auth state | ✅ Working | `AsyncValue<Session?>` |
 | Auth error mapping | ✅ Working | Invalid credentials, existing email, unconfirmed email |
@@ -194,14 +365,14 @@ actually useful.”
 
 | Area | Status | Real implementation | Missing end-to-end work |
 | --- | --- | --- | --- |
-| Bootstrap / health | ✅ Working | Supabase init, connection test, retry screen | Reinitialize client if initialization itself fails |
+| Bootstrap / health | ✅ Working | Supabase config initialization without remote startup gate; configuration-error UI on init failure | Add a non-blocking cloud status indicator if product UX requires it |
 | Email/password Auth | ✅ Working | Repository, Riverpod notifier, form, validation, name metadata, errors, Web email-confirmation redirect via the current origin, focused tests | Dashboard redirect allowlist and manual email-confirmation acceptance |
 | Session routing | ✅ Working | Guarded routes, auth stream listener, profile completion lookup | Intended-route restoration; explicit expired-session UX |
 | Google OAuth | ⏸ Deferred | Repository method exists | Provider config, UI, deep links/callbacks |
 | Password recovery | ⏸ Deferred | Send-reset repository method exists | Callback/deep link and update-password UI |
 | Onboarding | ✅ Working | Five-step provider/UI, validation, username check, time picker, atomic RPC persistence, retry/loading behavior, tests | Production manual journey test; pixel-perfect design and real reminder scheduling are deferred |
 | Home / lesson map | 🟡 Partial | User and vocabulary Supabase access classes | Providers, UI, lesson flow, progress wiring |
-| AI photo scan | 🟡 Partial | Gemini HTTP service, image compression, storage wrapper | Secure backend proxy, entities, provider, scan UI, album flow |
+| AI photo scan | 🟡 Partial | Gemini Edge flow, app-local JPEG, normalized SQLite aggregate, Staging-verified two-phase worker and default-off runtime coordinator | Consent UI, device lifecycle smoke, Library UI/album flow, Web durable media, on-device trainer |
 | Photo mini-games | ⬜ Scaffold | Routes/files and dependencies | Game state, questions, scoring, UI, persistence |
 | Solo Arena | 🟡 Partial | Supabase/Realtime data source | Entities, matchmaking state, battle UI, result flow |
 | Pet shop | 🟡 Partial | Supabase shop data source; payment gateway shell | Entities, provider, UI, atomic purchase logic, real payment SDK |
@@ -370,37 +541,36 @@ receipts before updating coins, purchases, or subscriptions.
    layers after the core learning loop works.
 3. Integrate payment providers and receipt verification.
 4. Implement shared UI polish, audio, TTS, confetti, assets, and localization.
-5. Remove the two remaining analyzer info notices.
-6. Replace stale Firebase/Firestore descriptions in the legacy README.
+5. Replace stale Firebase/Firestore descriptions in the legacy README.
 
 ## 9. Verification snapshot
 
 Last local verification:
 
 ```text
-flutter test
-  -> all tests passed (9 tests)
-  -> startup smoke: 1
-  -> Auth registration and redirect: 3
-  -> Onboarding provider and wizard: 5
+flutter analyze --no-pub
+  -> No issues found
 
-dart analyze <changed Auth files>
-  -> no issues
+flutter test --no-pub <M3C targeted files>
+  -> 23/23 passed
 
-flutter analyze
-  -> 2 pre-existing info-level notices in gemini_vision_service.dart
+flutter test --no-pub --reporter compact
+  -> 273 passed, 1 opt-in live Staging test skipped by default
+  -> one earlier parallel run reported one unidentified failure; two complete
+     reruns passed, so test-suite flakiness remains under observation
 
-flutter build web --debug
+flutter build web --no-pub --dart-define=LIBRARY_SYNC_ENABLED=true
   -> succeeded
-  -> existing flutter_tts WebAssembly dry-run compatibility notices only
+  -> existing flutter_tts Wasm dry-run and CupertinoIcons warnings only
 
 git diff --check
   -> passed
   -> line-ending warnings only (LF will be converted to CRLF)
 
-Production onboarding RPC transaction check
-  -> RPC completed inside a test transaction
-  -> rollback left 0 persisted test rows
+tool/run_staging_library_sync_e2e.ps1
+  -> passed twice with real private files and authenticated owner
+  -> all temporary Storage objects, rows and Auth user cleaned up
+  -> Production not linked or changed
 ```
 
 Manual verification of the real email-confirmation round trip and the complete
@@ -411,7 +581,8 @@ create Production Auth accounts.
 
 1. Read this file before assuming a feature is implemented.
 2. A Supabase data source does not mean its UI or business flow is complete.
-3. Preserve the Phase 1 Auth and health-gate behavior.
+3. Preserve Phase 1 Auth behavior and the M3C offline-startup contract; do not
+   reintroduce a blocking remote health preflight.
 4. Never print or commit `.env`, tokens, database URLs, or secret keys.
 5. Do not add a service-role key to Flutter or browser code.
 6. Treat `supabase/schema/supabase_schema_final_secure.sql` as the database design snapshot, and place all new DB changes into `supabase/migrations/`.
@@ -529,4 +700,79 @@ create Production Auth accounts.
 - `.claude/skills/flutter-build-responsive-layout/SKILL.md` *(Skill hướng dẫn xây dựng responsive layout)*
 - `skills-lock.json`
 - `.env` *(File cấu hình biến môi trường cục bộ)*
+
+## 16. Tình trạng dự án ngày 10/08/2026 (Current Project Status)
+
+### A. Trạng thái mã nguồn và đồng bộ GitHub
+
+- Đã fetch và đồng bộ phần thiết kế mới nhất từ `origin/main` thông qua PR #5.
+- Commit đang được kiểm chứng: `abe5d04` (`Merge pull request #5 from emtonny/nam-30-7`).
+- Nhánh local `main` đã khớp hoàn toàn với `origin/main` (`0` commit ahead, `0` commit behind).
+- Working tree hiện ở nhánh `AI-scan`; nội dung tracked đã khớp với `origin/main` và đang ahead `origin/AI-scan` 6 commit. Chưa push thay đổi này lên `origin/AI-scan`.
+### B. Các luồng và giao diện hiện đã có
+
+1. **Khởi động, Auth và Onboarding**
+   - Giữ nguyên luồng `startup -> health check -> auth -> onboarding 5 bước -> home`.
+   - Router tiếp tục bảo vệ luồng theo session và trạng thái `onboarding_completed`.
+   - Giao diện Auth và Onboarding đã có video header, hình nền và bố cục responsive cho mobile/tablet/desktop.
+
+2. **Home và điều hướng chính**
+   - `HomeScreen` đã được thay thế từ placeholder bằng giao diện dashboard phong cách sổ tay Capybara.
+   - Bottom navigation đã điều hướng thật giữa 4 route: `/home`, `/storage`, `/pet-shop`, `/friends`.
+   - Nút Camera trung tâm mở luồng `/scan`; trạng thái tab active được xác định từ route hiện tại.
+   - Toàn bộ route dùng chuyển trang tức thời; `/scan` mở dạng overlay có nền tối mà không chạy hiệu ứng slide.
+
+3. **AI Scan và Vocabulary Overlay**
+   - Photo Scan Bottom Sheet hỗ trợ chọn ảnh/camera, xử lý ảnh và đi qua pipeline scan hiện có.
+   - Kết quả scan được hiển thị bằng notebook-style vocabulary canvas overlay với bounding box, mũi tên, số thứ tự, từ tiếng Anh, IPA và nghĩa tiếng Việt.
+   - Luồng lỗi camera, lỗi nén ảnh, lỗi API và dữ liệu bounding box tiếp tục có test tự động bảo vệ.
+
+4. **Các màn bổ trợ**
+   - `StorageAlbumScreen`, `PetShopScreen` và `FriendsLeaderboardScreen` đã có giao diện đồng bộ và route truy cập.
+   - Các màn này hiện chủ yếu là presentation/coming-soon; nghiệp vụ dữ liệu thật, giao dịch cửa hàng, social/leaderboard realtime và vòng lặp học hoàn chỉnh vẫn chưa được triển khai đầy đủ.
+
+### C. Assets và responsive layout
+
+- Asset bundle hiện dùng khai báo `assets/` trong `pubspec.yaml`.
+- Đã có video `CapyLogin.mp4`, `CapyOnboarding.mp4` và hai ảnh nền `capy_background.png`, `capy_background_mobile.png`.
+- `ResponsiveLayout` đã được thêm để phân nhánh bố cục mobile/tablet/desktop dựa trên không gian hiển thị.
+- Các màn Auth, Onboarding và video header đã được tối ưu lại để sử dụng bộ asset và bố cục responsive mới.
+
+### D. Kết quả kiểm chứng ngày 10/08/2026
+
+```text
+flutter pub get
+  -> thành công
+  -> SDK local resolve meta/test_api thấp hơn lockfile trên GitHub;
+     lockfile được giữ nguyên theo commit abe5d04 để bảo toàn trạng thái đồng bộ
+
+flutter analyze --no-pub
+  -> No issues found
+
+flutter test --no-pub \
+  test/shared/navigation/bottom_nav_bar_test.dart \
+  test/features/ai_scan/photo_scan_bottom_sheet_test.dart
+  -> 7/7 tests passed
+
+flutter test --no-pub
+  -> 56/56 tests passed
+
+flutter build web --no-pub
+  -> build thành công tại build/web
+
+git diff --check
+  -> passed
+
+HEAD...origin/main
+  -> 0 ahead / 0 behind
+```
+
+### E. Cảnh báo và phần việc còn lại
+
+- Web build thành công nhưng còn cảnh báo không chặn về font `CupertinoIcons`; cần kiểm tra lại dependency/asset font nếu UI sử dụng icon Cupertino trên Web.
+- `flutter_tts 4.2.5` còn cảnh báo tương thích WebAssembly từ mã dependency; build Web JavaScript thông thường vẫn thành công.
+- Cần kiểm thử thủ công trên thiết bị thật và nhiều kích thước màn hình để xác nhận video, camera, touch target, overflow và breakpoint responsive.
+- Cần kiểm thử Production cho email confirmation, Auth callback, Supabase RLS/RPC và hành trình đăng ký đến Home.
+- Vòng lặp học chính, dữ liệu Home thật, Storage, Shop, Friends/Leaderboard, Arena, chatbot, notification và thanh toán vẫn là các hạng mục chưa hoàn thiện đầy đủ.
+- Chưa thực hiện commit hoặc push cho lần cập nhật tài liệu ngày 10/08/2026.
 

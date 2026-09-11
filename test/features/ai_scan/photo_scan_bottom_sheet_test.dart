@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:capy_vocab/core/constants/app_colors.dart';
+import 'package:capy_vocab/core/entitlements/entitlement_provider.dart';
 import 'package:capy_vocab/core/services/gemini_vision_service.dart';
 import 'package:capy_vocab/features/ai_scan/data/datasources/scan_result_local_datasource.dart';
 import 'package:capy_vocab/features/ai_scan/data/services/scan_image_compressor.dart';
@@ -31,7 +32,7 @@ void main() {
       ),
       storage: _FakeStorage(),
       visionClient: _FakeVisionClient(
-        onAnalyze: (_) => throw UnimplementedError(),
+        onAnalyze: (_, __) => throw UnimplementedError(),
       ),
     );
 
@@ -93,7 +94,7 @@ void main() {
     );
     final storage = _FakeStorage();
     final visionClient = _FakeVisionClient(
-      onAnalyze: (bytes) {
+      onAnalyze: (bytes, requestId) {
         expect(bytes, same(compressedBytes));
         return vision.future;
       },
@@ -130,6 +131,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('zoom-image-button')), findsOneWidget);
+    expect(storage.deletedPaths, isEmpty);
   });
 
   testWidgets('nút Chụp ảnh dùng camera source', (tester) async {
@@ -142,7 +144,7 @@ void main() {
       ),
       storage: _FakeStorage(),
       visionClient: _FakeVisionClient(
-        onAnalyze: (bytes) => throw UnimplementedError(),
+        onAnalyze: (bytes, requestId) => throw UnimplementedError(),
       ),
       debugIsWebOverride: false,
     );
@@ -156,9 +158,77 @@ void main() {
     expect(find.byType(ScanLoadingOverlay), findsNothing);
   });
 
+  testWidgets('template Tự thiết kế đọc capability Free từ provider', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      picker: _FakePicker(onPick: (_) async => null),
+      compressor: _FakeCompressor(onCompress: (_) async => _testImageBytes()),
+      storage: _FakeStorage(),
+      visionClient: _FakeVisionClient(
+        onAnalyze: (_, __) async => const GeminiVisionResult(
+          detectedVocabulary: [],
+        ),
+      ),
+    );
+
+    final customTemplate = find.byKey(const Key('label-template-custom'));
+    await tester.ensureVisible(customTemplate);
+    await tester.tap(customTemplate);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('label-template-pro-limit-dialog')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('custom-label-editor')), findsNothing);
+  });
+
+  testWidgets('template Tự thiết kế mở cho capability Pro từ provider', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 9, 1);
+    final entitlements = EntitlementNotifier(
+      initialUserId: 'pro-user',
+      authUserIds: const Stream.empty(),
+      loadActiveSubscription: (_) async => {
+        'plan_type': 'capy_pro_monthly',
+        'end_date': now.add(const Duration(days: 30)).toIso8601String(),
+      },
+      now: () => now,
+    );
+    await entitlements.refresh();
+
+    await _pumpScreen(
+      tester,
+      picker: _FakePicker(onPick: (_) async => null),
+      compressor: _FakeCompressor(onCompress: (_) async => _testImageBytes()),
+      storage: _FakeStorage(),
+      visionClient: _FakeVisionClient(
+        onAnalyze: (_, __) async => const GeminiVisionResult(
+          detectedVocabulary: [],
+        ),
+      ),
+      entitlementNotifier: entitlements,
+    );
+
+    final customTemplate = find.byKey(const Key('label-template-custom'));
+    await tester.ensureVisible(customTemplate);
+    await tester.tap(customTemplate);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('custom-label-editor')), findsOneWidget);
+    expect(
+      find.byKey(const Key('label-template-pro-limit-dialog')),
+      findsNothing,
+    );
+  });
+
   testWidgets(
       'lỗi Gemini từ scanProvider được phân loại là lỗi quét, không phải picker',
       (tester) async {
+    final storage = _FakeStorage();
     await _pumpScreen(
       tester,
       picker: _FakePicker(
@@ -168,9 +238,10 @@ void main() {
         ),
       ),
       compressor: _FakeCompressor(onCompress: (source) async => source),
-      storage: _FakeStorage(),
+      storage: storage,
       visionClient: _FakeVisionClient(
-        onAnalyze: (source) async => throw const GeminiQuotaException(
+        onAnalyze: (source, requestId) async =>
+            throw const GeminiQuotaException(
           'Hệ thống đang bận, thử lại sau',
         ),
       ),
@@ -185,6 +256,45 @@ void main() {
     expect(find.text('Không thể quét ảnh'), findsOneWidget);
     expect(find.text('Hệ thống đang bận, thử lại sau'), findsOneWidget);
     expect(find.text('Không thể chọn ảnh. Vui lòng thử lại.'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Đóng'));
+    await tester.pumpAndSettle();
+
+    expect(storage.deletedPaths, ['memory://scan.jpg']);
+  });
+
+  testWidgets('lỗi dọn ảnh không che lỗi scan gốc', (tester) async {
+    final storage = _FakeStorage(
+      onDelete: (_) async => throw StateError('cleanup failed'),
+    );
+    await _pumpScreen(
+      tester,
+      picker: _FakePicker(
+        onPick: (_) async => PickedScanImage(
+          bytes: _testImageBytes(),
+          name: 'source.png',
+        ),
+      ),
+      compressor: _FakeCompressor(onCompress: (source) async => source),
+      storage: storage,
+      visionClient: _FakeVisionClient(
+        onAnalyze: (_, __) async => throw const GeminiQuotaException(
+          'Lỗi scan gốc',
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.byKey(const Key('pick-gallery-button')));
+    await tester.tap(find.byKey(const Key('pick-gallery-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Lỗi scan gốc'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Đóng'));
+    await tester.pumpAndSettle();
+
+    expect(storage.deletedPaths, ['memory://scan.jpg']);
+    expect(find.byType(ScanLoadingOverlay), findsNothing);
   });
 
   testWidgets('chọn ảnh lần hai xóa preview cũ trước khi picker hoàn tất',
@@ -210,7 +320,7 @@ void main() {
       compressor: _FakeCompressor(onCompress: (source) async => source),
       storage: _FakeStorage(),
       visionClient: _FakeVisionClient(
-        onAnalyze: (source) async => const GeminiVisionResult(
+        onAnalyze: (source, requestId) async => const GeminiVisionResult(
           detectedVocabulary: [],
         ),
       ),
@@ -246,7 +356,7 @@ void main() {
       ),
       storage: _FakeStorage(),
       visionClient: _FakeVisionClient(
-        onAnalyze: (source) => throw UnimplementedError(),
+        onAnalyze: (source, requestId) => throw UnimplementedError(),
       ),
     );
 
@@ -278,7 +388,7 @@ void main() {
         ),
       ),
       visionClient: _FakeVisionClient(
-        onAnalyze: (source) async {
+        onAnalyze: (source, requestId) async {
           visionCallCount++;
           return const GeminiVisionResult(detectedVocabulary: []);
         },
@@ -311,7 +421,7 @@ void main() {
       compressor: _FakeCompressor(onCompress: (source) async => source),
       storage: _FakeStorage(),
       visionClient: _FakeVisionClient(
-        onAnalyze: (source) async => const GeminiVisionResult(
+        onAnalyze: (source, requestId) async => const GeminiVisionResult(
           detectedVocabulary: [
             VocabDetection(
               word: 'apple',
@@ -459,7 +569,7 @@ void main() {
       ),
       storage: storage,
       visionClient: _FakeVisionClient(
-        onAnalyze: (bytes) async {
+        onAnalyze: (bytes, requestId) async {
           expect(bytes, same(compressedBytes));
           return const GeminiVisionResult(detectedVocabulary: []);
         },
@@ -512,7 +622,7 @@ void main() {
       ),
       storage: _FakeStorage(),
       visionClient: _FakeVisionClient(
-        onAnalyze: (bytes) async {
+        onAnalyze: (bytes, requestId) async {
           visionCallCount++;
           return const GeminiVisionResult(detectedVocabulary: []);
         },
@@ -539,9 +649,16 @@ Future<void> _pumpScreen(
   required ScanImageCompressor compressor,
   required ScanImageStorage storage,
   required VisionScanClient visionClient,
+  EntitlementNotifier? entitlementNotifier,
   bool? debugIsWebOverride,
   WebCameraCaptureBuilder? webCameraCaptureBuilder,
 }) async {
+  final entitlements = entitlementNotifier ??
+      EntitlementNotifier(
+        initialUserId: null,
+        authUserIds: const Stream.empty(),
+        loadActiveSubscription: (_) async => null,
+      );
   final router = GoRouter(
     initialLocation: '/scan',
     routes: [
@@ -574,6 +691,7 @@ Future<void> _pumpScreen(
         scanImageStorageProvider.overrideWithValue(storage),
         visionScanClientProvider.overrideWithValue(visionClient),
         scanResultStoreProvider.overrideWithValue(MemoryScanResultStore()),
+        entitlementProvider.overrideWith((ref) => entitlements),
       ],
       child: MaterialApp.router(routerConfig: router),
     ),
@@ -652,10 +770,18 @@ class _FakeCompressor implements ScanImageCompressor {
 }
 
 class _FakeStorage implements ScanImageStorage {
-  _FakeStorage({this.onSave});
+  _FakeStorage({this.onSave, this.onDelete});
 
   final Future<String> Function(Uint8List bytes)? onSave;
+  final Future<void> Function(String localPath)? onDelete;
   Uint8List? savedBytes;
+  final deletedPaths = <String>[];
+
+  @override
+  Future<void> delete(String localPath) async {
+    deletedPaths.add(localPath);
+    await onDelete?.call(localPath);
+  }
 
   @override
   Future<String> saveJpeg(Uint8List bytes) async {
@@ -672,10 +798,16 @@ class _FakeStorage implements ScanImageStorage {
 class _FakeVisionClient implements VisionScanClient {
   const _FakeVisionClient({required this.onAnalyze});
 
-  final Future<GeminiVisionResult> Function(Uint8List bytes) onAnalyze;
+  final Future<GeminiVisionResult> Function(
+    Uint8List bytes,
+    String requestId,
+  ) onAnalyze;
 
   @override
-  Future<GeminiVisionResult> analyzeImageBytes(Uint8List compressedImageBytes) {
-    return onAnalyze(compressedImageBytes);
+  Future<GeminiVisionResult> analyzeImageBytes(
+    Uint8List compressedImageBytes, {
+    required String requestId,
+  }) {
+    return onAnalyze(compressedImageBytes, requestId);
   }
 }

@@ -8,6 +8,11 @@ class MemoryScanImageStorage implements ScanImageStorage {
   final _images = <String, Uint8List>{};
 
   @override
+  Future<void> delete(String localPath) async {
+    _images.remove(localPath);
+  }
+
+  @override
   Future<String> saveJpeg(Uint8List bytes) async {
     final key =
         'memory://capy_scan_${DateTime.now().microsecondsSinceEpoch}.jpg';

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/entitlements/entitlement_provider.dart';
 import '../../../../core/services/gemini_vision_service.dart';
 import '../../data/datasources/scan_result_local_datasource.dart';
 import '../../data/services/scan_image_compressor.dart';
@@ -66,7 +67,10 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
   LabelVisualStyle get _selectedLabelStyle => switch (_selectedTemplate) {
         NoteLabelTemplate.standard => LabelVisualStyle.standard,
         NoteLabelTemplate.minimal => LabelVisualStyle.minimal,
-        NoteLabelTemplate.custom => _customLabelStyle,
+        NoteLabelTemplate.custom =>
+          ref.read(entitlementProvider).can(AppCapability.aiScanAdvanced)
+              ? _customLabelStyle
+              : LabelVisualStyle.standard,
       };
 
   void _updateImageDimensions(Uint8List bytes) {
@@ -146,10 +150,10 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         _processingStatus = 'Đang nhận diện từ vựng...';
       });
 
+      final storage = ref.read(scanImageStorageProvider);
       final String localPath;
       try {
-        localPath =
-            await ref.read(scanImageStorageProvider).saveJpeg(compressedBytes);
+        localPath = await storage.saveJpeg(compressedBytes);
       } catch (error, stackTrace) {
         await _handlePreparationError(
           stage: 'store',
@@ -159,19 +163,39 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         );
         return;
       }
-      if (!mounted) return;
+      var committed = false;
+      try {
+        if (!mounted) return;
 
-      final record = await ScanFlowController.scan(
-        context,
-        ref,
-        localPath: localPath,
-      );
-      if (!mounted) return;
-      if (record == null) return;
+        final record = await ScanFlowController.scan(
+          context,
+          ref,
+          localPath: localPath,
+          imageBytes: compressedBytes,
+          captureSource: source,
+          templateId: _selectedTemplate.name,
+        );
+        committed = record != null;
+        if (!mounted || record == null) return;
 
-      setState(() {
-        _scanRecord = record;
-      });
+        setState(() {
+          _scanRecord = record;
+        });
+      } finally {
+        if (!committed) {
+          try {
+            await storage.delete(localPath);
+          } catch (error, stackTrace) {
+            debugPrint(
+              'AI scan cleanup failed (${error.runtimeType}).',
+            );
+            debugPrintStack(
+              label: 'AI scan cleanup stack trace',
+              stackTrace: stackTrace,
+            );
+          }
+        }
+      }
     } finally {
       if (mounted) {
         setState(() => _isProcessing = false);
@@ -400,6 +424,9 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final canUseCustomTemplate = ref.watch(entitlementProvider).can(
+          AppCapability.aiScanAdvanced,
+        );
     final screenHeight = MediaQuery.of(context).size.height;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final maxSheetHeight = screenHeight * 0.88;
@@ -598,6 +625,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                                 NoteTemplateSelector(
                                   selectedTemplate: _selectedTemplate,
                                   customStyle: _customLabelStyle,
+                                  canUseCustomTemplate: canUseCustomTemplate,
                                   onTemplateChanged: (template) {
                                     setState(
                                         () => _selectedTemplate = template);

@@ -7,11 +7,48 @@ import 'scan_image_storage.dart';
 
 ScanImageStorage createScanImageStorage() => IoScanImageStorage();
 
+typedef ScanDocumentsDirectoryProvider = Future<Directory> Function();
+
 class IoScanImageStorage implements ScanImageStorage {
+  IoScanImageStorage({
+    ScanDocumentsDirectoryProvider? documentsDirectory,
+  }) : _documentsDirectory =
+            documentsDirectory ?? getApplicationDocumentsDirectory;
+
+  final ScanDocumentsDirectoryProvider _documentsDirectory;
+
+  @override
+  Future<void> delete(String localPath) async {
+    try {
+      final documentsDirectory = await _documentsDirectory();
+      final scanDirectory = Directory(
+        '${documentsDirectory.path}${Platform.pathSeparator}capy_scans',
+      );
+      final file = File(localPath);
+      if (_comparablePath(file.parent.absolute.path) !=
+          _comparablePath(scanDirectory.absolute.path)) {
+        throw ArgumentError.value(
+          localPath,
+          'localPath',
+          'must be a direct child of the managed scan directory',
+        );
+      }
+      if (await file.exists()) await file.delete();
+    } catch (error, stackTrace) {
+      Error.throwWithStackTrace(
+        ScanImageStorageException(
+          'Không thể dọn ảnh quét chưa được lưu.',
+          cause: error,
+        ),
+        stackTrace,
+      );
+    }
+  }
+
   @override
   Future<String> saveJpeg(Uint8List bytes) async {
     try {
-      final documentsDirectory = await getApplicationDocumentsDirectory();
+      final documentsDirectory = await _documentsDirectory();
       final scanDirectory = Directory(
         '${documentsDirectory.path}${Platform.pathSeparator}capy_scans',
       );
@@ -31,6 +68,10 @@ class IoScanImageStorage implements ScanImageStorage {
         stackTrace,
       );
     }
+  }
+
+  String _comparablePath(String path) {
+    return Platform.isWindows ? path.toLowerCase() : path;
   }
 
   @override
