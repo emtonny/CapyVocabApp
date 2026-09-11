@@ -866,7 +866,9 @@ trong asset này; chuyển mọi server secret sang Supabase Edge secrets.
 Edge runtime dùng:
 
 ```text
-GEMINI_API_KEY             required
+GEMINI_API_KEY             required (Vilao consumer API key)
+GEMINI_BASE_URL            optional; defaults to https://api.vilao.ai/v1
+GEMINI_MODEL               optional; defaults to gemini-3.8-flash
 SUPABASE_URL               required để bật health store
 SUPABASE_SERVICE_ROLE_KEY  required để bật health store
 ```

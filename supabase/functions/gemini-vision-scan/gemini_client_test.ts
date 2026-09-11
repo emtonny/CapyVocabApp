@@ -3,15 +3,22 @@ import test from "node:test";
 
 import {
   buildGenerationConfig,
+  buildOpenAiRequestBody,
+  DEFAULT_VILAO_BASE_URL,
+  DEFAULT_VILAO_MODEL,
   fetchGeminiModelChain,
   type GeminiHealthStore,
   type GeminiModelHealth,
+  isOpenAiCompatible,
   MODEL_CHAIN,
+  normalizeDetectedWordFields,
+  resolveEndpoint,
+  resolveGeminiGatewayConfig,
 } from "./gemini_client.ts";
 
 const silentLogger = {
-  warn() {},
-  error() {},
+  warn() { },
+  error() { },
 };
 
 function successfulResponse() {
@@ -429,3 +436,152 @@ test("health cache: successful request on previously unhealthy model invalidates
   assert.equal(nextRead[0].isHealthy, true);
 });
 
+test("isOpenAiCompatible correctly identifies OpenAI and Google endpoints", () => {
+  assert.equal(isOpenAiCompatible("https://api.vilao.ai/v1"), true);
+  assert.equal(isOpenAiCompatible("https://api.vilao.ai/v1/chat/completions"), true);
+  assert.equal(isOpenAiCompatible("https://api.openai.com/v1"), true);
+  assert.equal(isOpenAiCompatible("https://generativelanguage.googleapis.com/v1beta/models"), false);
+  assert.equal(isOpenAiCompatible(""), false);
+  assert.equal(isOpenAiCompatible(undefined), false);
+});
+
+test("gateway config defaults to Vilao when only the API key is configured", () => {
+  assert.deepEqual(resolveGeminiGatewayConfig(), {
+    baseUrl: DEFAULT_VILAO_BASE_URL,
+    model: DEFAULT_VILAO_MODEL,
+  });
+  assert.deepEqual(
+    resolveGeminiGatewayConfig(" https://gateway.example/v1/ ", " custom-model "),
+    {
+      baseUrl: "https://gateway.example/v1/",
+      model: "custom-model",
+    },
+  );
+});
+
+test("resolveEndpoint constructs valid Google vs OpenAI endpoints", () => {
+  const google = resolveEndpoint(
+    undefined,
+    "gemini-3.5-flash",
+    "google-key",
+  );
+  assert.match(google.url, /generativelanguage\.googleapis\.com/);
+  assert.match(google.url, /key=google-key/);
+  assert.equal(google.headers["Authorization"], undefined);
+
+  const vilao = resolveEndpoint(
+    "https://api.vilao.ai/v1",
+    "gemini-3.8-flash",
+    "vilao-key-123",
+  );
+  assert.equal(vilao.url, "https://api.vilao.ai/v1/chat/completions");
+  assert.equal(vilao.headers["Authorization"], "Bearer vilao-key-123");
+  assert.equal(vilao.headers["Content-Type"], "application/json");
+});
+
+test("buildOpenAiRequestBody builds valid multimodal chat completion body", () => {
+  const body = buildOpenAiRequestBody(
+    "gemini-3.8-flash",
+    "Identify objects",
+    "base64data",
+  );
+  assert.equal(body.model, "gemini-3.8-flash");
+  assert.equal(body.stream, false);
+  assert.equal(body.max_tokens, 8192);
+  assert.equal(body.messages[0].role, "user");
+  assert.deepEqual(body.messages[0].content, [
+    { type: "text", text: "Identify objects" },
+    {
+      type: "image_url",
+      image_url: { url: "data:image/jpeg;base64,base64data" },
+    },
+  ]);
+});
+
+test("fetchGeminiModelChain supports Vilao OpenAI gateway with gemini-3.8-flash", async () => {
+  let requestedUrl = "";
+  let authHeader = "";
+  let sentBody: unknown;
+
+  const result = await fetchGeminiModelChain({
+    apiKey: "vilao-secret-key",
+    scanId: "scan-vilao-1",
+    baseUrl: "https://api.vilao.ai/v1",
+    modelChain: ["gemini-3.8-flash"],
+    createRequestBody: (model) =>
+      buildOpenAiRequestBody(model, "prompt test", "img-b64"),
+    fetcher: (url, init) => {
+      requestedUrl = String(url);
+      authHeader = (init?.headers as Record<string, string>)?.["Authorization"];
+      sentBody = JSON.parse(init?.body as string);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: { content: '{"words":[{"number":1,"word":"cup"}]}' },
+                finish_reason: "stop",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    },
+    logger: silentLogger,
+  });
+
+  assert.equal(requestedUrl, "https://api.vilao.ai/v1/chat/completions");
+  assert.equal(authHeader, "Bearer vilao-secret-key");
+  assert.equal((sentBody as { model: string }).model, "gemini-3.8-flash");
+  assert.equal(result.model, "gemini-3.8-flash");
+  assert.equal(result.modelsTried, 1);
+});
+
+test("normalizeDetectedWordFields maps Vilao aliases to the app schema", () => {
+  assert.deepEqual(
+    normalizeDetectedWordFields({
+      number: 1,
+      name: "envelope",
+      ipa: "/ˈenvələʊp/",
+      vietnamese: "phong bì",
+      box: { x: 10, y: 20, w: 30, h: 40 },
+    }),
+    {
+      number: 1,
+      word: "envelope",
+      phonetic: "/ˈenvələʊp/",
+      meaning_vi: "phong bì",
+      box: { x: 10, y: 20, w: 30, h: 40 },
+    },
+  );
+
+  assert.deepEqual(
+    normalizeDetectedWordFields({
+      word: "letter",
+      phonetic: "/ˈletə/",
+      meaning_vi: "lá thư",
+      name: "ignored name",
+      ipa: "ignored ipa",
+      vietnamese: "ignored meaning",
+    }),
+    {
+      word: "letter",
+      phonetic: "/ˈletə/",
+      meaning_vi: "lá thư",
+    },
+  );
+
+  assert.deepEqual(
+    normalizeDetectedWordFields({
+      english: "mailbox",
+      phonetic: "/ˈmeɪlbɒks/",
+      meaning_vi: "hộp thư",
+    }),
+    {
+      word: "mailbox",
+      phonetic: "/ˈmeɪlbɒks/",
+      meaning_vi: "hộp thư",
+    },
+  );
+});

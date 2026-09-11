@@ -2,8 +2,12 @@ import "jsr:@supabase/functions-js@2.112.3/edge-runtime.d.ts";
 
 import {
   buildGenerationConfig,
+  buildOpenAiRequestBody,
   fetchGeminiModelChain,
   GeminiChainError,
+  isOpenAiCompatible,
+  normalizeDetectedWordFields,
+  resolveGeminiGatewayConfig,
 } from "./gemini_client.ts";
 import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
 import {
@@ -15,6 +19,11 @@ import {
 } from "./bounding_box.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const { baseUrl: GEMINI_BASE_URL, model: GEMINI_MODEL } =
+  resolveGeminiGatewayConfig(
+    Deno.env.get("GEMINI_BASE_URL"),
+    Deno.env.get("GEMINI_MODEL"),
+  );
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const GEMINI_HEALTH_STORE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
@@ -136,6 +145,17 @@ function deduplicateWords(words: unknown[]): unknown[] {
   });
 }
 
+function cleanJsonText(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("```")) {
+    return trimmed
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+  }
+  return trimmed;
+}
+
 function shrinkDetectedWordBox(word: unknown): unknown {
   if (!word || typeof word !== "object") return word;
   const box = normalizeBoundingBox(word);
@@ -204,20 +224,33 @@ Deno.serve(async (req) => {
       );
     }
 
+    const isOpenAi = isOpenAiCompatible(GEMINI_BASE_URL);
+    const modelChain = [GEMINI_MODEL];
+
     const geminiResult = await fetchGeminiModelChain({
       apiKey: GEMINI_API_KEY,
       scanId,
-      createRequestBody: (model) => ({
-        contents: [
-          {
-            parts: [
-              { text: PROMPT },
-              { inline_data: { mime_type: "image/jpeg", data: image_base64 } },
+      baseUrl: GEMINI_BASE_URL,
+      modelChain,
+      createRequestBody: (model) =>
+        isOpenAi
+          ? buildOpenAiRequestBody(model, PROMPT, image_base64)
+          : {
+            contents: [
+              {
+                parts: [
+                  { text: PROMPT },
+                  {
+                    inline_data: {
+                      mime_type: "image/jpeg",
+                      data: image_base64,
+                    },
+                  },
+                ],
+              },
             ],
+            generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
           },
-        ],
-        generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
-      }),
       healthStore: GEMINI_HEALTH_STORE,
     });
     const { response: geminiRes, model, modelsTried, attemptsForModel } =
@@ -295,9 +328,15 @@ Deno.serve(async (req) => {
     }
 
     const geminiData = await geminiRes.json();
-    const finishReason = geminiData?.candidates?.[0]?.finishReason;
-    const usage = geminiData?.usageMetadata;
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const finishReason =
+      geminiData?.choices?.[0]?.finish_reason ??
+      geminiData?.candidates?.[0]?.finishReason;
+    const usage =
+      geminiData?.usage ??
+      geminiData?.usageMetadata;
+    const rawText =
+      geminiData?.choices?.[0]?.message?.content ??
+      geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) {
       console.error(
@@ -320,7 +359,7 @@ Deno.serve(async (req) => {
 
     let parsed;
     try {
-      parsed = JSON.parse(rawText);
+      parsed = JSON.parse(cleanJsonText(rawText));
     } catch {
       console.error(
         "JSON parse failed, finishReason:",
@@ -346,7 +385,8 @@ Deno.serve(async (req) => {
     if (Array.isArray(parsed.words)) {
       // Rank using Gemini's full boxes, then shrink exactly once before the
       // response reaches Flutter or local persistence.
-      parsed.words = deduplicateWords(rankWordsByBoxArea(parsed.words)).slice(
+      const normalizedWords = parsed.words.map(normalizeDetectedWordFields);
+      parsed.words = deduplicateWords(rankWordsByBoxArea(normalizedWords)).slice(
         0,
         MAX_WORDS,
       ).map((word: unknown, index: number) => {

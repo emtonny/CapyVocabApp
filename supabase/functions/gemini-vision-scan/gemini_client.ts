@@ -5,6 +5,19 @@ export const MODEL_CHAIN = [
   "gemini-3.6-flash",
 ] as const;
 
+export const DEFAULT_VILAO_BASE_URL = "https://api.vilao.ai/v1";
+export const DEFAULT_VILAO_MODEL = "gemini-3.8-flash";
+
+export function resolveGeminiGatewayConfig(
+  baseUrl?: string,
+  model?: string,
+): { baseUrl: string; model: string } {
+  return {
+    baseUrl: baseUrl?.trim() || DEFAULT_VILAO_BASE_URL,
+    model: model?.trim() || DEFAULT_VILAO_MODEL,
+  };
+}
+
 const GEMINI_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
 const GEMINI_503_RETRY_DELAY_MS = 750;
@@ -65,7 +78,7 @@ export interface GeminiHealthStore {
   recordSystemFailure(modelName: string): Promise<void>;
 }
 
-interface GeminiChainOptions {
+export interface GeminiChainOptions {
   apiKey: string;
   scanId: string;
   createRequestBody: (model: string) => unknown;
@@ -74,14 +87,17 @@ interface GeminiChainOptions {
   attemptTimeoutMs?: number;
   logger?: Logger;
   healthStore?: GeminiHealthStore;
+  baseUrl?: string;
+  modelChain?: readonly string[];
 }
 
-interface GeminiAttemptOptions {
+export interface GeminiAttemptOptions {
   apiKey: string;
   model: string;
   requestBody: unknown;
   fetcher: Fetcher;
   timeoutMs: number;
+  baseUrl?: string;
 }
 
 interface GeminiAttemptResult {
@@ -101,6 +117,72 @@ class GeminiAttemptError extends Error {
     this.name = "GeminiAttemptError";
     this.kind = kind;
   }
+}
+
+export function isOpenAiCompatible(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  const trimmed = baseUrl.trim().toLowerCase();
+  return (
+    trimmed.length > 0 &&
+    !trimmed.includes("generativelanguage.googleapis.com")
+  );
+}
+
+export function resolveEndpoint(
+  baseUrl: string | undefined,
+  model: string,
+  apiKey: string,
+): { url: string; headers: Record<string, string> } {
+  if (isOpenAiCompatible(baseUrl)) {
+    const cleanUrl = baseUrl!.trim().replace(/\/+$/, "");
+    const url = cleanUrl.endsWith("/chat/completions")
+      ? cleanUrl
+      : `${cleanUrl}/chat/completions`;
+    return {
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+    };
+  }
+
+  const base = baseUrl && baseUrl.trim().length > 0
+    ? baseUrl.trim().replace(/\/+$/, "")
+    : GEMINI_API_BASE_URL;
+  return {
+    url: `${base}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  };
+}
+
+export function buildOpenAiRequestBody(
+  model: string,
+  prompt: string,
+  imageBase64: string,
+) {
+  return {
+    model,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:image/jpeg;base64,${imageBase64}`,
+            },
+          },
+        ],
+      },
+    ],
+    stream: false,
+    max_tokens: 8192,
+    temperature: 0.2,
+  };
 }
 
 export function buildGenerationConfig(model: string, responseSchema: unknown) {
@@ -135,12 +217,14 @@ export async function fetchGemini(
   }, options.timeoutMs);
 
   try {
-    const endpoint = `${GEMINI_API_BASE_URL}/${
-      encodeURIComponent(options.model)
-    }:generateContent?key=${encodeURIComponent(options.apiKey)}`;
-    const response = await options.fetcher(endpoint, {
+    const { url, headers } = resolveEndpoint(
+      options.baseUrl,
+      options.model,
+      options.apiKey,
+    );
+    const response = await options.fetcher(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       signal: controller.signal,
       body: JSON.stringify(options.requestBody),
     });
@@ -156,8 +240,11 @@ async function loadOrderedModelChain(
   healthStore: GeminiHealthStore | undefined,
   logger: Logger,
   scanId: string,
+  modelChain?: readonly string[],
 ): Promise<string[]> {
-  const defaultChain = [...MODEL_CHAIN];
+  const defaultChain = modelChain && modelChain.length > 0
+    ? [...modelChain]
+    : [...MODEL_CHAIN];
   if (!healthStore) return defaultChain;
 
   try {
@@ -218,6 +305,7 @@ export async function fetchGeminiModelChain(
     options.healthStore,
     logger,
     options.scanId,
+    options.modelChain,
   );
 
   for (
@@ -237,6 +325,7 @@ export async function fetchGeminiModelChain(
           requestBody: options.createRequestBody(model),
           fetcher,
           timeoutMs,
+          baseUrl: options.baseUrl,
         });
 
         if (response.ok) {
@@ -323,3 +412,33 @@ export async function fetchGeminiModelChain(
     lastAttemptError,
   );
 }
+
+export function normalizeDetectedWordFields(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+
+  const record = { ...(raw as Record<string, unknown>) };
+
+  const word = record.word ?? record.name ?? record.english;
+  const phonetic = record.phonetic ?? record.ipa;
+  const meaningVi = record.meaning_vi ?? record.vietnamese;
+
+  delete record.name;
+  delete record.english;
+  delete record.ipa;
+  delete record.vietnamese;
+
+  if (word !== undefined) {
+    record.word = word;
+  }
+  if (phonetic !== undefined) {
+    record.phonetic = phonetic;
+  }
+  if (meaningVi !== undefined) {
+    record.meaning_vi = meaningVi;
+  }
+
+  return record;
+}
+

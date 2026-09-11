@@ -42,6 +42,7 @@ GoogleService-Info.plist
 .pub/
 build/
 ephemeral/
+**/failures/
 
 # Node.js dependencies (Supabase CLI)
 node_modules/
