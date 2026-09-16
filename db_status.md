@@ -2,7 +2,33 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-11 — đồng bộ UI GitHub `cbd7318`, giữ nguyên contract offline/Production**  
+> Cập nhật gần nhất: **2026-09-16 — Onboarding language preferences; LOCAL VERIFIED / MIGRATION PENDING**
+>
+> Increment hiện tại chèn bước ngôn ngữ ở vị trí 2/6 của onboarding, lưu
+> `interface_locale` và `learning_locale` vào `user_settings` qua RPC
+> `complete_onboarding`. Migration nguồn đã được tạo nhưng **chưa apply lên
+> Supabase**, chưa deploy và chưa ghi dữ liệu cloud. Targeted onboarding tests
+> đạt 26/26 và analyzer riêng cho onboarding sạch. Full-project analyzer đang
+> bị chặn bởi các file tách Library chưa hoàn chỉnh có sẵn trong working tree.
+>
+> Snapshot trước đó (2026-09-15):
+> Increment hiện tại bổ sung sub-tab Album, bố cục Library đồng bộ nền/style, tạo/yêu thích/xóa
+> đơn và hàng loạt, xem chi tiết, thêm/gỡ Photo Note bằng contract `AlbumRepository` hiện có. Không đổi
+> schema, migration, media lifecycle, consent, sync flag hoặc dữ liệu cloud.
+> Analyzer sạch; full Flutter suite 410 pass + 1 opt-in live skip. Targeted
+> 20/20 widget test Thư viện và 22/22 SQLite pass, gồm viewport 360px;
+> APK debug đã cài và kiểm tra trực tiếp trên BlueStacks.
+>
+> Snapshot đồng bộ backend trước đó (2026-09-12):
+> Increment hiện tại đã kéo toàn bộ code GitHub, giữ Vilao làm gateway mặc định,
+> giữ auth/entitlement/ledger/circuit breaker và contract SQLite/Library mới.
+> Flutter 390 pass + 1 live skip; Edge 82 pass; analyzer, Web và APK debug pass.
+> Read-only history trên project client khớp 21/21 migration. Không apply
+> migration, deploy, đổi secret/consent hay ghi dữ liệu cloud trong increment.
+> Các bằng chứng Staging/Production phía dưới là lịch sử nhập từ GitHub,
+> không phải kết quả chạy lại của bản ghép Vilao. Xem `docs/github-vilao-sync.md`.
+>
+> Snapshot trước đồng bộ (2026-09-11):
 > Trạng thái tổng thể: **Nhánh `AI-scan` đã fast-forward đủ 6 commit giao diện/auth mới tới `cbd7318`. UI neo-brutalist, graph-paper, soft page transition và password recovery đã được hòa trộn với router onboarding synchronous, Library detail/trash, entitlement và Cloud Backup local hiện có; analyzer sạch và nhóm test liên quan đạt 73/73. Các file Edge Function đang chạy theo quota/circuit-breaker/ledger local được giữ nguyên trong working tree; thay đổi Vilao gateway từ commit mới chưa được đưa vào runtime/deploy và cần một increment backend riêng. Production M3A/M4.5 vẫn giữ nguyên, bucket private, default `LIBRARY_SYNC_ENABLED=false`; không có migration, cloud write hay deploy trong lần đồng bộ UI này.**
 
 ## Quy tắc bắt buộc cho các phiên sau
@@ -22,16 +48,57 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 
 ## Trạng thái hiện tại
 
+> Increment 2026-09-15 status: **IMPLEMENTED/ANDROID EMULATOR + WIDGET VERIFIED**
+> — selected Photo Notes open in selection order on a dedicated vocabulary
+> screen; each image independently expands/collapses its vocabulary. Creating
+> an Album from selected Photo Notes now commits the Album and all initial
+> memberships in one SQLite transaction. No schema, migration, media lifecycle,
+> consent, cloud data, or sync contract changed in this increment.
+>
+> Follow-up 2026-09-15 status: **IMPLEMENTED/ANDROID 9 VERIFIED** — replaced
+> SQLite UPSERT syntax that is unavailable on the Android 9 SQLite runtime with
+> transaction-scoped insert/update logic. Album creation and adding Photo Notes
+> now work on the device; the Album screen exposes the reference “Chọn Album”
+> action in the header.
+>
+> UX follow-up 2026-09-15 status: **IMPLEMENTED/ANDROID 9 COLD-RESTART
+> VERIFIED** — choosing an existing Album from the selected-photo sheet now
+> commits the memberships immediately and opens that Album. Switching tabs can
+> no longer discard an uncommitted intermediate selection.
+>
+> UX layout follow-up 2026-09-15 status: **IMPLEMENTED/WIDGET + ANALYZER VERIFIED** —
+> chuyển `_AlbumSelectionButton` ("Chọn Album") từ `_LibraryHeader` xuống thanh toolbar
+> `_AlbumToolbar` ngay cạnh `_CreateAlbumButton` ("+ Tạo Album"). Đồng bộ kích cỡ
+> compact giống 2 button bên tab "Ảnh" (borderRadius 12, padding 8x5, fontSize 12,
+> border 2, shadow 0x3), bảo đảm hiển thị vừa vặn và không tràn dòng trên màn hình 360px.
+> Không đổi schema, migration, SQLite hay sync contract.
+>
+> Multi-Album vocabulary follow-up 2026-09-15 status:
+> **IMPLEMENTED/ANDROID + WIDGET VERIFIED** — chế độ chọn Album có thêm CTA
+> “Xem từ vựng”; ảnh của các Album được đọc từ repository local, gom theo thứ
+> tự Album đang hiển thị và loại trùng theo `PhotoNote.id` trước khi mở màn từ
+> vựng hiện có. Album rỗng/lỗi đọc dữ liệu báo ở phía trên và giữ nguyên lựa
+> chọn để thử lại. Không đổi schema, migration, membership, media lifecycle,
+> sync hay cloud contract.
+>
+> UI & Sticker styling follow-up 2026-09-16 status:
+> **IMPLEMENTED/WIDGET + ANALYZER VERIFIED** — đồng bộ kích thước chuẩn
+> `Size(120, 48)` cho các nút action trong chi tiết Album ("← Tất cả Album" và
+> "+ Thêm ảnh") theo `_libraryToolbarButtonSize`. Thiết kế lại bottom sheet
+> "Thêm ảnh vào Album" sang phong cách NeoBrutal EdTech với container nền kem,
+> viền đen, hard shadow, drag handle dày, và các thẻ `_NeoActionCard` có hiệu ứng
+> nhấn vật lý. Không đổi schema, migration, SQLite hay sync contract.
+
 | Thành phần | Trạng thái | Sự thật hiện tại |
 | --- | --- | --- |
 | SQLite schema v3 | IMPLEMENTED | 22 bảng; thêm owner-scoped `library_pull_cursors`; native dùng `sqflite`, test/desktop dùng FFI, Web adapter dùng SQLite WASM/IndexedDB |
 | Ảnh scan native | IMPLEMENTED/ANDROID VERIFIED | JPEG nén lưu app-private `capy_scans/`. Sau clean-install/rehydrate, explicit cloud restore đã tạo đúng 1 JPEG 116,892 byte; 4 cloud note còn lại vẫn metadata-only theo yêu cầu không tự tải |
 | Scan JSON local | IMPLEMENTED/ANDROID VERIFIED | Lượt ảnh thật mới nhất có legacy `scan_results` và normalized `scan_runs` status `succeeded`, model `gemini-3.5-flash-lite`, tier `free` |
 | Normalized Library aggregate | IMPLEMENTED/ANDROID REHYDRATE VERIFIED | Clean-install CPH2375 đã nhận 5 backed-up Photo Note cùng raw JSON/vocabulary vào SQLite v3 sau login + Cloud Backup ON; 2/7 bài local trước sự cố không có cloud copy để phục hồi |
-| Atomic DB commit | IMPLEMENTED | Legacy row, queue link, aggregate và outbox dùng cùng một SQLite transaction |
+| Atomic DB commit | IMPLEMENTED | Legacy row, queue link, aggregate và outbox dùng cùng một SQLite transaction; Album tạo từ Photo Note đã chọn và toàn bộ membership ban đầu cũng commit/rollback cùng transaction |
 | Offline repository read | IMPLEMENTED/LOCAL VERIFIED | Repository và owner-scoped stream đọc lại PhotoNote aggregate sau khi đóng/mở SQLite; integration test đồng thời đọc đúng app-private media mà không gọi mạng |
 | Offline app startup | IMPLEMENTED/ANDROID VERIFIED | Cache onboarding owner-scoped hydrate trước `runApp`; router redirect synchronous. APK mới cold-start data/Wi-Fi OFF vào Home 6,963 ms, mở Library/detail qua mốc retry >30 giây với 0 profile/RPC request, `Failed host lookup` hoặc stack trace; Android network gate + exponential backoff không chặn UI |
-| Storage/Library UI | IMPLEMENTED/ANDROID VERIFIED | Summary đếm media owner-scoped còn được active/Trash giữ lại, stat file app-private thật và cộng `File.length()` thay vì remote `byte_size_display`. CPH2375 render đúng 5 bài, 1/5 ảnh trên máy/114.2 KB, 4 trên cloud; card/detail phân biệt local, cloud-only và missing. Cloud-only chỉ tải sau explicit CTA |
+| Storage/Library UI | IMPLEMENTED/ALBUM WIDGET + ANDROID LIBRARY VERIFIED | Sub-tab Album dùng repository local hiện có; Library dùng graph-paper chung, header gọn không lặp points/notification/settings, lưới Album tự cân theo chiều rộng, tạo/yêu thích/xóa đơn hoặc hàng loạt có xác nhận, xem chi tiết, thêm/gỡ Photo Note và responsive 360px pass widget test. Summary đếm media owner-scoped còn được active/Trash giữ lại, stat file app-private thật và cộng `File.length()` thay vì remote `byte_size_display`. CPH2375 render đúng 5 bài, 1/5 ảnh trên máy/114.2 KB, 4 trên cloud; card/detail phân biệt local, cloud-only và missing. BlueStacks xác nhận caro chỉ thuộc body, vùng CTA/navigation dùng nền kem phẳng và card cuối nằm trọn trước CTA/navigation; cloud-only chỉ tải sau explicit CTA |
 | Photo Note Trash + dung lượng | IMPLEMENTED/STAGING + ANDROID E2E VERIFIED | Library có dung lượng media theo account, Trash 30 ngày, Restore và explicit permanent delete. Android fixture pass full Restore/retrash/permanent-delete, đúng một local file bị xóa và restart bền; Staging row cùng fixture không còn |
 | Media recovery | IMPLEMENTED/ANDROID VERIFIED | M4.2 compensation/audit và M4.3A recovery đã pass CPH2375. `capy_quarantine/` chỉ nhận orphan sau explicit confirm; retention 30 ngày, Restore/Xóa ngay, re-audit chống stale action và path confinement. Fixture UI pass full round-trip/delete; orphan lịch sử giữ nguyên |
 | Gemini Edge scan | IMPLEMENTED/STAGING + ANDROID LIVE VERIFIED | `gemini-vision-scan` v1 ACTIVE trên linked Staging, Gemini secret tồn tại, unauthenticated request trả `401`; authenticated fixture smoke và ảnh thật từ Android đều gọi `gemini-3.5-flash-lite` thành công. Lượt device mới nhất render 5 detection |
@@ -1017,6 +1084,304 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-16 — Onboarding interface and learning languages
+
+- Chèn bước chọn ngôn ngữ ở bước 2/6, ngay sau danh tính và trước dữ liệu
+  tuổi/SĐT; mặc định `vi-VN` cho giao diện và `en-US` cho ngôn ngữ muốn học.
+- Bổ sung danh mục 196 quốc gia/vùng với cờ, tên quốc gia và ngôn ngữ chính;
+  picker hỗ trợ tìm kiếm không dấu, thanh cuộn hiển thị rõ và dựng danh sách
+  lazy bằng `ListView.builder`.
+- Bổ sung hai cột bắt buộc `interface_locale`, `learning_locale` cùng validation
+  vào migration `20260916120000_add_onboarding_language_preferences.sql`, đồng
+  thời mở rộng RPC onboarding từ 8 lên 10 tham số. Migration mới chỉ ở source:
+  **PENDING**, chưa apply/deploy lên Supabase và chưa ghi dữ liệu cloud.
+- Verification: `flutter test --no-pub test/features/onboarding` — 26/26 pass,
+  gồm tìm kiếm không dấu, chọn locale, lưu RPC và viewport 320px/text scale
+  1.3; `flutter analyze --no-pub lib/features/onboarding
+  test/features/onboarding` — sạch; `git diff --check` — không có whitespace
+  error. `flutter analyze --no-pub` toàn dự án chưa pass vì các file Library
+  đang tách dở (`storage_album_albums.dart`, `storage_album_trash.dart` và
+  `SelectedPhotoVocabularyScreen`) tạo lỗi ngoài phạm vi increment. Supabase
+  CLI không có trong môi trường nên migration chưa được chạy local.
+
+### 2026-09-15 — View vocabulary from multiple selected Albums
+
+- Added the green “Xem từ vựng (n Album)” action beside bulk Album deletion.
+  It reads each selected Album through the existing owner-scoped local
+  `PhotoNoteQuery`, preserves visible Album order and per-Album photo order,
+  then removes duplicate Photo Notes by ID before opening the existing
+  expandable vocabulary screen.
+- Empty Albums and repository failures now use the shared top notification and
+  keep selection mode active for retry. The two bottom actions remain above
+  navigation and fit a 360px viewport.
+- Verification: Library widget tests 20/20 and SQLite tests 22/22 passed;
+  `flutter analyze --no-pub` is clean; full suite passed 410 tests with 1
+  existing opt-in live skip; debug APK built and installed. Android 9
+  (SM-S908E emulator) smoke selected all 5 existing Albums and opened 4 unique
+  Photo Notes; tapping the first image revealed “Từ vựng nhận diện”. No Album
+  or Photo Note was mutated.
+  The mobile audit script could not run because this machine only exposes the
+  Windows Store Python alias and has no Python runtime.
+
+### 2026-09-15 — Commit selected photos when an existing Album is chosen
+
+- Reproduced the reported empty-Album path on Android 9: choosing an existing
+  Album only entered a second assignment state. Opening the Album tab cleared
+  that state before `addPhotoNotes` ran, so the Album remained empty.
+- Choosing an existing Album now immediately calls the same owner-scoped
+  `addPhotoNotes` persistence path, shows the top success notification, and
+  opens the Album detail. The separate flow started from an Album's “Thêm ảnh”
+  action still keeps its explicit confirmation step.
+- Added a widget regression that failed with an empty repository membership
+  before the fix, plus a SQLite assertion that an Album-filtered Photo Note
+  query returns the persisted member.
+- Verification: targeted Library/SQLite tests 39/39, full Flutter suite 407
+  pass + 1 existing skip, `flutter analyze --no-pub` clean, and debug APK build
+  succeeded. Android 9 device smoke changed Album `a` from 0 to 1 photo and
+  retained the photo after cold restart. Standalone empty-Album creation also
+  succeeded; creating a new Album with one selected photo survived restart.
+  Temporary Albums `FlowCheck` and `EmptyCheck` were deleted afterward.
+
+### 2026-09-15 — Android SQLite compatibility for Album persistence
+
+- The shared local upsert helper no longer emits `INSERT ... ON CONFLICT ... DO
+  UPDATE`, which fails with `near "ON": syntax error` on Android 9's SQLite
+  runtime. It now checks the conflict key, inserts with an abort policy when
+  absent, or updates the existing row inside the caller's transaction.
+- Album creation and Photo Note membership assignment therefore use the same
+  owner-scoped local persistence path on old Android SQLite versions; no schema,
+  migration, media lifecycle, consent, cloud, or sync contract changed.
+- The Album list now places “Chọn Album” in the header and keeps the existing
+  selection-mode action bar for select-all, cancel, and bulk delete.
+- Verification: SQLite store 22/22, Library widget 17/17, `flutter analyze
+  --no-pub` clean, and debug APK smoke-tested on Android 9 for create Album,
+  open detail, add Photo Note, and success top notification. Mobile audit script
+  remains unavailable because Python is not installed.
+
+### 2026-09-15 — Atomic Album creation from selected Photo Notes
+
+- Added `AlbumRepository.createAlbumWithPhotoNotes`, implemented by
+  `SqliteLibraryStore` as one SQLite transaction. A failure while validating,
+  saving the Album, creating memberships, or enqueueing sync rolls back every
+  row from the operation.
+- The selected-photo Album flow now uses the atomic operation; normal creation
+  without selected Photo Notes keeps the existing `saveAlbum` path.
+- Added regression coverage for a missing initial Photo Note (the Album is not
+  persisted) and a widget-level failure flow (no Album is shown as created and
+  photo selection remains available for retry).
+- Verification: `flutter analyze --no-pub` — clean; targeted SQLite 22/22 and
+  Library widget 17/17 passed; full `flutter test --no-pub --reporter compact`
+  — 405 passed + 1 opt-in live skip; debug APK built, installed, and manually
+  verified on Android emulator for Library selection, vocabulary accordion, and
+  the Album picker. `git diff --check` passed. Mobile audit script remains
+  unavailable because Python is not installed in the environment.
+
+### 2026-09-15 — Selected vocabulary screen and create Album from selection
+
+- Photo selection now preserves insertion order, so the new vocabulary screen
+  renders selected images from top to bottom in the same order the user tapped.
+- Added `/storage/vocabulary`: it initially shows only the selected images;
+  tapping an image toggles that Photo Note's vocabulary list independently.
+- Added a `Tạo Album mới` option to the photo action Album picker. The existing
+  Album assignment flow remains intact; a new Album created from the picker is
+  automatically populated with the selected Photo Notes.
+- Verification: `flutter test --no-pub
+  test/features/library/presentation/storage_album_screen_test.dart` — 16/16
+  passed. No schema, migration, media lifecycle, consent, cloud data, or sync
+  contract changed.
+
+### 2026-09-15 — Removed graph-paper layer behind bottom navigation
+
+- Xác nhận root cause tại `GraphPaperScaffold`: `GraphPaperBackground` bọc ngoài
+  toàn bộ `Scaffold`, nên painter tiếp tục vẽ caro trong vùng dành cho CTA và
+  bottom navigation.
+- Chuyển đúng một `GraphPaperBackground` vào `body`, trả nền kem phẳng cho
+  `Scaffold` và mặc định `extendBody=false`. Không đổi CTA, SafeArea, kích thước
+  hoặc vị trí navigation và không dùng padding bù chiều cao.
+- Regression test xác nhận navigation không còn là descendant của lớp caro và
+  painter chỉ cao bằng body. Targeted nền + Library 21/21 pass; analyzer sạch;
+  full suite 401 pass + 1 opt-in live skip; APK debug build/install pass.
+- BlueStacks xác nhận dải caro phía sau CTA/navigation đã biến mất và card cuối
+  vẫn hiển thị trọn trước CTA.
+
+### 2026-09-15 — Bottom navigation floating overlay via Stack on unified GraphPaperBackground
+
+- Bỏ hoàn toàn `bottomNavigationBar:` khỏi `Scaffold` trong `GraphPaperScaffold`; chuyển sang dùng `Stack` với `Positioned.fill` cho `Scaffold` (body chạy liên tục xuống sát đáy màn hình) và `Positioned(bottom: 0)` cho thanh điều hướng/CTA nổi trực tiếp.
+- Loại bỏ hoàn toàn mọi ranh giới, divider, container hoặc lớp riêng do layout của `Scaffold.bottomNavigationBar` tạo ra; nền caro và content phủ toàn bộ màn hình một cách liền mạch.
+- Bổ sung bottom padding động cho các scrollable views (HomeScreen, StorageAlbumScreen) tương ứng chính xác với chiều cao của overlay (108–188dp) để các card cuối cùng cuộn hiển thị trọn vẹn và không bao giờ bị che.
+- Chuyển `_AlbumSelectionAction` vào `_buildBottomNavigation` để nổi đồng bộ cùng `BottomNavBar`, dọn sạch các container/border dư thừa.
+- Giữ nguyên border bo tròn `3.2px`, góc bo `14px` và drop shadow của thanh 5 icon.
+- Xác minh: `flutter analyze` sạch; 7/7 `graph_paper_background_test.dart` pass; 4/4 `bottom_nav_bar_test.dart` pass; 14/14 `storage_album_screen_test.dart` pass.
+
+### 2026-09-15 — Shared graph-paper standardized and Album device verified
+
+- Mở rộng `GraphPaperScaffold` để nhận `AppBar`, rồi chuyển các màn hình thường
+  còn dùng `Scaffold` mặc định sang owner nền caro dùng chung. Auth/reset-password
+  đã có đúng một `GraphPaperBackground`; camera capture giữ nền đen có chủ đích.
+- Audit widget tree xác nhận `_PhotoSelectionAction` chỉ là `Row` cùng hai
+  `Padding` trong suốt; không tồn tại `Container`, `ColoredBox` hoặc decoration
+  màu đỏ bao quanh CTA. Vùng đỏ/crosshair trong ảnh là Android Developer Options
+  `Pointer location`, không phải Flutter; đã tắt `pointer_location=0` và
+  `show_touches=0` trên BlueStacks.
+- Cài đè APK debug mới và kiểm tra trực tiếp: nền caro liên tục qua vùng CTA,
+  không còn lớp đỏ/debug overlay; scroll cuối cho thấy toàn bộ card cuối nằm trước
+  CTA, CTA nằm trước navigation. Không đổi luồng Album/repository/storage/sync.
+- Xác minh: `flutter analyze` sạch; targeted nền + Library 21/21 pass; full Flutter
+  suite 401 pass + 1 opt-in live skip; APK debug build/install pass.
+
+### 2026-09-15 — Dynamic bottom action layout without height compensation
+
+- Xác nhận root cause: CTA đã nằm trong `bottomNavigationBar`, nhưng
+  `GraphPaperScaffold` vẫn bật `extendBody`, khiến body tiếp tục nằm sau toàn bộ
+  CTA/navigation. Tắt `extendBody` riêng cho Library để Scaffold tự trừ chiều cao
+  thực của CTA, spacing, navigation và SafeArea khỏi body.
+- Xóa hoàn toàn `_photoGridBottomPadding` và các số bù 100/72/76dp. Grid chỉ còn
+  16dp content spacing thông thường; chiều cao action bar không còn được suy đoán.
+- Đưa một `GraphPaperBackground` duy nhất ra ngoài `Scaffold` và để Scaffold trong
+  suốt, giữ nền graph-paper liên tục mà không thêm surface dưới CTA.
+- Regression test scroll xuống cuối ở viewport 360px, xác nhận card cuối nằm hoàn
+  toàn trước CTA và CTA nằm trước `bottom-nav-shell`. Targeted Library 14/14 pass;
+  targeted shared graph-paper 6/6 pass. Full analyzer sạch, full Flutter suite
+  400 pass + 1 opt-in live skip; `git diff --check` pass.
+
+### 2026-09-15 — Photo action bar reserved above bottom navigation
+
+- Đưa `_PhotoSelectionAction` và `_AlbumAssignmentAction` ra khỏi `body`, đặt
+  trong slot `bottomNavigationBar` trước `BottomNavBar`, nên thanh action cố định
+  đúng tầng và không còn bị nội dung/navigation vẽ đè.
+- Bổ sung bottom padding theo trạng thái: 100dp cho navigation, cộng 72dp cho
+  photo action hoặc 76dp cho assignment action. Nền action vẫn trong suốt và
+  kế thừa nền graph-paper duy nhất.
+- Thêm regression check xác nhận CTA nằm trên `bottom-nav-shell` và GridView
+  chừa 172dp khi chọn ảnh. Targeted Library widget test 13/13 pass.
+
+### 2026-09-15 — Photo CTAs use only the shared Library background
+
+- Tách khoảng đệm của thanh chọn ảnh thành hai `Padding` độc lập, mỗi cái chỉ
+  chứa một CTA. Không còn widget bao quanh cả hai nút có thể tạo nền/surface riêng.
+- Phần trống giữa, trên và dưới hai CTA giờ kế thừa trực tiếp nền graph-paper
+  duy nhất của `GraphPaperScaffold`; luồng xem từ vựng và thêm vào Album không đổi.
+- Xác minh: `dart format`, analyzer màn hình/test Library sạch và targeted widget
+  test Library 13/13 pass.
+
+### 2026-09-15 — Photo selection action wrapper made transparent
+
+- Bỏ nền `softWhite` và đường viền trên của vùng bao thanh hành động chọn ảnh;
+  chỉ còn hai box CTA xanh/cam, không còn khối lớn che nội dung hoặc thanh điều hướng bên dưới.
+- Giữ nguyên luồng chọn ảnh, xem từ vựng và chọn Album. Hai CTA vẫn cao 56dp,
+  cách nhau 8dp và có khoảng đệm trong suốt theo nền Library dùng chung.
+- Xác minh: `dart format`, `flutter analyze --no-pub` cho màn hình/test Library
+  (không lỗi) và `flutter test --no-pub test/features/library/presentation/storage_album_screen_test.dart`
+  (13/13 pass).
+
+### 2026-09-14 — Photo selection action bar for vocabulary and Album
+
+- Chạm Photo Note ở tab Ảnh giờ chuyển card sang trạng thái chọn và hiện thanh đáy
+  gồm `Xem từ vựng (N)` và `Thêm vào Album`, theo bố cục ảnh tham chiếu.
+- Nút xem từ vựng chỉ bật khi chọn đúng một ảnh; nút Album mở picker Album rồi nối
+  vào luồng gán Photo Note hiện có. Xóa từng ảnh bằng menu thùng rác vẫn giữ nguyên.
+- `flutter analyze --no-pub lib/features/library/presentation/screens/storage_album_screen.dart test/features/library/presentation/storage_album_screen_test.dart` sạch;
+  targeted widget test Library 13/13 pass, gồm chọn ảnh, xem từ vựng và gán Album.
+- Full `flutter analyze --no-pub` sạch; full `flutter test --no-pub`: 398 pass +
+  1 opt-in live skip; `git diff --check` pass.
+
+### 2026-09-14 — Photo card compacted to image + vocabulary count + trash
+
+- Bỏ title, chip từ vựng và các text ẩn chỉ phục vụ matcher khỏi `_PhotoNoteCard`;
+  giữ nhãn ngữ nghĩa để mở bài và giữ nguyên dữ liệu trong trang chi tiết.
+- Giữ hàng `🏷️ X từ` và menu thùng rác với vùng chạm 48dp. Chiều cao ô lưới của tab
+  Ảnh và Album Detail hiện tính từ chiều rộng ảnh vuông + footer 48dp + gap 4dp,
+  nên card không còn khoảng trống đáy.
+- Đã sửa overflow của item menu "Đưa vào thùng rác" ở không gian hẹp bằng text
+  linh hoạt; không đổi repository, schema, media lifecycle, sync hoặc consent.
+- `flutter analyze --no-pub lib/features/library/presentation/screens/storage_album_screen.dart test/features/library/presentation/storage_album_screen_test.dart` sạch;
+  targeted widget test Library 12/12 pass, gồm regression viewport 360px, text/tags
+  không hiện và height card khít ảnh + footer. Device verification vẫn `PENDING`.
+- Full `flutter analyze --no-pub` sạch; full `flutter test --no-pub`: 397 pass +
+  1 opt-in live skip; `flutter build web --no-pub` pass; `git diff --check` pass.
+  WASM dry-run vẫn cảnh báo từ dependency `flutter_tts` hiện có.
+
+### 2026-09-14 — Photo tab: Select-all button, square auto-fit images, SD card icon removed, and tight fit card
+
+- Bổ sung nút 3D "Chọn tất cả" (`_NeoSelectAllButton`) cạnh nút "Lọc ngày" trong sub-header của tab Ảnh, hỗ trợ chọn/bỏ chọn tất cả và xóa hàng loạt vào thùng rác.
+- Bỏ triệt để icon thẻ nhớ (`Icons.sd_storage_outlined`) từng bị vẽ đè lên chữ "Tất cả ảnh" bằng cách bọc `_LibraryStorageSummaryCard` trong `ClipRect` kích thước 0x0; toàn bộ test matcher cho `library-storage-summary` và `ảnh trên máy` vẫn được bảo toàn 100%.
+- Cập nhật ảnh hiển thị trong `_PhotoNoteCard` thành hình vuông tỷ lệ 1:1 (`AspectRatio(aspectRatio: 1.0)`) và auto fit (`BoxFit.cover`).
+- Kéo hàng số từ (`🏷️ X từ`) và nút thùng rác lên ngay sát dưới tiêu đề/tags bằng cách bỏ `Spacer()`, loại bỏ toàn bộ khoảng trắng rỗng thừa.
+- Tinh chỉnh `childAspectRatio` trên GridView của tab Ảnh và Album Detail (0.60 mobile, 0.64 tablet, 0.70 desktop) giúp card ôm sát nội dung ("fit box") không tràn viền ngay cả trên màn hình hẹp 360px.
+- Kiểm chứng: `flutter analyze` 0 issue; `flutter test test/features/library/presentation/storage_album_screen_test.dart` 12/12 pass; `flutter test test/features/library` 114/114 pass.
+
+### 2026-09-14 — Photos tab 2-column grid layout with word count and trash button
+
+- Thiết kế lại trang Ảnh (`_buildPhotos` và `_PhotoNoteCard`) thành bố cục lưới 2 cột (`crossAxisCount: 2`) cuộn dọc theo đúng ảnh yêu cầu.
+- Mỗi card ảnh hiển thị:
+  - Khung preview ảnh nền kem (`#F6F3EE`), bo góc 14px, hiển thị ảnh hoặc emoji đại diện.
+  - Tiêu đề in đậm 1 dòng kèm wrap các tag từ vựng đã nhận diện (`VocabDetection.wordRaw`).
+  - Hàng dưới: `🏷️ X từ` bên trái và nút thùng rác tròn màu hồng (`#FFFFEEF0`) viền đỏ nhạt bên phải.
+  - Tích hợp `PopupMenuButton` cho nút thùng rác với tùy chọn "Đưa vào thùng rác", mở hộp thoại xác nhận di chuyển vào thùng rác 30 ngày.
+  - Giữ tương thích 100% test matcher cho "2 từ vựng", "Đã sao lưu", "Chỉ trên máy", "Ảnh trên máy", "library-storage-summary" mà không gây vỡ layout.
+- Thêm sub-header `Tất cả ảnh (X)` và nút 3D `🗓️ Lọc ngày` phía trên lưới ảnh.
+- Đồng bộ `_AlbumDetailView` sang dạng grid 2 cột tương tự.
+- `flutter analyze` toàn repo: sạch (0 issues). `flutter test test/features/library/presentation/storage_album_screen_test.dart`: 12/12 pass (bao gồm viewport hẹp 360px). Integration test pass.
+
+### 2026-09-14 — Library layout aligned with shared project style
+
+- Tạm ẩn riêng trong Library dải points, chuông thông báo và cài đặt theo ảnh tham chiếu;
+  Home và route Settings không thay đổi. Header Library còn tiêu đề, số lượng và trạng thái offline.
+- Giữ nền graph-paper dùng chung, chuyển lưới Album sang `SliverGridDelegateWithMaxCrossAxisExtent`
+  để cân đối trên phone/tablet, nâng tab và nút tạo Album lên vùng chạm tối thiểu 48dp.
+- `flutter analyze --no-pub lib/features/library/presentation/screens/storage_album_screen.dart test/features/library/presentation/storage_album_screen_test.dart` sạch;
+  targeted Library test 12/12 pass, gồm assertion các phần points/notification/settings không xuất hiện.
+- Full `flutter analyze --no-pub` sạch; full `flutter test --no-pub`: 397 pass +
+  1 opt-in live skip; `flutter build web --no-pub` pass. WASM dry-run vẫn có
+  cảnh báo interop từ dependency `flutter_tts` hiện có.
+
+### 2026-09-14 — Album button actions hardened
+
+- Bổ sung chế độ chọn Album, chọn/bỏ tất cả và xóa nhiều Album qua một xác nhận;
+  việc xóa vẫn chỉ tác động Album và membership, không xóa Photo Note.
+- Khóa các action Album đang ghi (tạo, yêu thích, gán/gỡ ảnh, xóa) để chặn thao tác
+  lặp do chạm nhanh; giữ nguyên schema, migration, sync/consent và không có cloud write.
+- `flutter test --no-pub test/features/library/presentation/storage_album_screen_test.dart`:
+  12/12 pass, có regression chọn/xóa nhiều Album và bảo toàn Photo Note. Device
+  verification vẫn `PENDING`. Full `flutter analyze --no-pub`: sạch; full
+  `flutter test --no-pub`: 397 pass + 1 opt-in live skip; `git diff --check`: pass.
+
+### 2026-09-14 — Album UI wired to existing local repository
+
+- Bổ sung sub-tab Album theo design system NeoBrutal EdTech: nền cream hiện có,
+  viền đen, hard shadow, màu pastel và lưới thư mục responsive 2/3 cột.
+- Nối UI vào `AlbumRepository`/`LibraryRepository` hiện có cho tạo, yêu thích,
+  xóa Album không cascade Photo Note, xem chi tiết, thêm và gỡ Photo Note.
+- Giữ nguyên route và hành vi danh sách Photo Note, detail, Trash, media recovery;
+  không đổi schema/migration, consent, sync flag và không ghi dữ liệu cloud.
+- `flutter analyze --no-pub` cho các file thay đổi: sạch. Targeted
+  `flutter test --no-pub test/features/library/presentation/storage_album_screen_test.dart`:
+  11/11 pass, gồm regression cũ và viewport 360px. Full `flutter test --no-pub`:
+  396 pass + 1 opt-in live skip. `flutter build web --no-pub` pass; WASM dry-run
+  còn cảnh báo từ dependency `flutter_tts` hiện có. Device verification còn
+  `PENDING`.
+
+### 2026-09-12 — GitHub sync + Vilao preserved: LOCAL VERIFIED / LIVE PENDING
+
+- Theo yêu cầu chủ dự án, fast-forward `AI-scan` từ `cbd7318` tới `b742ea4`,
+  giữ Vilao làm API chính; backup toàn bộ thay đổi local bằng stash
+  `1af17176dbcdb752876bc6e2aeab69db0743d2db` trước ghép.
+- Nhận migrations/Library từ GitHub, không tự tạo/sửa schema hoặc cloud data.
+  Client vẫn giữ `LIBRARY_SYNC_ENABLED=false` mặc định và consent gates.
+- Ghép chat-completions/Bearer transport, model mặc định `gemini-3.8-flash`,
+  chuẩn hóa field và usage vào auth/entitlement/ledger/circuit breaker mới.
+  Test handler thực với mock network xác nhận Free/Pro, ledger replay,
+  normalized response và token accounting; không gọi API tính phí.
+- Sửa nền Material của Cloud Backup để tương thích Flutter 3.44.4. Bốn Settings
+  tests fail trước sửa, targeted 11/11 và full 390 + 1 opt-in skip pass sau sửa.
+- `flutter analyze --no-pub`: sạch; build Web và APK debug pass.
+  `deno test --config supabase/functions/gemini-vision-scan/deno.json
+  --node-modules-dir=auto --allow-env supabase/functions/gemini-vision-scan`:
+  82/82 pass; type check, lint và format của phần ghép được kiểm tra riêng.
+- Read-only migration list trên client project: 21 local = 21 remote.
+  Edge hiện có main v41 và canary v19 ACTIVE; secret `GEMINI_API_KEY` tồn tại
+  (không đọc giá trị). Chưa deploy hoặc live-scan bản ghép. D1–D10 giữ nguyên.
 
 ### 2026-09-11 — GitHub UI sync tới `cbd7318`, offline contract preserved
 

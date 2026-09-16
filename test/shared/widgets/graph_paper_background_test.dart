@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('GraphPaperBackground & GraphPaperPainter tests', () {
-    testWidgets('GraphPaperScaffold applies the shared background to its body',
+    testWidgets(
+        'GraphPaperScaffold applies the shared background continuously and renders bottom bar in Stack',
         (tester) async {
       tester.view.physicalSize = const Size(400, 800);
       tester.view.devicePixelRatio = 1;
@@ -27,7 +28,17 @@ void main() {
       expect(find.byType(GraphPaperBackground), findsOneWidget);
       expect(find.text('Page content'), findsOneWidget);
       expect(find.text('Navigation'), findsOneWidget);
-      expect(tester.widget<Scaffold>(find.byType(Scaffold)).extendBody, isTrue);
+      expect(
+        tester.widget<Scaffold>(find.byType(Scaffold)).bottomNavigationBar,
+        isNull,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(Stack),
+          matching: find.text('Navigation'),
+        ),
+        findsOneWidget,
+      );
       expect(
         tester.getSize(find.byType(GraphPaperBackground)),
         const Size(400, 800),
@@ -48,6 +59,41 @@ void main() {
       expect(find.byType(CustomPaint), findsWidgets);
     });
 
+    testWidgets('renders bottom bar as floating overlay in Stack',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: GraphPaperScaffold(
+            extendBody: false,
+            body: Text('Page content'),
+            bottomNavigationBar: SizedBox(height: 160, child: Text('Overlay')),
+          ),
+        ),
+      );
+
+      expect(tester.widget<Scaffold>(find.byType(Scaffold)).bottomNavigationBar,
+          isNull);
+      expect(find.text('Overlay'), findsOneWidget);
+      expect(find.byType(GraphPaperBackground), findsOneWidget);
+    });
+
+    testWidgets('supports an app bar without adding another background layer',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GraphPaperScaffold(
+            appBar: AppBar(title: const Text('Page title')),
+            body: const Text('Page content'),
+          ),
+        ),
+      );
+
+      expect(find.text('Page title'), findsOneWidget);
+      expect(find.text('Page content'), findsOneWidget);
+      expect(find.byType(GraphPaperBackground), findsOneWidget);
+      expect(tester.widget<Scaffold>(find.byType(Scaffold)).appBar, isNotNull);
+    });
+
     test('GraphPaperPainter defaults match user specifications', () {
       const painter = GraphPaperPainter();
 
@@ -55,9 +101,9 @@ void main() {
       expect(painter.backgroundColor, const Color(0xFFFBF8EE));
       expect(painter.backgroundColor.toARGB32(), 0xFFFBF8EE);
 
-      // Grid opacity reduced another 10%: ~13% -> ~12% (0x1E1A1A1A)
+      // Grid opacity is 50% lighter than the previous ~12% treatment.
       expect(painter.lineWidth, 1.0);
-      expect(painter.lineColor, const Color(0x1E1A1A1A));
+      expect(painter.lineColor, const Color(0x0F1A1A1A));
 
       // 20-24px square spacing
       expect(painter.spacing, greaterThanOrEqualTo(20.0));

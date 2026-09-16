@@ -13,6 +13,14 @@ abstract interface class AlbumRepository {
 
   Future<void> saveAlbum(Album album);
 
+  /// Creates an Album and its initial Photo Note memberships atomically.
+  Future<void> createAlbumWithPhotoNotes({
+    required Album album,
+    required Iterable<String> photoNoteIds,
+    required DateTime addedAt,
+    required String operationId,
+  });
+
   Future<void> setFavorite({
     required String userId,
     required String albumId,

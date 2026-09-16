@@ -7,8 +7,10 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../application/library_media_loader.dart';
 import '../../data/local/library_media_loader_factory.dart';
 import '../../domain/entities/library_enums.dart';
+import '../../domain/entities/album_models.dart';
 import '../../domain/entities/photo_note.dart';
 import '../../domain/entities/photo_note_snapshot.dart';
+import '../../domain/repositories/album_repository.dart';
 import '../../domain/repositories/library_repository.dart';
 
 final currentLibraryUserIdProvider = Provider<String?>((ref) {
@@ -19,6 +21,48 @@ final currentLibraryUserIdProvider = Provider<String?>((ref) {
 final libraryRepositoryProvider =
     FutureProvider<LibraryRepository>((ref) async {
   return ref.watch(libraryStoreProvider.future);
+});
+
+final albumRepositoryProvider = FutureProvider<AlbumRepository>((ref) async {
+  return ref.watch(libraryStoreProvider.future);
+});
+
+final libraryAlbumsProvider =
+    StreamProvider.autoDispose<List<Album>>((ref) async* {
+  final userId = ref.watch(currentLibraryUserIdProvider);
+  if (userId == null) {
+    yield const <Album>[];
+    return;
+  }
+
+  final repository = await ref.watch(albumRepositoryProvider.future);
+  yield* repository.watchAlbums(userId: userId);
+});
+
+final libraryAlbumMembershipsProvider = StreamProvider.autoDispose
+    .family<List<AlbumPhotoNote>, String>((ref, albumId) async* {
+  final userId = ref.watch(currentLibraryUserIdProvider);
+  if (userId == null) {
+    yield const <AlbumPhotoNote>[];
+    return;
+  }
+
+  final repository = await ref.watch(albumRepositoryProvider.future);
+  yield* repository.watchMemberships(userId: userId, albumId: albumId);
+});
+
+final libraryAlbumPhotoNotesProvider = StreamProvider.autoDispose
+    .family<List<PhotoNote>, String>((ref, albumId) async* {
+  final userId = ref.watch(currentLibraryUserIdProvider);
+  if (userId == null) {
+    yield const <PhotoNote>[];
+    return;
+  }
+
+  final repository = await ref.watch(libraryRepositoryProvider.future);
+  yield* repository.watchPhotoNotes(
+    PhotoNoteQuery(userId: userId, albumId: albumId),
+  );
 });
 
 final libraryMediaLoaderProvider = Provider<LibraryMediaLoader>((ref) {

@@ -40,7 +40,9 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
           .single();
       final settings = await _client
           .from('user_settings')
-          .select('reminder_time, study_end_time, daily_target_words')
+          .select(
+            'reminder_time, study_end_time, daily_target_words, interface_locale, learning_locale',
+          )
           .eq('user_id', user.id)
           .maybeSingle();
 
@@ -50,6 +52,8 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
         age: (profile['age'] as num?)?.toInt(),
         phone: profile['phone'] as String? ?? '',
         accountRole: profile['account_role'] as String?,
+        interfaceLocale: settings?['interface_locale'] as String? ?? 'vi-VN',
+        learningLocale: settings?['learning_locale'] as String? ?? 'en-US',
         reminderTime: settings?['reminder_time'] as String? ?? '20:00',
         studyEndTime: settings?['study_end_time'] as String? ?? '21:00',
         dailyTargetWords:
@@ -122,6 +126,8 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
           'p_age': normalized.age,
           'p_phone': normalized.phone,
           'p_account_role': normalized.accountRole,
+          'p_interface_locale': normalized.interfaceLocale,
+          'p_learning_locale': normalized.learningLocale,
           'p_reminder_time': normalized.reminderTime,
           'p_study_end_time': normalized.studyEndTime,
           'p_daily_target_words': normalized.dailyTargetWords,

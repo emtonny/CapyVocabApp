@@ -2,26 +2,46 @@ import 'package:flutter/material.dart';
 
 const _graphPaperBaseColor = Color(0xFFFBF8EE);
 
-/// A [Scaffold] whose body uses the shared graph-paper treatment.
+/// A [Scaffold] whose entire view uses the shared graph-paper treatment,
+/// rendering any bottom navigation bar as a floating overlay on top of the
+/// unified full-screen background.
 class GraphPaperScaffold extends StatelessWidget {
   const GraphPaperScaffold({
     super.key,
     required this.body,
+    this.appBar,
     this.bottomNavigationBar,
+    this.extendBody,
   });
 
   final Widget body;
+  final PreferredSizeWidget? appBar;
   final Widget? bottomNavigationBar;
+  final bool? extendBody;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: bottomNavigationBar != null,
-      backgroundColor: _graphPaperBaseColor,
-      body: SizedBox.expand(
-        child: GraphPaperBackground(child: body),
+    return GraphPaperBackground(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: appBar,
+              body: SizedBox.expand(
+                child: body,
+              ),
+            ),
+          ),
+          if (bottomNavigationBar != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: bottomNavigationBar!,
+            ),
+        ],
       ),
-      bottomNavigationBar: bottomNavigationBar,
     );
   }
 }
@@ -31,7 +51,7 @@ class GraphPaperScaffold extends StatelessWidget {
 ///
 /// Features:
 /// - Warm cream base `#FBF8EE`
-/// - 1px warm light-gray grid lines at ~12% opacity (0x1E alpha)
+/// - 1px warm light-gray grid lines at ~6% opacity (0x0F alpha)
 /// - 24px square spacing (within the 20–24px specification)
 /// - Isolated painting through [RepaintBoundary]
 class GraphPaperBackground extends StatelessWidget {
@@ -40,8 +60,7 @@ class GraphPaperBackground extends StatelessWidget {
     this.child,
     this.spacing = 24.0,
     this.lineWidth = 1.0,
-    this.lineColor =
-        const Color(0x1E1A1A1A), // ~12% opacity of warm ink #1A1A1A
+    this.lineColor = const Color(0x0F1A1A1A), // ~6% opacity of warm ink #1A1A1A
     this.backgroundColor = _graphPaperBaseColor,
   });
 
@@ -73,7 +92,7 @@ class GraphPaperPainter extends CustomPainter {
   const GraphPaperPainter({
     this.spacing = 24.0,
     this.lineWidth = 1.0,
-    this.lineColor = const Color(0x1E1A1A1A),
+    this.lineColor = const Color(0x0F1A1A1A),
     this.backgroundColor = _graphPaperBaseColor,
   });
 

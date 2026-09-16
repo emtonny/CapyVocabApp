@@ -69,4 +69,10 @@ flutter:
     # Browser-test URL for SQLite WASM; production also serves web/sqlite3.wasm.
     - web/sqlite3.wasm
 
-  # TODO: khai báo fonts/assets (mascot svg, icon linh vật, âm thanh) tại đây
+  fonts:
+    - family: Fredoka
+      fonts:
+        - asset: assets/fonts/Fredoka-Variable.ttf
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Variable.ttf

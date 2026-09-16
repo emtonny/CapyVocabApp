@@ -3,13 +3,15 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../shared/widgets/graph_paper_background.dart';
+
 /// UI screen tương ứng UC-CHAT-01: cửa sổ nổi kéo thả (Draggable)
 class ChatWindow extends StatelessWidget {
   const ChatWindow({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return const GraphPaperScaffold(
       body: Center(
         child: Text('ChatWindow'),
       ),

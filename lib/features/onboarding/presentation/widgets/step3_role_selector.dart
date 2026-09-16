@@ -22,7 +22,7 @@ class Step3RoleSelector extends ConsumerWidget {
         ),
         // Step Title Header
         const Text(
-          '3. Bạn sử dụng app với vai trò nào? 👥',
+          '4. Bạn sử dụng app với vai trò nào? 👥',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,

@@ -1689,7 +1689,14 @@ class _FixedLabelSizeMeasurer extends LabelSizeMeasurer {
   final LabelSize size;
 
   @override
-  LabelSize measure(VocabDetection word, LabelStyleConfig config) => size;
+  LabelSize measure(
+    VocabDetection word,
+    LabelStyleConfig config, {
+    bool showWord = true,
+    bool showPhonetic = true,
+    bool showMeaning = true,
+  }) =>
+      size;
 }
 
 const _tinyCompactStyle = LabelStyleConfig(

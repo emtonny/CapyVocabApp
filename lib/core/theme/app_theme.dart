@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
 
 const softPageTransitionDuration = Duration(milliseconds: 280);
@@ -63,7 +62,7 @@ class AppTheme {
 
   static ThemeData get light => ThemeData(
         useMaterial3: true,
-        fontFamily: GoogleFonts.nunito().fontFamily,
+        fontFamily: 'Nunito',
         brightness: Brightness.light,
         colorSchemeSeed: AppColors.duoGreen,
         scaffoldBackgroundColor: AppColors.creamyYuzu,
@@ -72,7 +71,7 @@ class AppTheme {
 
   static ThemeData get dark => ThemeData(
         useMaterial3: true,
-        fontFamily: GoogleFonts.nunito().fontFamily,
+        fontFamily: 'Nunito',
         brightness: Brightness.dark,
         colorSchemeSeed: AppColors.duoGreen,
         scaffoldBackgroundColor: AppColors.darkBackground,

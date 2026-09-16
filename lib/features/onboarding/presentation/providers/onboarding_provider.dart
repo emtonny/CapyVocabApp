@@ -160,6 +160,22 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     );
   }
 
+  void updateInterfaceLocale(String value) {
+    state = state.copyWith(
+      data: state.data.copyWith(interfaceLocale: value),
+      fieldErrors: _withoutErrors('interfaceLocale'),
+      saveError: null,
+    );
+  }
+
+  void updateLearningLocale(String value) {
+    state = state.copyWith(
+      data: state.data.copyWith(learningLocale: value),
+      fieldErrors: _withoutErrors('learningLocale'),
+      saveError: null,
+    );
+  }
+
   void updateAccountRole(String value) {
     state = state.copyWith(
       data: state.data.copyWith(accountRole: value),
@@ -206,16 +222,17 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Future<bool> validateCurrentStep() {
     return switch (state.currentStep) {
       0 => _validateIdentityStep(),
-      1 => _validateAgePhoneStep(),
-      2 => Future.value(_validateRoleStep()),
-      3 => Future.value(_validateStudyTimeStep()),
-      4 => Future.value(_validateDailyTargetStep()),
+      1 => Future.value(_validateLanguageStep()),
+      2 => _validateAgePhoneStep(),
+      3 => Future.value(_validateRoleStep()),
+      4 => Future.value(_validateStudyTimeStep()),
+      5 => Future.value(_validateDailyTargetStep()),
       _ => Future.value(false),
     };
   }
 
   Future<bool> nextStep() async {
-    if (state.isBusy || state.currentStep >= 4) return false;
+    if (state.isBusy || state.currentStep >= 5) return false;
     if (!await validateCurrentStep()) return false;
 
     state = state.copyWith(
@@ -267,7 +284,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
           break;
         case OnboardingConflictField.phone:
           errors['phone'] = error.message;
-          conflictStep = 1;
+          conflictStep = 2;
           break;
         case OnboardingConflictField.email:
         case null:
@@ -437,6 +454,18 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       );
       return false;
     }
+  }
+
+  bool _validateLanguageStep() {
+    final errors = <String, String>{};
+    if (state.data.interfaceLocale.trim().isEmpty) {
+      errors['interfaceLocale'] = 'Vui lòng chọn ngôn ngữ giao diện.';
+    }
+    if (state.data.learningLocale.trim().isEmpty) {
+      errors['learningLocale'] = 'Vui lòng chọn ngôn ngữ bạn muốn học.';
+    }
+    state = state.copyWith(fieldErrors: errors);
+    return errors.isEmpty;
   }
 
   bool _validateRoleStep() {

@@ -8,6 +8,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/entitlements/entitlement_provider.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../shared/widgets/graph_paper_background.dart';
+import '../../../../shared/widgets/top_notification.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../onboarding/application/onboarding_status_store.dart';
 import '../../../onboarding/presentation/providers/onboarding_status_provider.dart';
@@ -81,7 +82,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ref.read(setCloudBackupConsentProvider)(enabled);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         SnackBar(
           content: Text(
             enabled
@@ -94,7 +96,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       debugPrint('Failed to update cloud backup consent: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         const SnackBar(
           content: Text('Không thể cập nhật sao lưu. Vui lòng thử lại.'),
         ),
@@ -146,14 +149,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'Không có bài đủ điều kiện; $missingMediaCount bài đang thiếu ảnh.',
         _ => 'Không có bài cũ nào cần sao lưu.',
       };
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         SnackBar(content: Text(message)),
       );
     } catch (error, stackTrace) {
       debugPrint('Failed to backfill cloud backup: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         const SnackBar(
           content: Text('Không thể xếp bài cũ để sao lưu. Vui lòng thử lại.'),
         ),
@@ -241,7 +246,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         const SnackBar(
           content: Text('Không thể đăng xuất. Vui lòng thử lại.'),
         ),
@@ -295,7 +301,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         const SnackBar(
           content: Text('Không thể reset onboarding. Vui lòng thử lại.'),
         ),
@@ -548,12 +555,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF9F2),
+                  Material(
+                    color: const Color(0xFFFFF9F2),
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFFE8D5BC),
+                      side: const BorderSide(
+                        color: Color(0xFFE8D5BC),
                         width: 1.5,
                       ),
                     ),

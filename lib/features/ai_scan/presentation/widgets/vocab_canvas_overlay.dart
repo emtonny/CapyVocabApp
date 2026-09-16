@@ -129,6 +129,10 @@ class VocabCanvasOverlay extends StatefulWidget {
     this.ttsService,
     this.onLabelTap,
     this.visualStyle = LabelVisualStyle.standard,
+    this.showLabels = true,
+    this.showWord = true,
+    this.showPhonetic = true,
+    this.showMeaning = true,
     super.key,
   });
 
@@ -140,6 +144,10 @@ class VocabCanvasOverlay extends StatefulWidget {
   final List<VocabDetection>? sceneWords;
   final TtsService? ttsService;
   final LabelVisualStyle visualStyle;
+  final bool showLabels;
+  final bool showWord;
+  final bool showPhonetic;
+  final bool showMeaning;
 
   /// Reports the label selected by hit-testing; audio playback stays with the
   /// caller and is intentionally outside this widget.
@@ -256,6 +264,9 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
           sourceImageSize: sourceSize,
           fullStyleConfig: fullStyleConfig,
           compactStyleConfig: compactStyleConfig,
+          showWord: widget.showLabels && widget.showWord,
+          showPhonetic: widget.showLabels && widget.showPhonetic,
+          showMeaning: widget.showLabels && widget.showMeaning,
         );
         final customPaint = CustomPaint(
           painter: VocabOverlayPainter(
@@ -267,9 +278,13 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
             compactStyleConfig: compactStyleConfig,
             visualStyle: widget.visualStyle,
             solveInvocationCount: _placementCache.solveInvocationCount,
+            showLabels: widget.showLabels,
+            showWord: widget.showWord,
+            showPhonetic: widget.showPhonetic,
+            showMeaning: widget.showMeaning,
           ),
         );
-        final overlay = widget.onLabelTap == null
+        final overlay = (!widget.showLabels || widget.onLabelTap == null)
             ? IgnorePointer(child: customPaint)
             : GestureDetector(
                 behavior: HitTestBehavior.translucent,
@@ -342,6 +357,9 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
           word: placedLabel.word,
           config: config,
           geometry: geometry,
+          showWord: widget.showWord,
+          showPhonetic: widget.showPhonetic,
+          showMeaning: widget.showMeaning,
         ),
       )) {
         callback(placedLabel.word);
@@ -374,11 +392,19 @@ class VocabOverlayPainter extends CustomPainter {
     this.compactStyleConfig = _compactLabelStyleConfig,
     this.visualStyle = LabelVisualStyle.standard,
     this.solveInvocationCount = 0,
+    this.showLabels = true,
+    this.showWord = true,
+    this.showPhonetic = true,
+    this.showMeaning = true,
   });
 
   final List<VocabDetection> words;
   final Rect imageRect;
   final List<PlacedLabel> placedLabels;
+  final bool showLabels;
+  final bool showWord;
+  final bool showPhonetic;
+  final bool showMeaning;
 
   /// When set, [placedLabels] are in this stable reference coordinate space.
   /// The complete overlay is uniformly scaled into [imageRect] at paint time.
@@ -424,6 +450,7 @@ class VocabOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (!showLabels) return;
     final referenceSize = referenceCanvasSize;
     if (referenceSize == null) {
       _paintOverlay(canvas, boxes, canvasSize: size);
@@ -513,6 +540,9 @@ class VocabOverlayPainter extends CustomPainter {
       word: placedLabel.word,
       config: config,
       geometry: geometryFor(placedLabel),
+      showWord: showWord,
+      showPhonetic: showPhonetic,
+      showMeaning: showMeaning,
     );
   }
 
@@ -568,6 +598,9 @@ class VocabOverlayPainter extends CustomPainter {
           word: placedLabel.word,
           config: config,
           geometry: geometry,
+          showWord: showWord,
+          showPhonetic: showPhonetic,
+          showMeaning: showMeaning,
         )) {
       _paintSticker(canvas, deerStickerRect);
     }
@@ -577,10 +610,13 @@ class VocabOverlayPainter extends CustomPainter {
     }
 
     final contentLeft = geometry.cardRect.left + config.padding.horizontal;
-    final lines = [
-      (placedLabel.word.word, config.wordStyle),
-      (placedLabel.word.phonetic, config.phoneticStyle),
-      (placedLabel.word.meaningVi, config.meaningStyle),
+    final lines = <(String, TextStyle)>[
+      if (showWord && placedLabel.word.word.isNotEmpty)
+        (placedLabel.word.word, config.wordStyle),
+      if (showPhonetic && placedLabel.word.phonetic.isNotEmpty)
+        (placedLabel.word.phonetic, config.phoneticStyle),
+      if (showMeaning && placedLabel.word.meaningVi.isNotEmpty)
+        (placedLabel.word.meaningVi, config.meaningStyle),
     ];
     final painters = [
       for (final line in lines)
@@ -591,6 +627,10 @@ class VocabOverlayPainter extends CustomPainter {
         ),
     ];
     final contentTop = geometry.cardRect.top + config.padding.vertical;
+    if (painters.isEmpty) {
+      canvas.restore();
+      return;
+    }
     if (config.uniformLineRows) {
       final lineLayout = resolveLabelLineLayout(
         lineHeights: [
@@ -1008,7 +1048,11 @@ class VocabOverlayPainter extends CustomPainter {
         oldDelegate.referenceCanvasSize != referenceCanvasSize ||
         oldDelegate.fullStyleConfig != fullStyleConfig ||
         oldDelegate.compactStyleConfig != compactStyleConfig ||
-        oldDelegate.visualStyle != visualStyle;
+        oldDelegate.visualStyle != visualStyle ||
+        oldDelegate.showLabels != showLabels ||
+        oldDelegate.showWord != showWord ||
+        oldDelegate.showPhonetic != showPhonetic ||
+        oldDelegate.showMeaning != showMeaning;
   }
 }
 
@@ -1043,6 +1087,9 @@ bool _shouldShowDeerSticker({
   required VocabDetection word,
   required LabelStyleConfig config,
   required LabelUnitGeometry geometry,
+  bool showWord = true,
+  bool showPhonetic = true,
+  bool showMeaning = true,
 }) {
   final deerStickerRect = geometry.deerStickerRect;
   if (deerStickerRect == null) return false;
@@ -1054,10 +1101,13 @@ bool _shouldShowDeerSticker({
   if (horizontalClearance < _deerBadgeMinimumGap) return false;
 
   final lines = [
-    (word.word, config.wordStyle),
-    (word.phonetic, config.phoneticStyle),
-    (word.meaningVi, config.meaningStyle),
+    if (showWord && word.word.isNotEmpty) (word.word, config.wordStyle),
+    if (showPhonetic && word.phonetic.isNotEmpty)
+      (word.phonetic, config.phoneticStyle),
+    if (showMeaning && word.meaningVi.isNotEmpty)
+      (word.meaningVi, config.meaningStyle),
   ];
+  if (lines.isEmpty) return false;
   final contentLeft = geometry.cardRect.left + config.padding.horizontal;
   final painters = [
     for (final line in lines)
@@ -1138,12 +1188,18 @@ class _PlacementCache {
     required Size sourceImageSize,
     required LabelStyleConfig fullStyleConfig,
     required LabelStyleConfig compactStyleConfig,
+    required bool showWord,
+    required bool showPhonetic,
+    required bool showMeaning,
   }) {
     final nextKey = _PlacementCacheKey.capture(
       words: words,
       sourceImageSize: sourceImageSize,
       fullStyleConfig: fullStyleConfig,
       compactStyleConfig: compactStyleConfig,
+      showWord: showWord,
+      showPhonetic: showPhonetic,
+      showMeaning: showMeaning,
     );
     try {
       if (_key?.isEquivalentTo(nextKey) ?? false) return _placedLabels;
@@ -1168,6 +1224,9 @@ class _PlacementCache {
       final labelSizes = _labelSizeMeasurer.measureAll(
         words,
         fullStyleConfig,
+        showWord: showWord,
+        showPhonetic: showPhonetic,
+        showMeaning: showMeaning,
       );
       final anchorBoxes = List<Rect>.unmodifiable(
         words.map(
@@ -1191,6 +1250,9 @@ class _PlacementCache {
         canvasSize: referenceCanvasSize,
         measurer: _labelSizeMeasurer,
         compactStyleConfig: compactStyleConfig,
+        showWord: showWord,
+        showPhonetic: showPhonetic,
+        showMeaning: showMeaning,
       );
     } on Object catch (error, stackTrace) {
       debugPrint('Vocabulary label placement failed: $error\n$stackTrace');
@@ -1206,6 +1268,9 @@ class _PlacementCacheKey {
     required this.sourceImageSize,
     this.fullStyleConfig,
     this.compactStyleConfig,
+    required this.showWord,
+    required this.showPhonetic,
+    required this.showMeaning,
   });
 
   factory _PlacementCacheKey.capture({
@@ -1213,12 +1278,18 @@ class _PlacementCacheKey {
     required Size sourceImageSize,
     LabelStyleConfig? fullStyleConfig,
     LabelStyleConfig? compactStyleConfig,
+    required bool showWord,
+    required bool showPhonetic,
+    required bool showMeaning,
   }) {
     return _PlacementCacheKey(
       words: List.unmodifiable(words.map(_WordSnapshot.new)),
       sourceImageSize: sourceImageSize,
       fullStyleConfig: fullStyleConfig,
       compactStyleConfig: compactStyleConfig,
+      showWord: showWord,
+      showPhonetic: showPhonetic,
+      showMeaning: showMeaning,
     );
   }
 
@@ -1226,6 +1297,9 @@ class _PlacementCacheKey {
   final Size sourceImageSize;
   final LabelStyleConfig? fullStyleConfig;
   final LabelStyleConfig? compactStyleConfig;
+  final bool showWord;
+  final bool showPhonetic;
+  final bool showMeaning;
 
   bool isEquivalentTo(_PlacementCacheKey other) {
     final currentFull = fullStyleConfig;
@@ -1239,6 +1313,9 @@ class _PlacementCacheKey {
         otherCompact == null ||
         currentFull != otherFull ||
         currentCompact != otherCompact ||
+        showWord != other.showWord ||
+        showPhonetic != other.showPhonetic ||
+        showMeaning != other.showMeaning ||
         !_sameSize(sourceImageSize, other.sourceImageSize) ||
         words.length != other.words.length) {
       return false;

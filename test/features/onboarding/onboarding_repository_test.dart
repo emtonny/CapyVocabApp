@@ -51,7 +51,7 @@ void main() {
     });
   }
 
-  test('gửi đủ giờ bắt đầu và kết thúc cho complete_onboarding', () async {
+  test('gửi đủ ngôn ngữ và khung giờ cho complete_onboarding', () async {
     final harness = await _RepositoryHarness.create();
     addTearDown(harness.close);
 
@@ -62,6 +62,8 @@ void main() {
         age: 20,
         phone: ' 0987654321 ',
         accountRole: 'personal',
+        interfaceLocale: 'en-GB',
+        learningLocale: 'ja-JP',
         reminderTime: '20:00',
         studyEndTime: '21:00',
         dailyTargetWords: 10,
@@ -72,6 +74,8 @@ void main() {
         as Map<String, dynamic>;
 
     expect(request.uri.path, '/rest/v1/rpc/complete_onboarding');
+    expect(body['p_interface_locale'], 'en-GB');
+    expect(body['p_learning_locale'], 'ja-JP');
     expect(body['p_reminder_time'], '20:00');
     expect(body['p_study_end_time'], '21:00');
 

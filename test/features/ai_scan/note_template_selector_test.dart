@@ -102,7 +102,10 @@ void main() {
     await _tapVisible(tester, const Key('sticker-picker-button'));
     await _tapVisible(tester, const Key('sticker-1'));
     await _tapVisible(tester, const Key('corner-icon-picker-button'));
-    await _tapVisible(tester, const Key('corner-icon-2'));
+    await tester.enterText(find.byType(TextField).last, 'heart');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Trái tim'));
+    await tester.pumpAndSettle();
     expect(customStyle.sticker, LabelSticker.capybara);
     expect(customStyle.cornerIcon, LabelCornerIcon.heart);
 
@@ -593,6 +596,67 @@ void main() {
     expect(find.byKey(const Key('custom-label-editor')), findsNothing);
     expect(_isTemplateCardSelected(tester, customCard), isFalse);
     expect(_isTemplateCardSelected(tester, standardCard), isTrue);
+  });
+
+  testWidgets('click vào mũi tên tiêu đề sẽ đóng và click lại sẽ mở',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var selectedTemplate = NoteLabelTemplate.standard;
+    var customStyle = LabelVisualStyle.customDefault;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: NoteTemplateSelector(
+                selectedTemplate: selectedTemplate,
+                customStyle: customStyle,
+                canUseCustomTemplate: true,
+                onTemplateChanged: (template) {
+                  setState(() => selectedTemplate = template);
+                },
+                onCustomStyleChanged: (style) {
+                  setState(() => customStyle = style);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final toggleHeader = find.byKey(const Key('toggle-note-template-section'));
+    final sectionTitle = find.text('CHỌN MẪU NOTE GHIM');
+    final standardCard = find.byKey(const Key('label-template-standard'));
+
+    // Ban đầu mở: các thẻ mẫu hiển thị
+    expect(standardCard, findsOneWidget);
+    expect(tester.getSize(toggleHeader), const Size.square(20));
+    final arrowIcon = tester.widget<Icon>(
+      find.descendant(
+        of: toggleHeader,
+        matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+      ),
+    );
+    expect(arrowIcon.size, 20);
+
+    // Tiêu đề không phải vùng bấm.
+    await tester.tap(sectionTitle);
+    await tester.pumpAndSettle();
+    expect(standardCard, findsOneWidget);
+
+    // Chỉ click đúng mũi tên mới đóng.
+    await tester.tap(toggleHeader);
+    await tester.pumpAndSettle();
+    expect(standardCard, findsNothing);
+
+    // Click lại mở
+    await tester.tap(toggleHeader);
+    await tester.pumpAndSettle();
+    expect(standardCard, findsOneWidget);
   });
 }
 

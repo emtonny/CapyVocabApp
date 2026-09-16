@@ -238,8 +238,20 @@ class LabelSize {
 class LabelSizeMeasurer {
   const LabelSizeMeasurer();
 
-  LabelSize measure(VocabDetection word, LabelStyleConfig config) {
-    final cardSize = measureCard(word, config);
+  LabelSize measure(
+    VocabDetection word,
+    LabelStyleConfig config, {
+    bool showWord = true,
+    bool showPhonetic = true,
+    bool showMeaning = true,
+  }) {
+    final cardSize = measureCard(
+      word,
+      config,
+      showWord: showWord,
+      showPhonetic: showPhonetic,
+      showMeaning: showMeaning,
+    );
     final geometry = resolveLabelUnitGeometry(
       footprintTopLeft: Offset.zero,
       cardSize: Size(cardSize.width, cardSize.height),
@@ -257,48 +269,65 @@ class LabelSizeMeasurer {
     );
   }
 
-  /// Measures only the visible three-line card, excluding the badge.
+  /// Measures only the currently visible label lines, excluding the badge.
   ///
   /// [measure] wraps this size with the fixed badge geometry before returning
   /// the complete footprint consumed by candidate generation and placement.
-  LabelSize measureCard(VocabDetection word, LabelStyleConfig config) {
-    final wordSize = _measureText(
-      TextSpan(text: word.word, style: config.wordStyle),
-      config.textDirection,
-    );
-    final phoneticSize = _measureText(
-      TextSpan(text: word.phonetic, style: config.phoneticStyle),
-      config.textDirection,
-    );
-    final meaningSize = _measureText(
-      TextSpan(text: word.meaningVi, style: config.meaningStyle),
-      config.textDirection,
-    );
-    final iconWidth = config.iconWidth ?? 0;
-    final iconGap = iconWidth > 0 ? config.iconGap : 0;
-    final wordRowWidth = wordSize.width + iconGap + iconWidth;
-    final wordRowHeight =
-        wordSize.height > iconWidth ? wordSize.height : iconWidth;
-    final lineSizes = [
-      Size(wordRowWidth, wordRowHeight),
-      phoneticSize,
-      meaningSize,
-    ];
+  LabelSize measureCard(
+    VocabDetection word,
+    LabelStyleConfig config, {
+    bool showWord = true,
+    bool showPhonetic = true,
+    bool showMeaning = true,
+  }) {
+    final lineSizes = <Size>[];
+    if (showWord && word.word.isNotEmpty) {
+      final wordSize = _measureText(
+        TextSpan(text: word.word, style: config.wordStyle),
+        config.textDirection,
+      );
+      final iconWidth = config.iconWidth ?? 0;
+      final iconGap = iconWidth > 0 ? config.iconGap : 0;
+      final wordRowWidth = wordSize.width + iconGap + iconWidth;
+      final wordRowHeight =
+          wordSize.height > iconWidth ? wordSize.height : iconWidth;
+      lineSizes.add(Size(wordRowWidth, wordRowHeight));
+    }
+    if (showPhonetic && word.phonetic.isNotEmpty) {
+      lineSizes.add(
+        _measureText(
+          TextSpan(text: word.phonetic, style: config.phoneticStyle),
+          config.textDirection,
+        ),
+      );
+    }
+    if (showMeaning && word.meaningVi.isNotEmpty) {
+      lineSizes.add(
+        _measureText(
+          TextSpan(text: word.meaningVi, style: config.meaningStyle),
+          config.textDirection,
+        ),
+      );
+    }
+
     final contentWidth = lineSizes.fold<double>(
       0,
       (maximum, size) => size.width > maximum ? size.width : maximum,
     );
-    final contentHeight = config.uniformLineRows
-        ? resolveLabelLineLayout(
-            lineHeights:
-                lineSizes.map((size) => size.height).toList(growable: false),
-            lineSpacing: config.lineSpacing,
-          ).contentHeight
-        : lineSizes.fold<double>(
-              0,
-              (total, size) => total + size.height,
-            ) +
-            config.lineSpacing * (lineSizes.length - 1);
+    final contentHeight = lineSizes.isEmpty
+        ? 0.0
+        : config.uniformLineRows
+            ? resolveLabelLineLayout(
+                lineHeights: lineSizes
+                    .map((size) => size.height)
+                    .toList(growable: false),
+                lineSpacing: config.lineSpacing,
+              ).contentHeight
+            : lineSizes.fold<double>(
+                  0,
+                  (total, size) => total + size.height,
+                ) +
+                config.lineSpacing * (lineSizes.length - 1);
 
     final minimumCardWidth = minimumLabelCardWidth(
       badgeSize: config.badgeSize,
@@ -311,15 +340,31 @@ class LabelSizeMeasurer {
         contentWidth + config.padding.horizontal * 2,
         minimumCardWidth,
       ),
-      height: contentHeight + config.padding.vertical + config.padding.bottom,
+      height: _maximum(
+        contentHeight + config.padding.vertical + config.padding.bottom,
+        1,
+      ),
     );
   }
 
   List<LabelSize> measureAll(
     List<VocabDetection> words,
-    LabelStyleConfig config,
-  ) {
-    return List.unmodifiable(words.map((word) => measure(word, config)));
+    LabelStyleConfig config, {
+    bool showWord = true,
+    bool showPhonetic = true,
+    bool showMeaning = true,
+  }) {
+    return List.unmodifiable(
+      words.map(
+        (word) => measure(
+          word,
+          config,
+          showWord: showWord,
+          showPhonetic: showPhonetic,
+          showMeaning: showMeaning,
+        ),
+      ),
+    );
   }
 
   Size _measureText(InlineSpan text, TextDirection textDirection) {

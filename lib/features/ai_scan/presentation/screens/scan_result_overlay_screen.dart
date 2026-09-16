@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../shared/widgets/graph_paper_background.dart';
 import '../../data/datasources/scan_result_local_datasource.dart';
 import '../providers/scan_provider.dart';
 import '../widgets/vocab_canvas_overlay.dart';
@@ -43,7 +44,7 @@ class _ScanResultOverlayScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GraphPaperScaffold(
       appBar: AppBar(title: const Text('Kết quả quét')),
       body: SafeArea(
         child: Padding(

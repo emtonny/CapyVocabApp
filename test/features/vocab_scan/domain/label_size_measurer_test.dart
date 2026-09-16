@@ -147,6 +147,41 @@ void main() {
     expect(card, LabelSize(width: expectedWidth, height: expectedHeight));
   });
 
+  test('card measurement follows the selected visible lines', () {
+    const word = VocabDetection(
+      word: 'go',
+      phonetic: '/goʊ/',
+      meaning: 'a very long Vietnamese translation',
+      x: 0,
+      y: 0,
+      w: 0.1,
+      h: 0.1,
+    );
+    final all = measurer.measureCard(word, _fullConfig);
+    final wordOnly = measurer.measureCard(
+      word,
+      _fullConfig,
+      showPhonetic: false,
+      showMeaning: false,
+    );
+    final wordAndPhonetic = measurer.measureCard(
+      word,
+      _fullConfig,
+      showMeaning: false,
+    );
+    final meaningOnly = measurer.measureCard(
+      word,
+      _fullConfig,
+      showWord: false,
+      showPhonetic: false,
+    );
+
+    expect(wordOnly.height, lessThan(all.height));
+    expect(wordAndPhonetic.height, greaterThan(wordOnly.height));
+    expect(meaningOnly.height, lessThan(all.height));
+    expect(meaningOnly.width, greaterThan(wordOnly.width));
+  });
+
   test('one- and two-digit numbers do not change fixed unit geometry', () {
     const oneDigit = VocabDetection(
       number: 1,

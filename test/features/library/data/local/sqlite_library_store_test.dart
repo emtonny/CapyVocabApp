@@ -657,12 +657,28 @@ void main() {
       updatedAt: _time,
       syncStatus: SyncStatus.localOnly,
     );
-    await store.saveAlbum(album);
+    await store.createAlbumWithPhotoNotes(
+      album: album,
+      photoNoteIds: [snapshot.photoNote.id],
+      addedAt: _time,
+      operationId: ids.next(),
+    );
+
+    await store.saveAlbum(Album(
+      id: album.id,
+      userId: album.userId,
+      name: 'Updated kitchen words',
+      icon: album.icon,
+      isFavorite: true,
+      createdAt: album.createdAt,
+      updatedAt: _time.add(const Duration(minutes: 1)),
+      syncStatus: SyncStatus.localOnly,
+    ));
     await store.addPhotoNotes(
       userId: userId,
       albumId: album.id,
       photoNoteIds: [snapshot.photoNote.id],
-      addedAt: _time,
+      addedAt: _time.add(const Duration(minutes: 2)),
       operationId: ids.next(),
     );
 
@@ -670,6 +686,16 @@ void main() {
       await store.watchMemberships(userId: userId, albumId: album.id).first,
       hasLength(1),
     );
+    final albumPhotoNotes = await store
+        .watchPhotoNotes(PhotoNoteQuery(userId: userId, albumId: album.id))
+        .first;
+    expect(
+      albumPhotoNotes.map((note) => note.id),
+      [snapshot.photoNote.id],
+    );
+    final savedAlbums = await store.watchAlbums(userId: userId).first;
+    expect(savedAlbums.single.name, 'Updated kitchen words');
+    expect(savedAlbums.single.isFavorite, isTrue);
     await store.deleteAlbums(
       userId: userId,
       albumIds: [album.id],
@@ -684,6 +710,34 @@ void main() {
       isNotNull,
       reason: 'deleting an album must never delete its Photo Notes',
     );
+  });
+
+  test('rolls back Album creation when an initial Photo Note is invalid',
+      () async {
+    final userId = ids.next();
+    await store.saveLocalAccount(_account(userId));
+    final album = Album(
+      id: ids.next(),
+      userId: userId,
+      name: 'Atomic album',
+      icon: 'folder',
+      isFavorite: false,
+      createdAt: _time,
+      updatedAt: _time,
+      syncStatus: SyncStatus.localOnly,
+    );
+
+    await expectLater(
+      store.createAlbumWithPhotoNotes(
+        album: album,
+        photoNoteIds: [ids.next()],
+        addedAt: _time,
+        operationId: ids.next(),
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(await store.watchAlbums(userId: userId).first, isEmpty);
   });
 
   test('records consent with optimistic old-value enforcement', () async {

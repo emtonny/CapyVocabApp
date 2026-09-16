@@ -8,16 +8,20 @@ import '../../../../shared/widgets/graph_paper_background.dart';
 import '../providers/onboarding_provider.dart';
 import '../widgets/capy_onboarding_header.dart';
 import '../widgets/step1_name_username.dart';
+import '../widgets/step2_language_selector.dart';
 import '../widgets/step2_age_phone.dart';
 import '../widgets/step3_role_selector.dart';
 import '../widgets/step4_study_time.dart';
 import '../widgets/step5_daily_target.dart';
+
+const _onboardingStepCount = 6;
 
 class OnboardingWizardScreen extends ConsumerWidget {
   const OnboardingWizardScreen({super.key});
 
   static const _steps = <Widget>[
     Step1NameUsername(),
+    Step2LanguageSelector(),
     Step2AgePhone(),
     Step3RoleSelector(),
     Step4StudyTime(),
@@ -26,6 +30,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
 
   static const _stepTitles = [
     'Thông tin cá nhân',
+    'Ngôn ngữ',
     'Độ tuổi & Liên hệ',
     'Vai trò sử dụng',
     'Thời gian học tập',
@@ -183,7 +188,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Bước ${state.currentStep + 1}/5: ${_stepTitles[state.currentStep]}',
+                        'Bước ${state.currentStep + 1}/${_steps.length}: ${_stepTitles[state.currentStep]}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -341,7 +346,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
     int currentStep,
     OnboardingNotifier notifier,
   ) async {
-    if (currentStep < 4) {
+    if (currentStep < _steps.length - 1) {
       await notifier.nextStep();
       return;
     }
@@ -415,7 +420,7 @@ class _NavigationBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBusy = isCheckingAvailability || isSaving;
-    final isLastStep = currentStep == 4;
+    final isLastStep = currentStep == _onboardingStepCount - 1;
 
     final nextButtonText = isBusy
         ? (isSaving ? 'Đang lưu...' : 'Đang kiểm tra...')

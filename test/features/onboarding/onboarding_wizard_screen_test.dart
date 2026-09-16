@@ -2,6 +2,7 @@ import 'package:capy_vocab/features/onboarding/data/repositories/onboarding_repo
 import 'package:capy_vocab/features/onboarding/domain/entities/onboarding_data.dart';
 import 'package:capy_vocab/features/onboarding/presentation/providers/onboarding_provider.dart';
 import 'package:capy_vocab/features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
+import 'package:capy_vocab/features/onboarding/presentation/widgets/step2_language_selector.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,7 +43,7 @@ void main() {
     );
   });
 
-  testWidgets('hiển thị và điều hướng đúng thứ tự 5 bước', (tester) async {
+  testWidgets('hiển thị và điều hướng đúng thứ tự 6 bước', (tester) async {
     final repository = _WidgetTestRepository();
     await tester.pumpWidget(
       ProviderScope(
@@ -60,6 +61,28 @@ void main() {
       find.byKey(const Key('onboarding-username-field')),
       'capy_may',
     );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('2. Chọn ngôn ngữ của bạn 🌏'), findsOneWidget);
+    expect(find.text('Ngôn ngữ giao diện'), findsOneWidget);
+    expect(find.text('Ngôn ngữ muốn học'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('onboarding-learning-language-selector')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(Scrollbar), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('onboarding-learning-language-search')),
+      'nhat ban',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('language-country-JP')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('language-country-JP')));
+    await tester.pumpAndSettle();
+    expect(find.text('Tiếng Nhật'), findsOneWidget);
+
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -118,7 +141,46 @@ void main() {
     );
   });
 
-  testWidgets('hiện lỗi và không cho qua bước 2 khi SĐT đã được sử dụng',
+  testWidgets('bước ngôn ngữ không tràn ở màn hình hẹp và chữ lớn',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          onboardingRepositoryProvider.overrideWithValue(
+            _WidgetTestRepository(),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              padding: EdgeInsets.all(16),
+              child: Step2LanguageSelector(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('onboarding-interface-language-selector')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('onboarding-learning-language-selector')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('hiện lỗi và không cho qua bước 3 khi SĐT đã được sử dụng',
       (tester) async {
     final repository = _WidgetTestRepository()..phoneAvailable = false;
     await tester.pumpWidget(
@@ -135,6 +197,9 @@ void main() {
       find.byKey(const Key('onboarding-username-field')),
       'capy_may',
     );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -167,11 +232,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Đi qua bước 1, 2, 3
+    // Đi qua bước 1, 2, 3, 4.
     await tester.enterText(
       find.byKey(const Key('onboarding-username-field')),
       'capy_may',
     );
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
+
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -191,7 +260,7 @@ void main() {
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
 
-    // Bước 4: mở picker, thay đổi giờ kết thúc và xác nhận.
+    // Bước 5: mở picker, thay đổi giờ kết thúc và xác nhận.
     expect(find.text('Tùy chỉnh khung giờ'), findsOneWidget);
     expect(find.byKey(const Key('custom-study-time-card')), findsOneWidget);
 
@@ -276,7 +345,7 @@ void main() {
       const Color(0xFFEADECF),
     );
 
-    // Cảnh báo không chặn Next sang Bước 5.
+    // Cảnh báo không chặn Next sang Bước 6.
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();

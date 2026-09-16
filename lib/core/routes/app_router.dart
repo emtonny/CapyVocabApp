@@ -13,11 +13,13 @@ import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/friends/presentation/screens/friends_leaderboard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/library/presentation/screens/storage_album_screen.dart';
+import '../../features/library/domain/entities/photo_note.dart';
 import '../../features/onboarding/application/onboarding_status_store.dart';
 import '../../features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
 import '../../features/pet_shop/presentation/screens/pet_shop_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/solo_arena/presentation/screens/solo_lobby_screen.dart';
+import '../../shared/widgets/graph_paper_background.dart';
 import '../theme/app_theme.dart';
 
 /// Ánh xạ routing tương đương activateView(viewId) trong bản HTML gốc.
@@ -127,6 +129,22 @@ List<RouteBase> _buildAppRoutes(
       ),
     ),
     GoRoute(
+      path: '/storage/vocabulary',
+      pageBuilder: (context, state) {
+        final notes = state.extra;
+        return _softPage(
+          state,
+          child: notes is List<PhotoNote>
+              ? SelectedPhotoVocabularyScreen(notes: notes)
+              : const GraphPaperScaffold(
+                  body: Center(
+                    child: Text('Không tìm thấy ảnh đã chọn.'),
+                  ),
+                ),
+        );
+      },
+    ),
+    GoRoute(
       path: '/storage/trash',
       pageBuilder: (context, state) => _softPage(
         state,
@@ -159,7 +177,7 @@ List<RouteBase> _buildAppRoutes(
         if (record is! ScanResultRecord) {
           return _softPage(
             state,
-            child: const Scaffold(
+            child: const GraphPaperScaffold(
               body: Center(child: Text('Không tìm thấy kết quả quét.')),
             ),
           );

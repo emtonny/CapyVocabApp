@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../shared/widgets/top_notification.dart';
 import '../label_template_store.dart';
 import '../label_visual_style.dart';
 import 'custom_label_style_editor.dart';
@@ -33,12 +34,14 @@ class NoteTemplateSelector extends StatefulWidget {
 class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
   List<SavedLabelTemplate> _savedTemplates = const [];
   late bool _isEditorOpen;
+  bool _isSectionExpanded = true;
   NoteLabelTemplate? _previousTemplate;
 
   @override
   void initState() {
     super.initState();
     _isEditorOpen = false;
+    _isSectionExpanded = true;
     _loadSavedTemplates();
     _scheduleFreeFallback();
   }
@@ -92,204 +95,246 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Section Header with Title and Pin Icon
-        const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                'CHỌN MẪU NOTE GHIM',
-                style: TextStyle(
-                  fontFamily: 'Fredoka',
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.ink,
-                  letterSpacing: 0.4,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            SizedBox(width: 4),
-            Icon(
-              Icons.push_pin_rounded,
-              size: 16,
-              color: Color(0xFF9333EA),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // Base 2 cards on top + 1 full-width card below (Exact match with reference image)
-        // If saved templates exist: Responsive Grid
-        if (_savedTemplates.isEmpty) ...[
-          Row(
+        // Only the arrow toggles this section; the heading is informational.
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: _TemplateCard(
-                  cardKey: const Key('label-template-standard'),
-                  title: _standardTemplateOption.title,
-                  subtitle: _standardTemplateOption.subtitle,
-                  icon: _standardTemplateOption.icon,
-                  cardColor: _standardTemplateOption.cardColor,
-                  iconBgColor: _standardTemplateOption.iconBgColor,
-                  iconColor: _standardTemplateOption.iconColor,
-                  isCompact: true,
-                  isSelected:
-                      widget.selectedTemplate == NoteLabelTemplate.standard &&
-                          !_isEditorOpen,
-                  onTap: () {
-                    setState(() => _isEditorOpen = false);
-                    widget.onTemplateChanged(NoteLabelTemplate.standard);
-                  },
+              const Flexible(
+                child: Text(
+                  'CHỌN MẪU NOTE GHIM',
+                  style: TextStyle(
+                    fontFamily: 'Fredoka',
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                    letterSpacing: 0.4,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _TemplateCard(
-                  cardKey: const Key('label-template-minimal'),
-                  title: _minimalTemplateOption.title,
-                  subtitle: _minimalTemplateOption.subtitle,
-                  icon: _minimalTemplateOption.icon,
-                  cardColor: _minimalTemplateOption.cardColor,
-                  iconBgColor: _minimalTemplateOption.iconBgColor,
-                  iconColor: _minimalTemplateOption.iconColor,
-                  isCompact: true,
-                  isSelected:
-                      widget.selectedTemplate == NoteLabelTemplate.minimal &&
-                          !_isEditorOpen,
+              const SizedBox(width: 2),
+              Semantics(
+                button: true,
+                label: _isSectionExpanded
+                    ? 'Thu gọn danh sách mẫu note'
+                    : 'Mở rộng danh sách mẫu note',
+                child: GestureDetector(
+                  key: const Key('toggle-note-template-section'),
+                  behavior: HitTestBehavior.opaque,
                   onTap: () {
-                    setState(() => _isEditorOpen = false);
-                    widget.onTemplateChanged(NoteLabelTemplate.minimal);
+                    setState(() {
+                      _isSectionExpanded = !_isSectionExpanded;
+                    });
                   },
+                  child: AnimatedRotation(
+                    turns: _isSectionExpanded ? 0 : -0.25,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 20,
+                      color: Color(0xFF9333EA),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          _TemplateCard(
-            cardKey: const Key('label-template-custom'),
-            title: _customTemplateOption.title,
-            subtitle: !widget.canUseCustomTemplate
-                ? 'Dành cho gói Pro'
-                : _customTemplateOption.subtitle,
-            icon: !widget.canUseCustomTemplate
-                ? Icons.workspace_premium_rounded
-                : _customTemplateOption.icon,
-            cardColor: _customTemplateOption.cardColor,
-            iconBgColor: _customTemplateOption.iconBgColor,
-            iconColor: _customTemplateOption.iconColor,
-            isCompact: false,
-            isSelected: widget.canUseCustomTemplate && _isEditorOpen,
-            isLocked: !widget.canUseCustomTemplate,
-            onTap: _openCustomEditor,
-          ),
-        ] else ...[
-          GridView.builder(
-            shrinkWrap: true,
-            primary: false,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _baseTemplateOptions.length + _savedTemplates.length + 1,
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 220,
-              mainAxisExtent: 68,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemBuilder: (context, index) {
-              if (index < _baseTemplateOptions.length) {
-                final option = _baseTemplateOptions[index];
-                return _TemplateCard(
-                  cardKey: Key('label-template-${option.template.name}'),
-                  title: option.title,
-                  subtitle: option.subtitle,
-                  icon: option.icon,
-                  cardColor: option.cardColor,
-                  iconBgColor: option.iconBgColor,
-                  iconColor: option.iconColor,
-                  isCompact: true,
-                  isSelected: option.template == widget.selectedTemplate &&
-                      !_isEditorOpen,
-                  onTap: () {
-                    setState(() => _isEditorOpen = false);
-                    widget.onTemplateChanged(option.template);
-                  },
-                );
-              }
+        ),
 
-              final savedStartIndex = _baseTemplateOptions.length;
-              final customIndex = savedStartIndex + _savedTemplates.length;
-              if (index < customIndex) {
-                final savedIndex = index - savedStartIndex;
-                final template = _savedTemplates[savedIndex];
-                final isSelected = widget.canUseCustomTemplate &&
-                    savedIndex == selectedSavedIndex &&
-                    !_isEditorOpen;
-                return _TemplateCard(
-                  cardKey: Key('saved-label-template-$savedIndex'),
-                  title: template.name,
-                  subtitle: 'Mẫu đã lưu (Giữ để xoá)',
-                  icon: Icons.bookmark_rounded,
-                  emoji: template.effectiveEmoji,
-                  cardColor: const Color(0xFFFEF3C7),
-                  iconBgColor: _savedTemplateAccent(template.style),
-                  iconColor: AppColors.ink,
-                  isCompact: true,
-                  isSelected: isSelected,
-                  isLocked: !widget.canUseCustomTemplate,
-                  onTap: widget.canUseCustomTemplate
-                      ? () {
-                          setState(() => _isEditorOpen = false);
-                          widget.onCustomStyleChanged(template.style);
-                          widget.onTemplateChanged(NoteLabelTemplate.custom);
-                        }
-                      : _showProTemplatePaywall,
-                  onLongPress: () => _confirmDeleteTemplate(template),
-                );
-              }
-
-              const option = _customTemplateOption;
-              return _TemplateCard(
-                cardKey: Key('label-template-${option.template.name}'),
-                title: option.title,
-                subtitle: !widget.canUseCustomTemplate
-                    ? 'Dành cho gói Pro'
-                    : option.subtitle,
-                icon: !widget.canUseCustomTemplate
-                    ? Icons.workspace_premium_rounded
-                    : option.icon,
-                cardColor: option.cardColor,
-                iconBgColor: option.iconBgColor,
-                iconColor: option.iconColor,
-                isCompact: true,
-                isSelected: widget.canUseCustomTemplate && _isEditorOpen,
-                isLocked: !widget.canUseCustomTemplate,
-                onTap: _openCustomEditor,
-              );
-            },
-          ),
-        ],
-
-        // Expandable Custom Style Editor
-        AnimatedSwitcher(
+        // Collapsible Content
+        AnimatedSize(
           duration: const Duration(milliseconds: 220),
-          child: widget.canUseCustomTemplate &&
-                  widget.selectedTemplate == NoteLabelTemplate.custom &&
-                  _isEditorOpen
-              ? Padding(
-                  key: const Key('custom-label-editor'),
-                  padding: const EdgeInsets.only(top: 14),
-                  child: CustomLabelStyleEditor(
-                    style: widget.customStyle,
-                    onChanged: widget.onCustomStyleChanged,
-                    templateStore: widget.templateStore,
-                    onTemplatesChanged: (templates) {
-                      setState(() {
-                        _savedTemplates = templates;
-                        _isEditorOpen = false;
-                      });
-                      widget.onTemplateChanged(NoteLabelTemplate.custom);
-                    },
-                  ),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: _isSectionExpanded
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 10),
+
+                    // Base 2 cards on top + 1 full-width card below (Exact match with reference image)
+                    // If saved templates exist: Responsive Grid
+                    if (_savedTemplates.isEmpty) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _TemplateCard(
+                              cardKey: const Key('label-template-standard'),
+                              title: _standardTemplateOption.title,
+                              icon: _standardTemplateOption.icon,
+                              cardColor: _standardTemplateOption.cardColor,
+                              iconBgColor: _standardTemplateOption.iconBgColor,
+                              iconColor: _standardTemplateOption.iconColor,
+                              isCompact: true,
+                              isSelected: widget.selectedTemplate ==
+                                      NoteLabelTemplate.standard &&
+                                  !_isEditorOpen,
+                              onTap: () {
+                                setState(() => _isEditorOpen = false);
+                                widget.onTemplateChanged(
+                                    NoteLabelTemplate.standard);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _TemplateCard(
+                              cardKey: const Key('label-template-minimal'),
+                              title: _minimalTemplateOption.title,
+                              icon: _minimalTemplateOption.icon,
+                              cardColor: _minimalTemplateOption.cardColor,
+                              iconBgColor: _minimalTemplateOption.iconBgColor,
+                              iconColor: _minimalTemplateOption.iconColor,
+                              isCompact: true,
+                              isSelected: widget.selectedTemplate ==
+                                      NoteLabelTemplate.minimal &&
+                                  !_isEditorOpen,
+                              onTap: () {
+                                setState(() => _isEditorOpen = false);
+                                widget.onTemplateChanged(
+                                    NoteLabelTemplate.minimal);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _TemplateCard(
+                        cardKey: const Key('label-template-custom'),
+                        title: _customTemplateOption.title,
+                        icon: !widget.canUseCustomTemplate
+                            ? Icons.workspace_premium_rounded
+                            : _customTemplateOption.icon,
+                        cardColor: _customTemplateOption.cardColor,
+                        iconBgColor: _customTemplateOption.iconBgColor,
+                        iconColor: _customTemplateOption.iconColor,
+                        isCompact: false,
+                        isSelected:
+                            widget.canUseCustomTemplate && _isEditorOpen,
+                        isLocked: !widget.canUseCustomTemplate,
+                        onTap: _openCustomEditor,
+                      ),
+                    ] else ...[
+                      GridView.builder(
+                        shrinkWrap: true,
+                        primary: false,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _baseTemplateOptions.length +
+                            _savedTemplates.length +
+                            1,
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 220,
+                          mainAxisExtent: 54,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemBuilder: (context, index) {
+                          if (index < _baseTemplateOptions.length) {
+                            final option = _baseTemplateOptions[index];
+                            return _TemplateCard(
+                              cardKey:
+                                  Key('label-template-${option.template.name}'),
+                              title: option.title,
+                              icon: option.icon,
+                              cardColor: option.cardColor,
+                              iconBgColor: option.iconBgColor,
+                              iconColor: option.iconColor,
+                              isCompact: true,
+                              isSelected:
+                                  option.template == widget.selectedTemplate &&
+                                      !_isEditorOpen,
+                              onTap: () {
+                                setState(() => _isEditorOpen = false);
+                                widget.onTemplateChanged(option.template);
+                              },
+                            );
+                          }
+
+                          final savedStartIndex = _baseTemplateOptions.length;
+                          final customIndex =
+                              savedStartIndex + _savedTemplates.length;
+                          if (index < customIndex) {
+                            final savedIndex = index - savedStartIndex;
+                            final template = _savedTemplates[savedIndex];
+                            final isSelected = widget.canUseCustomTemplate &&
+                                savedIndex == selectedSavedIndex &&
+                                !_isEditorOpen;
+                            return _TemplateCard(
+                              cardKey: Key('saved-label-template-$savedIndex'),
+                              title: template.name,
+                              icon: Icons.bookmark_rounded,
+                              emoji: template.effectiveEmoji,
+                              cardColor: const Color(0xFFFEF3C7),
+                              iconBgColor: _savedTemplateAccent(template.style),
+                              iconColor: AppColors.ink,
+                              isCompact: true,
+                              isSelected: isSelected,
+                              isLocked: !widget.canUseCustomTemplate,
+                              onTap: widget.canUseCustomTemplate
+                                  ? () {
+                                      setState(() => _isEditorOpen = false);
+                                      widget
+                                          .onCustomStyleChanged(template.style);
+                                      widget.onTemplateChanged(
+                                          NoteLabelTemplate.custom);
+                                    }
+                                  : _showProTemplatePaywall,
+                              onLongPress: () =>
+                                  _confirmDeleteTemplate(template),
+                            );
+                          }
+
+                          const option = _customTemplateOption;
+                          return _TemplateCard(
+                            cardKey:
+                                Key('label-template-${option.template.name}'),
+                            title: option.title,
+                            icon: !widget.canUseCustomTemplate
+                                ? Icons.workspace_premium_rounded
+                                : option.icon,
+                            cardColor: option.cardColor,
+                            iconBgColor: option.iconBgColor,
+                            iconColor: option.iconColor,
+                            isCompact: true,
+                            isSelected:
+                                widget.canUseCustomTemplate && _isEditorOpen,
+                            isLocked: !widget.canUseCustomTemplate,
+                            onTap: _openCustomEditor,
+                          );
+                        },
+                      ),
+                    ],
+
+                    // Expandable Custom Style Editor
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: widget.canUseCustomTemplate &&
+                              widget.selectedTemplate ==
+                                  NoteLabelTemplate.custom &&
+                              _isEditorOpen
+                          ? Padding(
+                              key: const Key('custom-label-editor'),
+                              padding: const EdgeInsets.only(top: 14),
+                              child: CustomLabelStyleEditor(
+                                style: widget.customStyle,
+                                onChanged: widget.onCustomStyleChanged,
+                                templateStore: widget.templateStore,
+                                onTemplatesChanged: (templates) {
+                                  setState(() {
+                                    _savedTemplates = templates;
+                                    _isEditorOpen = false;
+                                  });
+                                  widget.onTemplateChanged(
+                                      NoteLabelTemplate.custom);
+                                },
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
                 )
               : const SizedBox.shrink(),
         ),
@@ -357,12 +402,14 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
       final updated = await widget.templateStore.delete(template.name);
       if (!mounted) return;
       setState(() => _savedTemplates = updated);
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         SnackBar(content: Text('Đã xoá mẫu “${template.name}”')),
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showTopNotification(
+          context,
           const SnackBar(content: Text('Không thể xoá mẫu. Vui lòng thử lại.')),
         );
       }
@@ -428,7 +475,6 @@ class _TemplateOption {
   const _TemplateOption({
     required this.template,
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.cardColor,
     required this.iconBgColor,
@@ -437,7 +483,6 @@ class _TemplateOption {
 
   final NoteLabelTemplate template;
   final String title;
-  final String subtitle;
   final IconData icon;
   final Color cardColor;
   final Color iconBgColor;
@@ -447,7 +492,6 @@ class _TemplateOption {
 const _standardTemplateOption = _TemplateOption(
   template: NoteLabelTemplate.standard,
   title: 'MẶC ĐỊNH',
-  subtitle: 'Phong cách Capy hiện ...',
   icon: Icons.push_pin_rounded,
   cardColor: Color(0xFFFFF0ED),
   iconBgColor: Color(0xFFFDA4AF),
@@ -457,7 +501,6 @@ const _standardTemplateOption = _TemplateOption(
 const _minimalTemplateOption = _TemplateOption(
   template: NoteLabelTemplate.minimal,
   title: 'TỐI GIẢN',
-  subtitle: 'Đen trắng, thật gọn',
   icon: Icons.reorder_rounded,
   cardColor: Color(0xFFE0F2FE),
   iconBgColor: Color(0xFF93C5FD),
@@ -467,7 +510,6 @@ const _minimalTemplateOption = _TemplateOption(
 const _customTemplateOption = _TemplateOption(
   template: NoteLabelTemplate.custom,
   title: 'TỰ THIẾT KẾ',
-  subtitle: 'Tạo và lưu phong cách riêng',
   icon: Icons.palette_rounded,
   cardColor: Color(0xFFDDD6FE),
   iconBgColor: Color(0xFFEDE9FE),
@@ -483,7 +525,6 @@ class _TemplateCard extends StatelessWidget {
   const _TemplateCard({
     required this.cardKey,
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.cardColor,
     required this.iconBgColor,
@@ -498,7 +539,6 @@ class _TemplateCard extends StatelessWidget {
 
   final Key cardKey;
   final String title;
-  final String subtitle;
   final IconData icon;
   final Color cardColor;
   final Color iconBgColor;
@@ -520,7 +560,7 @@ class _TemplateCard extends StatelessWidget {
 
     // Inner Card Content
     Widget cardContent = Container(
-      constraints: BoxConstraints(minHeight: isCompact ? 56 : 62),
+      constraints: BoxConstraints(minHeight: isCompact ? 48 : 54),
       padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: vPadding),
       decoration: BoxDecoration(
         color: cardColor,
@@ -551,41 +591,22 @@ class _TemplateCard extends StatelessWidget {
                       )
                     : Icon(icon, size: isCompact ? 16 : 19, color: iconColor),
           ),
-          SizedBox(width: isCompact ? 4 : 8),
+          SizedBox(width: isCompact ? 6 : 8),
 
-          // Title & Subtitle Column
+          // Title Text
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.left,
-                  style: TextStyle(
-                    fontFamily: 'Fredoka',
-                    fontSize: isCompact ? 12.0 : 13.0,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
-                    letterSpacing: 0.1,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.left,
-                  style: TextStyle(
-                    fontFamily: 'Nunito',
-                    fontSize: isCompact ? 9.5 : 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF3A3A3A),
-                  ),
-                ),
-              ],
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.left,
+              style: TextStyle(
+                fontFamily: 'Fredoka',
+                fontSize: isCompact ? 12.0 : 13.0,
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
+                letterSpacing: 0.1,
+              ),
             ),
           ),
 

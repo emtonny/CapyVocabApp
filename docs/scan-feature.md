@@ -2,6 +2,11 @@
 
 > Tài liệu bàn giao kỹ thuật cho agent tiếp quản chức năng chính: chụp/chọn
 > ảnh, nhận diện từ vựng bằng Gemini Vision và vẽ note từ vựng lên ảnh.
+>
+> Bản ghép mới nhất: `2026-09-12`, GitHub `b742ea4` + Vilao gateway.
+> Mục 0–14 giữ baseline lịch sử; không dùng các mô tả model/storage cũ làm
+> contract hiện tại. Xem [báo cáo đồng bộ](github-vilao-sync.md) và
+> [DB/Library status](../db_status.md) cho thay đổi mới, test và rollout.
 
 ## 0. Thông tin baseline
 
@@ -14,8 +19,8 @@
 - Tài liệu này mô tả **hiện trạng trong source**, không mô tả đầy đủ sản phẩm
   mong muốn trong tương lai.
 - Khi tài liệu và code khác nhau, code và test hiện tại là nguồn sự thật.
-- Không dùng mô tả Gemini 1.5 trong `README.md`/comment `pubspec.yaml` làm căn
-  cứ runtime; Edge Function hiện cấu hình model khác, xem mục 6.
+- Không dùng comment model cũ trong `pubspec.yaml` làm căn cứ runtime; Edge
+  Function là owner của model chain, xem mục 6.
 
 Verification tại baseline:
 
@@ -854,14 +859,9 @@ SUPABASE_URL
 SUPABASE_ANON_KEY
 ```
 
-`.env.example` còn liệt kê `GEMINI_API_KEY`, nhưng runtime Flutter scan không
-đọc key này. Gemini key phải là Edge Function secret, không đưa vào client app
-hoặc bundle Flutter.
-
-`pubspec.yaml` hiện khai báo nguyên `.env` trong `flutter.assets`. Vì vậy nếu
-đặt `GEMINI_API_KEY` thật vào `.env`, key có nguy cơ bị đóng gói cùng client dù
-code Flutter không đọc nó. Chỉ để cấu hình public/publishable dành cho client
-trong asset này; chuyển mọi server secret sang Supabase Edge secrets.
+Flutter nạp `assets/config/client.config`, chỉ gồm Supabase URL và public key.
+`.env` không nằm trong Flutter assets. `GEMINI_API_KEY` chỉ là server secret,
+không đưa vào client app hoặc bundle Flutter.
 
 Edge runtime dùng:
 
@@ -869,9 +869,16 @@ Edge runtime dùng:
 GEMINI_API_KEY             required (Vilao consumer API key)
 GEMINI_BASE_URL            optional; defaults to https://api.vilao.ai/v1
 GEMINI_MODEL               optional; defaults to gemini-3.8-flash
-SUPABASE_URL               required để bật health store
-SUPABASE_SERVICE_ROLE_KEY  required để bật health store
+SUPABASE_URL               required cho auth, entitlement, ledger và health
+SUPABASE_SERVICE_ROLE_KEY  required cho entitlement, ledger và health
+SUPABASE_ANON_KEY          hoặc publishable key format, required cho auth
 ```
+
+`GEMINI_BASE_URL` ưu tiên hơn `GEMINI_API_BASE_URL`. Biến thứ hai chỉ là opt-in
+cho native Gemini/P6 stub; không đặt nó cho cấu hình Vilao mặc định. Free và Pro
+đều dùng `GEMINI_MODEL` khi gọi Vilao, không tự fallback sang Google. Quyền app
+vẫn do entitlement server quyết định. Response OpenAI và token usage được đổi
+sang contract schema v2/ledger của code GitHub mới.
 
 Không log Base64 ảnh hoặc secret. Edge chỉ log error body rút gọn, scanId,
 model, attempts, finish reason, usage metadata và word count.
@@ -1094,7 +1101,6 @@ thay đổi sản phẩm**:
 6. Nối label tap/TTS theo quyết định UX/accessibility.
 7. Thêm cancellation hoặc khóa dismiss trong phase xử lý.
 8. Xác nhận JWT enforcement khi deploy Edge Function.
-9. Cập nhật README/comment model để không còn mô tả Gemini 1.5 cũ.
 
 Mỗi mục trên có thể thay đổi behavior/data/security và phải được người dùng hoặc
 spec phê duyệt trước khi implementation.

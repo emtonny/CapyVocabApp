@@ -7,7 +7,7 @@ import 'package:capy_vocab/features/onboarding/presentation/providers/onboarding
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('wizard validate và chuyển đúng thứ tự 5 bước', () async {
+  test('wizard validate và chuyển đúng thứ tự 6 bước', () async {
     final repository = _FakeOnboardingRepository();
     final notifier = OnboardingNotifier(repository: repository);
     addTearDown(notifier.dispose);
@@ -25,6 +25,13 @@ void main() {
     expect(notifier.state.currentStep, 1);
     expect(repository.checkedUsername, 'capy_may');
 
+    expect(notifier.state.data.interfaceLocale, 'vi-VN');
+    expect(notifier.state.data.learningLocale, 'en-US');
+    notifier.updateInterfaceLocale('en-GB');
+    notifier.updateLearningLocale('ja-JP');
+    expect(await notifier.nextStep(), isTrue);
+    expect(notifier.state.currentStep, 2);
+
     notifier.updateAge(0);
     notifier.updatePhone('123');
     expect(await notifier.nextStep(), isFalse);
@@ -35,13 +42,13 @@ void main() {
     notifier.updatePhone('0987654321');
     repository.phoneAvailable = false;
     expect(await notifier.nextStep(), isFalse);
-    expect(notifier.state.currentStep, 1);
+    expect(notifier.state.currentStep, 2);
     expect(
         notifier.state.fieldErrors['phone'], 'Số điện thoại đã được sử dụng.');
 
     repository.phoneAvailable = true;
     expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 2);
+    expect(notifier.state.currentStep, 3);
     expect(repository.checkedPhone, '0987654321');
 
     expect(await notifier.nextStep(), isFalse);
@@ -49,7 +56,7 @@ void main() {
 
     notifier.updateAccountRole('personal');
     expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 3);
+    expect(notifier.state.currentStep, 4);
 
     notifier.updateReminderTime('25:00');
     expect(await notifier.nextStep(), isFalse);
@@ -65,7 +72,7 @@ void main() {
 
     notifier.updateStudyTimeRange(start: '22:00', end: '02:00');
     expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 4);
+    expect(notifier.state.currentStep, 5);
 
     notifier.updateDailyTargetWords(0);
     expect(await notifier.validateCurrentStep(), isFalse);
@@ -89,14 +96,19 @@ void main() {
 
     notifier.updateUsername('capy_may');
     await notifier.nextStep();
+    notifier.updateInterfaceLocale('en-GB');
+    notifier.updateLearningLocale('ja-JP');
+    await notifier.nextStep();
     notifier.updateAge(18);
     notifier.updatePhone('0912345678');
     await notifier.nextStep();
 
     notifier.previousStep();
 
-    expect(notifier.state.currentStep, 1);
+    expect(notifier.state.currentStep, 2);
     expect(notifier.state.data.username, 'capy_may');
+    expect(notifier.state.data.interfaceLocale, 'en-GB');
+    expect(notifier.state.data.learningLocale, 'ja-JP');
     expect(notifier.state.data.age, 18);
     expect(notifier.state.data.phone, '0912345678');
   });
@@ -151,7 +163,7 @@ void main() {
     await _moveToFinalStep(notifier);
 
     expect(await notifier.completeOnboarding(), isFalse);
-    expect(notifier.state.currentStep, 4);
+    expect(notifier.state.currentStep, 5);
     expect(notifier.state.isSaving, isFalse);
     expect(notifier.state.saveError, contains('thử lại'));
   });
@@ -171,13 +183,13 @@ void main() {
     (
       field: OnboardingConflictField.phone,
       message: 'Số điện thoại đã được sử dụng. Vui lòng dùng số khác.',
-      expectedStep: 1,
+      expectedStep: 2,
       expectedErrorKey: 'phone',
     ),
     (
       field: OnboardingConflictField.email,
       message: 'Email đã được sử dụng. Vui lòng dùng email khác.',
-      expectedStep: 4,
+      expectedStep: 5,
       expectedErrorKey: null,
     ),
   ]) {
@@ -206,6 +218,7 @@ void main() {
 
 Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
   notifier.updateUsername('capy_may');
+  expect(await notifier.nextStep(), isTrue);
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAge(20);
   notifier.updatePhone('0987654321');

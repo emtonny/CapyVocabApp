@@ -11,6 +11,7 @@ import {
   fetchGeminiModelChain,
   GeminiChainError,
   GeminiCircuitOpenError,
+  normalizeDetectedWordFields,
 } from "./gemini_client.ts";
 import { createSupabaseGeminiHealthStore } from "./gemini_model_health.ts";
 import { ImagePayloadError, parseScanPayload } from "./image_payload.ts";
@@ -20,10 +21,8 @@ import {
   type ScanReservation,
 } from "./scan_ledger.ts";
 import {
-  type BoundingBox,
   DEFAULT_BOUNDING_BOX_RATIO,
   normalizeBoundingBox,
-  rankWordsByBoxArea,
   shrinkBoundingBox,
 } from "./bounding_box.ts";
 import {
@@ -37,8 +36,12 @@ import {
   selectHierarchyDetections,
   selectLegacyDetections,
 } from "./detection_ranking.ts";
-import { buildScanPrompt } from "./scan_prompt.ts";
-import { resolveModelPolicy } from "./model_policy.ts";
+import {
+  buildOpenAiRequestBody,
+  readScanGatewayResponse,
+  resolveScanGateway,
+  resolveScanModelPolicy,
+} from "./scan_gateway.ts";
 import {
   authenticateRequest,
   RequestAuthenticationError,
@@ -53,8 +56,7 @@ import {
 } from "../_shared/entitlements.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-const GEMINI_API_BASE_URL = Deno.env.get("GEMINI_API_BASE_URL")?.trim() ||
-  undefined;
+const SCAN_GATEWAY = resolveScanGateway((name) => Deno.env.get(name));
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const SUPABASE_PUBLIC_API_KEY = resolveSupabasePublicApiKey((name) =>
@@ -203,20 +205,6 @@ function logSuspiciousBoxes(words: unknown[], scanId: string) {
   });
 }
 
-function deduplicateWords(words: unknown[]): unknown[] {
-  const seenWords = new Set<string>();
-
-  return words.filter((item) => {
-    if (!item || typeof item !== "object") return true;
-    const word = (item as { word?: unknown }).word;
-    if (typeof word !== "string") return true;
-
-    const normalizedWord = word.trim().toLowerCase();
-    if (!normalizedWord || seenWords.has(normalizedWord)) return false;
-    seenWords.add(normalizedWord);
-    return true;
-  });
-}
 function shrinkDetectedWordBox(word: unknown): unknown {
   if (!word || typeof word !== "object") return word;
   const box = normalizeBoundingBox(word);
@@ -329,7 +317,11 @@ Deno.serve(async (req) => {
       APP_CAPABILITIES.aiScanBasic,
       ENTITLEMENT_STORE,
     );
-    const modelPolicy = resolveModelPolicy(entitlements.tier);
+    const modelPolicy = resolveScanModelPolicy(
+      entitlements.tier,
+      SCAN_GATEWAY,
+      (name) => Deno.env.get(name),
+    );
 
     if (!GEMINI_API_KEY) {
       return new Response(
@@ -408,25 +400,33 @@ Deno.serve(async (req) => {
       apiKey: GEMINI_API_KEY,
       scanId,
       modelPolicy,
-      createRequestBody: (model) => ({
-        contents: [
-          {
-            parts: [
-              { text: PROMPT },
+      createRequestBody: (model) =>
+        SCAN_GATEWAY.openAi
+          ? buildOpenAiRequestBody(
+            model,
+            `${PROMPT}\n\nReturn this JSON contract: {"schema_version":${HIERARCHY_SCHEMA_VERSION},"words":[{"number":1,"id":"d1","kind":"object","parent_id":null,"word":"cup","phonetic":"/kʌp/","meaning_vi":"cái cốc","box_2d":[0,0,1000,1000]}]}. The item is only a format example, not an object to invent. Use {"schema_version":${HIERARCHY_SCHEMA_VERSION},"words":[]} when no object is identifiable.`,
+            payload.imageBase64,
+          )
+          : ({
+            contents: [
               {
-                inline_data: {
-                  mime_type: "image/jpeg",
-                  data: payload.imageBase64,
-                },
+                parts: [
+                  { text: PROMPT },
+                  {
+                    inline_data: {
+                      mime_type: "image/jpeg",
+                      data: payload.imageBase64,
+                    },
+                  },
+                ],
               },
             ],
-          },
-        ],
-        generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
-      }),
+            generationConfig: buildGenerationConfig(model, RESPONSE_SCHEMA),
+          }),
       healthStore: GEMINI_HEALTH_STORE,
       scheduleBackgroundTask: (task) => EdgeRuntime.waitUntil(task),
-      apiBaseUrl: GEMINI_API_BASE_URL,
+      apiBaseUrl: SCAN_GATEWAY.openAi ? undefined : SCAN_GATEWAY.baseUrl,
+      openAiBaseUrl: SCAN_GATEWAY.openAi ? SCAN_GATEWAY.baseUrl : undefined,
     });
     const {
       response: geminiRes,
@@ -535,10 +535,10 @@ Deno.serve(async (req) => {
     }
 
     const geminiData = await geminiRes.json();
-    const finishReason = geminiData?.candidates?.[0]?.finishReason;
-    const usage = geminiData?.usageMetadata;
+    const { finishReason, usage, rawText } = readScanGatewayResponse(
+      geminiData,
+    );
     usageForLedger = usage;
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) {
       console.error(
@@ -590,6 +590,12 @@ Deno.serve(async (req) => {
 
     let rawHierarchyMetrics: HierarchyValidationMetrics;
     try {
+      if (parsed && Array.isArray(parsed.words)) {
+        parsed = {
+          ...parsed,
+          words: parsed.words.map(normalizeDetectedWordFields),
+        };
+      }
       const normalized = normalizeVersion2Hierarchy(parsed);
       parsed = normalized.response;
       rawHierarchyMetrics = normalized.metrics;

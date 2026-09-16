@@ -3,6 +3,7 @@ import {
   shouldFallbackModelFailure,
   shouldRetryModelFailure,
 } from "./model_policy.ts";
+import { resolveOpenAiEndpoint } from "./scan_gateway.ts";
 
 const DEFAULT_GEMINI_API_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
@@ -127,6 +128,7 @@ interface GeminiChainOptions {
   healthStore?: GeminiHealthStore;
   scheduleBackgroundTask?: (task: Promise<void>) => void;
   apiBaseUrl?: string;
+  openAiBaseUrl?: string;
 }
 
 interface GeminiAttemptOptions {
@@ -136,6 +138,7 @@ interface GeminiAttemptOptions {
   fetcher: Fetcher;
   timeoutMs: number;
   apiBaseUrl?: string;
+  openAiBaseUrl?: string;
 }
 
 interface GeminiAttemptResult {
@@ -190,12 +193,17 @@ export async function fetchGemini(
 
   try {
     const apiBaseUrl = options.apiBaseUrl ?? DEFAULT_GEMINI_API_BASE_URL;
-    const endpoint = `${apiBaseUrl.replace(/\/+$/, "")}/${
-      encodeURIComponent(options.model)
-    }:generateContent?key=${encodeURIComponent(options.apiKey)}`;
-    const response = await options.fetcher(endpoint, {
+    const endpoint = options.openAiBaseUrl
+      ? resolveOpenAiEndpoint(options.openAiBaseUrl, options.apiKey)
+      : {
+        url: `${apiBaseUrl.replace(/\/+$/, "")}/${
+          encodeURIComponent(options.model)
+        }:generateContent?key=${encodeURIComponent(options.apiKey)}`,
+        headers: { "Content-Type": "application/json" },
+      };
+    const response = await options.fetcher(endpoint.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: endpoint.headers,
       signal: controller.signal,
       body: JSON.stringify(options.requestBody),
     });
@@ -417,6 +425,7 @@ export async function fetchGeminiModelChain(
           fetcher,
           timeoutMs,
           apiBaseUrl: options.apiBaseUrl ?? DEFAULT_GEMINI_API_BASE_URL,
+          openAiBaseUrl: options.openAiBaseUrl,
         });
 
         const quotaKind = response.status === 429
@@ -606,4 +615,33 @@ export async function fetchGeminiModelChain(
     upstreamAttempts,
     lastAttemptError,
   );
+}
+
+export function normalizeDetectedWordFields(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+
+  const record = { ...(raw as Record<string, unknown>) };
+
+  const word = record.word ?? record.name ?? record.english;
+  const phonetic = record.phonetic ?? record.ipa;
+  const meaningVi = record.meaning_vi ?? record.vietnamese;
+
+  delete record.name;
+  delete record.english;
+  delete record.ipa;
+  delete record.vietnamese;
+
+  if (word !== undefined) {
+    record.word = word;
+  }
+  if (phonetic !== undefined) {
+    record.phonetic = phonetic;
+  }
+  if (meaningVi !== undefined) {
+    record.meaning_vi = meaningVi;
+  }
+
+  return record;
 }

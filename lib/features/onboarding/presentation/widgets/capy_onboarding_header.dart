@@ -16,6 +16,10 @@ class CapyOnboardingHeader extends StatefulWidget {
       'subtitle': 'Nhập tên thật và biệt danh bạn muốn bạn bè nhìn thấy nhé!',
     },
     {
+      'title': 'Bạn muốn dùng ngôn ngữ nào? 🌏',
+      'subtitle': 'Chọn ngôn ngữ giao diện và ngôn ngữ bạn muốn học trước nhé!',
+    },
+    {
       'title': 'Thông tin độ tuổi & SĐT 📱',
       'subtitle': 'Giúp Bé Deer bảo mật và gửi thông báo nhắc nhớ chuẩn hơn!',
     },
@@ -76,9 +80,10 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
 
   @override
   Widget build(BuildContext context) {
-    final stepIndex = widget.currentStep.clamp(0, 4);
+    final stepCount = CapyOnboardingHeader._prompts.length;
+    final stepIndex = widget.currentStep.clamp(0, stepCount - 1);
     final prompt = CapyOnboardingHeader._prompts[stepIndex];
-    final progress = (stepIndex + 1) / 5;
+    final progress = (stepIndex + 1) / stepCount;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -88,7 +93,7 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Bước ${stepIndex + 1} / 5',
+              'Bước ${stepIndex + 1} / $stepCount',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,

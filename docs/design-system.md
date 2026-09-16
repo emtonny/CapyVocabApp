@@ -1,4 +1,8 @@
-NeoBrutal EdTech — App Design System
+# NeoBrutal EdTech — App Design System
+
+> Nguồn chuẩn cho ngôn ngữ hình ảnh của Deery Vocab. Token thực thi nằm trong
+> `lib/core/constants/app_colors.dart` và theme/widget của ứng dụng; khi tài
+> liệu và code lệch nhau, cần đồng bộ có chủ đích thay vì tạo thêm bảng token.
 
 Style blend: Neo‑Brutalism 55% · Swiss / International Style 25% · Memphis 10% · Modern EdTech / Creator Economy 10%
 

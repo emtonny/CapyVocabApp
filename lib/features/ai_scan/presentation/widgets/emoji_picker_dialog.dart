@@ -16,6 +16,18 @@ class EmojiItem {
   final String keywords;
 }
 
+const List<String> kEmojiCategories = [
+  'Gợi ý',
+  'Mặt cười',
+  'Động vật',
+  'Đồ ăn',
+  'Học tập',
+  'Quốc kỳ',
+  'Biểu tượng',
+  'Hoạt động',
+  'Du lịch',
+];
+
 class EmojiPickerDialog extends StatefulWidget {
   const EmojiPickerDialog({
     super.key,
@@ -57,17 +69,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
   static const _ink = AppColors.ink;
   static const _mutedInk = AppColors.mutedInk;
 
-  final List<String> _categories = const [
-    'Gợi ý',
-    'Mặt cười',
-    'Động vật',
-    'Đồ ăn',
-    'Học tập',
-    'Quốc kỳ',
-    'Biểu tượng',
-    'Hoạt động',
-    'Du lịch',
-  ];
+  List<String> get _categories => kEmojiCategories;
 
   @override
   void initState() {
@@ -102,7 +104,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
       final normalizedQuery = _normalize(_searchQuery);
       final seen = <String>{};
       final results = <EmojiItem>[];
-      for (final item in _allEmojis) {
+      for (final item in kAllEmojis) {
         if (seen.contains(item.emoji)) continue;
         final normName = _normalize(item.name);
         final normKeywords = _normalize(item.keywords);
@@ -117,10 +119,10 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     }
 
     if (_selectedCategory == 'Gợi ý') {
-      return _allEmojis.where((item) => item.category == 'Gợi ý').toList();
+      return kAllEmojis.where((item) => item.category == 'Gợi ý').toList();
     }
 
-    return _allEmojis
+    return kAllEmojis
         .where((item) => item.category == _selectedCategory)
         .toList();
   }
@@ -389,10 +391,20 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
 }
 
 // Bảng dữ liệu kho Emoji đồ sộ phân loại theo chuẩn iPhone kèm từ khoá tìm kiếm Việt & Anh
-final List<EmojiItem> _allEmojis = [
-  // Gợi ý hay dùng cho nhãn từ vựng (Popular)
-  const EmojiItem(emoji: '🦌', name: 'Hươu', category: 'Gợi ý', keywords: 'huou deer animal dong vat'),
+final List<EmojiItem> kAllEmojis = [
+  // Gợi ý hay dùng cho nhãn từ vựng & Album (Popular)
+  const EmojiItem(emoji: '📁', name: 'Thư mục', category: 'Gợi ý', keywords: 'thu muc folder album library'),
+  const EmojiItem(emoji: '🍜', name: 'Mì ramen', category: 'Gợi ý', keywords: 'mi ramen phở noodle soup food do an'),
   const EmojiItem(emoji: '🦫', name: 'Capybara', category: 'Gợi ý', keywords: 'capybara chuot lang animal dong vat'),
+  const EmojiItem(emoji: '🦌', name: 'Hươu', category: 'Gợi ý', keywords: 'huou deer animal dong vat'),
+  const EmojiItem(emoji: '⭐', name: 'Ngôi sao', category: 'Gợi ý', keywords: 'ngoi sao star symbol'),
+  const EmojiItem(emoji: '📚', name: 'Sách vở', category: 'Gợi ý', keywords: 'sach vo books study learn hoc'),
+  const EmojiItem(emoji: '☕', name: 'Cà phê', category: 'Gợi ý', keywords: 'ca phe coffee cafe drink'),
+  const EmojiItem(emoji: '🌲', name: 'Cây thông', category: 'Gợi ý', keywords: 'cay thong pine tree forest rung nui nature du lich'),
+  const EmojiItem(emoji: '✈️', name: 'Máy bay', category: 'Gợi ý', keywords: 'may bay airplane flight du lich travel'),
+  const EmojiItem(emoji: '🎮', name: 'Tay cầm game', category: 'Gợi ý', keywords: 'tay cam game tro choi play controller'),
+  const EmojiItem(emoji: '🎨', name: 'Bảng vẽ', category: 'Gợi ý', keywords: 'bang ve palette art paint hoa si'),
+  const EmojiItem(emoji: '🎵', name: 'Nốt nhạc', category: 'Gợi ý', keywords: 'not nhac music audio sound bai hat'),
   const EmojiItem(emoji: '💖', name: 'Trái tim', category: 'Gợi ý', keywords: 'trai tim tim heart love'),
   const EmojiItem(emoji: '🍪', name: 'Bánh quy', category: 'Gợi ý', keywords: 'banh quy cookie biscuit sweet'),
   const EmojiItem(emoji: '📌', name: 'Ghim đỏ', category: 'Gợi ý', keywords: 'ghim do pin note note label'),

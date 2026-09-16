@@ -1,16 +1,17 @@
 // Font hệ: Fredoka (tiêu đề) + Nunito (nội dung)
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppTextStyles {
   AppTextStyles._();
 
-  static TextStyle heading = GoogleFonts.fredoka(
+  static const TextStyle heading = TextStyle(
+    fontFamily: 'Fredoka',
     fontWeight: FontWeight.w600,
     fontSize: 20,
   );
 
-  static TextStyle body = GoogleFonts.nunito(
+  static const TextStyle body = TextStyle(
+    fontFamily: 'Nunito',
     fontWeight: FontWeight.w400,
     fontSize: 14,
   );

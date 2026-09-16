@@ -65,6 +65,9 @@ List<PlacedLabel> solve({
   required Size canvasSize,
   required LabelSizeMeasurer measurer,
   required LabelStyleConfig compactStyleConfig,
+  bool showWord = true,
+  bool showPhonetic = true,
+  bool showMeaning = true,
   AngleRankingFunction angleRanker = rankAnglesByOpennessAndCenterBias,
 }) {
   _validateInputs(words, labelSizes, anchorBoxes, canvasSize);
@@ -183,7 +186,13 @@ List<PlacedLabel> solve({
       ignoredForbiddenZoneIndex: ownForbiddenZoneIndex,
       angleRanker: angleRanker,
     );
-    final compactMeasured = measurer.measure(words[index], compactConfig);
+    final compactMeasured = measurer.measure(
+      words[index],
+      compactConfig,
+      showWord: showWord,
+      showPhonetic: showPhonetic,
+      showMeaning: showMeaning,
+    );
     final compactSize = _toSize(compactMeasured);
 
     final smallerFontRect = _findCandidate(

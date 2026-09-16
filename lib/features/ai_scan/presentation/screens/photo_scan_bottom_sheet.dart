@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart' show XFile;
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/entitlements/entitlement_provider.dart';
 import '../../../../core/services/gemini_vision_service.dart';
+import '../../../../shared/widgets/sticker_button.dart';
 import '../../data/datasources/scan_result_local_datasource.dart';
 import '../../data/services/scan_image_compressor.dart';
 import '../../data/services/scan_image_picker.dart';
@@ -25,6 +26,8 @@ import '../widgets/scan_loading_overlay.dart';
 import '../widgets/vocab_canvas_overlay.dart';
 
 typedef WebCameraCaptureBuilder = Widget Function(BuildContext context);
+
+enum _LabelField { word, phonetic, meaning }
 
 Widget _buildDefaultWebCameraCaptureView(BuildContext context) {
   return const CameraCaptureView();
@@ -60,6 +63,11 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
   double? _imageAspectRatio;
   ScanResultRecord? _scanRecord;
   bool _isProcessing = false;
+  bool _showLabels = true;
+  bool _showWord = true;
+  bool _showPhonetic = true;
+  bool _showMeaning = true;
+  bool _hasExplicitLabelSelection = false;
   String _processingStatus = 'Đang chuẩn bị ảnh...';
   NoteLabelTemplate _selectedTemplate = NoteLabelTemplate.standard;
   LabelVisualStyle _customLabelStyle = LabelVisualStyle.customDefault;
@@ -96,6 +104,11 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
       _previewBytes = null;
       _imageAspectRatio = null;
       _scanRecord = null;
+      _showLabels = true;
+      _showWord = true;
+      _showPhonetic = true;
+      _showMeaning = true;
+      _hasExplicitLabelSelection = false;
       _processingStatus = 'Đang chuẩn bị ảnh...';
     });
 
@@ -252,6 +265,66 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
     return _pickAndScan(ScanImageSource.camera);
   }
 
+  void _setAllLabelsVisible() {
+    setState(() {
+      _showLabels = true;
+      _showWord = true;
+      _showPhonetic = true;
+      _showMeaning = true;
+      _hasExplicitLabelSelection = false;
+    });
+  }
+
+  void _hideAllLabels() {
+    setState(() {
+      _showLabels = false;
+      _showWord = false;
+      _showPhonetic = false;
+      _showMeaning = false;
+      _hasExplicitLabelSelection = false;
+    });
+  }
+
+  void _toggleLabelField(_LabelField field) {
+    setState(() {
+      // The first field selection switches from the default all-fields view
+      // to an explicit filter. Later taps add/remove individual fields.
+      if (!_hasExplicitLabelSelection || !_showLabels) {
+        _showWord = field == _LabelField.word;
+        _showPhonetic = field == _LabelField.phonetic;
+        _showMeaning = field == _LabelField.meaning;
+        _showLabels = true;
+        _hasExplicitLabelSelection = true;
+        return;
+      }
+
+      switch (field) {
+        case _LabelField.word:
+          _showWord = !_showWord;
+        case _LabelField.phonetic:
+          _showPhonetic = !_showPhonetic;
+        case _LabelField.meaning:
+          _showMeaning = !_showMeaning;
+      }
+
+      final hasVisibleField = _showWord || _showPhonetic || _showMeaning;
+      _showLabels = hasVisibleField;
+      _hasExplicitLabelSelection = hasVisibleField;
+    });
+  }
+
+  void _toggleWord() {
+    _toggleLabelField(_LabelField.word);
+  }
+
+  void _togglePhonetic() {
+    _toggleLabelField(_LabelField.phonetic);
+  }
+
+  void _toggleMeaning() {
+    _toggleLabelField(_LabelField.meaning);
+  }
+
   Future<void> _showPreparationError(String message) {
     return showDialog<void>(
       context: context,
@@ -309,6 +382,10 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                           words: words,
                           sceneWords: sceneWords,
                           visualStyle: _selectedLabelStyle,
+                          showLabels: _showLabels,
+                          showWord: _showWord,
+                          showPhonetic: _showPhonetic,
+                          showMeaning: _showMeaning,
                         )
                       : Image.memory(
                           bytes,
@@ -343,19 +420,110 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
     final aspectRatio = _imageAspectRatio ?? (4 / 3);
     final words = _scanRecord?.result.detectedVocabulary ?? [];
     final sceneWords = _scanRecord?.result.placementContext ?? words;
+    final isDone = _scanRecord != null && !_isProcessing;
 
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          margin: EdgeInsets.only(bottom: isDone ? 10 : 14),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.36,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.softWhite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppColors.ink,
+              width: 2.8,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.ink,
+                offset: Offset(2.0, 2.0),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Dynamic aspect ratio image / canvas overlay
+                AspectRatio(
+                  aspectRatio: aspectRatio,
+                  child: words.isNotEmpty
+                      ? VocabCanvasOverlay(
+                          key: const Key('scan-image-preview'),
+                          imageProvider: MemoryImage(bytes),
+                          words: words,
+                          sceneWords: sceneWords,
+                          visualStyle: _selectedLabelStyle,
+                          showLabels: _showLabels,
+                          showWord: _showWord,
+                          showPhonetic: _showPhonetic,
+                          showMeaning: _showMeaning,
+                        )
+                      : Image.memory(
+                          bytes,
+                          key: const Key('scan-image-preview'),
+                          fit: BoxFit.contain,
+                          gaplessPlayback: true,
+                        ),
+                ),
+
+                // Zoom In / Fullscreen Button on Top-Right Corner
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Material(
+                    color: const Color(0x99000000),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      key: const Key('zoom-image-button'),
+                      customBorder: const CircleBorder(),
+                      onTap: () => _openFullscreenZoom(
+                        context,
+                        bytes,
+                        words,
+                        sceneWords,
+                        aspectRatio,
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: Icon(
+                          Icons.fullscreen_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // 4 Action Buttons underneath when scan is DONE!
+        if (isDone) ...[
+          _buildScanControlBar(),
+          const SizedBox(height: 14),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildScanControlBar() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.36,
-      ),
+      key: const Key('scan-result-control-bar'),
+      height: 48,
       decoration: BoxDecoration(
         color: AppColors.softWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.ink,
-          width: 2.8,
-        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.ink, width: 2.4),
         boxShadow: const [
           BoxShadow(
             color: AppColors.ink,
@@ -364,59 +532,105 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(9),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Dynamic aspect ratio image / canvas overlay
-            AspectRatio(
-              aspectRatio: aspectRatio,
-              child: words.isNotEmpty
-                  ? VocabCanvasOverlay(
-                      key: const Key('scan-image-preview'),
-                      imageProvider: MemoryImage(bytes),
-                      words: words,
-                      sceneWords: sceneWords,
-                      visualStyle: _selectedLabelStyle,
-                    )
-                  : Image.memory(
-                      bytes,
-                      key: const Key('scan-image-preview'),
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                    ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          // Button 1: ẨN / HIỆN LABEL
+          Expanded(
+            child: _buildControlButton(
+              buttonKey: const Key('toggle-labels-button'),
+              label: _showLabels ? 'ẨN LABEL' : 'HIỆN LABEL',
+              activeColor: const Color(0xFFFDE047),
+              isActive: !_showLabels,
+              onTap: () {
+                if (_showLabels) {
+                  _hideAllLabels();
+                } else {
+                  _setAllLabelsVisible();
+                }
+              },
             ),
+          ),
+          _buildControlDivider(),
 
-            // Zoom In / Fullscreen Button on Top-Right Corner
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Material(
-                color: const Color(0x99000000),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  key: const Key('zoom-image-button'),
-                  customBorder: const CircleBorder(),
-                  onTap: () => _openFullscreenZoom(
-                    context,
-                    bytes,
-                    words,
-                    sceneWords,
-                    aspectRatio,
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: Icon(
-                      Icons.fullscreen_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
+          // Button 2: TỪ VỰNG
+          Expanded(
+            child: _buildControlButton(
+              buttonKey: const Key('toggle-word-button'),
+              label: 'TỪ VỰNG',
+              activeColor: const Color(0xFFBBF7D0),
+              isActive: _hasExplicitLabelSelection && _showLabels && _showWord,
+              onTap: _toggleWord,
+            ),
+          ),
+          _buildControlDivider(),
+
+          // Button 3: PHIÊN ÂM
+          Expanded(
+            child: _buildControlButton(
+              buttonKey: const Key('toggle-phonetic-button'),
+              label: 'PHIÊN ÂM',
+              activeColor: const Color(0xFFBAE6FD),
+              isActive:
+                  _hasExplicitLabelSelection && _showLabels && _showPhonetic,
+              onTap: _togglePhonetic,
+            ),
+          ),
+          _buildControlDivider(),
+
+          // Button 4: DỊCH
+          Expanded(
+            child: _buildControlButton(
+              buttonKey: const Key('toggle-meaning-button'),
+              label: 'DỊCH',
+              activeColor: const Color(0xFFFBCFE8),
+              isActive:
+                  _hasExplicitLabelSelection && _showLabels && _showMeaning,
+              onTap: _toggleMeaning,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlDivider() {
+    return Container(
+      width: 2.0,
+      color: AppColors.ink,
+    );
+  }
+
+  Widget _buildControlButton({
+    required Key buttonKey,
+    required String label,
+    required Color activeColor,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: isActive ? activeColor : const Color(0xFFE2E8F0),
+      child: InkWell(
+        key: buttonKey,
+        onTap: onTap,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontFamily: 'Fredoka',
+                  fontSize: 12.0,
+                  fontWeight: FontWeight.w900,
+                  color: isActive ? AppColors.ink : const Color(0xFF64748B),
+                  letterSpacing: 0.2,
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -663,53 +877,38 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
     required Color backgroundColor,
     required VoidCallback? onTap,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(right: 6, bottom: 8),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppColors.ink,
-          width: 2.8,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.ink,
-            offset:
-                Offset(3.5, 3.5), // Bóng cứng 3.5px không blur lệch xuống phải
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: buttonKey,
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 8),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  height: 42,
-                  child: Center(child: iconWidget),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontFamily: 'Fredoka',
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              ],
+    return Padding(
+      padding: const EdgeInsets.only(right: 6, bottom: 8),
+      child: StickerButton(
+        key: buttonKey,
+        onPressed: onTap,
+        semanticLabel: label,
+        surfaceColor: backgroundColor,
+        textColor: AppColors.ink,
+        radius: 10,
+        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 8),
+        expand: true,
+        icon: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              height: 42,
+              child: Center(child: iconWidget),
             ),
-          ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Fredoka',
+                fontSize: 13.5,
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
         ),
       ),
     );

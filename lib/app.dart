@@ -6,6 +6,7 @@ import 'core/theme/app_theme.dart';
 import 'features/onboarding/application/onboarding_status_store.dart';
 import 'features/library/presentation/widgets/library_sync_runtime.dart';
 import 'features/onboarding/presentation/widgets/onboarding_status_runtime.dart';
+import 'shared/widgets/top_notification.dart';
 
 class CapyVocabApp extends StatefulWidget {
   const CapyVocabApp({
@@ -58,6 +59,9 @@ class _CapyVocabAppState extends State<CapyVocabApp> {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
+        builder: (context, child) => TopNotificationHost(
+          child: child ?? const SizedBox.shrink(),
+        ),
         routerConfig: _appRouter.router,
       ),
     );

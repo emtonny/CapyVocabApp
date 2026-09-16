@@ -52,7 +52,7 @@ class _Step5DailyTargetState extends ConsumerState<Step5DailyTarget> {
         ),
         // Step Title Header
         const Text(
-          '5. Số lượng từ vựng bạn muốn học mỗi ngày? 📚',
+          '6. Số lượng từ vựng bạn muốn học mỗi ngày? 📚',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,

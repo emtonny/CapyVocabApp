@@ -171,11 +171,10 @@ final class SqliteLibraryStore
   /// consent contract; the authentication/application layer owns account
   /// lifecycle policy (D10).
   Future<void> saveLocalAccount(LocalAccount account) async {
-    await _database.rawInsert(
-      _upsertSql('local_accounts',
-          LibrarySqliteCodec.localAccountToMap(account), const ['user_id']),
-      LibrarySqliteCodec.localAccountToMap(account).values.toList(),
-    );
+    final values = LibrarySqliteCodec.localAccountToMap(account);
+    await _database.transaction((transaction) async {
+      await _upsert(transaction, 'local_accounts', values, const ['user_id']);
+    });
     _notify({'account:${account.userId}'});
   }
 
@@ -1395,30 +1394,43 @@ final class SqliteLibraryStore
   @override
   Future<void> saveAlbum(Album album) async {
     await _database.transaction((transaction) async {
-      await _requireStableOwnerAndCreation(
-        transaction,
-        table: 'albums',
-        id: album.id,
-        userId: album.userId,
-        createdAt: album.createdAt,
-      );
-      await _upsert(
-        transaction,
-        'albums',
-        LibrarySqliteCodec.albumToMap(album),
-        const ['id'],
-      );
-      if (await _cloudBackupEnabled(transaction, album.userId)) {
-        await _enqueueGenerated(
-          transaction,
-          userId: album.userId,
-          entityType: SyncEntityType.album,
-          entityId: album.id,
-          operationType: SyncOperationType.update,
-        );
-      }
+      await _saveAlbumInTransaction(transaction, album);
     });
     _notify({'album:${album.userId}', 'sync:${album.userId}'});
+  }
+
+  @override
+  Future<void> createAlbumWithPhotoNotes({
+    required Album album,
+    required Iterable<String> photoNoteIds,
+    required DateTime addedAt,
+    required String operationId,
+  }) async {
+    final userId = requireUuid(album.userId, 'album.userId');
+    final albumId = requireUuid(album.id, 'album.id');
+    operationId = requireUuid(operationId, 'operationId');
+    addedAt = requireUtc(addedAt, 'addedAt');
+    final ids = _uuidList(photoNoteIds, 'photoNoteIds');
+    if (ids.isEmpty) {
+      throw ArgumentError.value(
+        photoNoteIds,
+        'photoNoteIds',
+        'must contain at least one Photo Note',
+      );
+    }
+
+    await _database.transaction((transaction) async {
+      await _saveAlbumInTransaction(transaction, album);
+      await _addPhotoNotesInTransaction(
+        transaction,
+        userId: userId,
+        albumId: albumId,
+        photoNoteIds: ids,
+        addedAt: addedAt,
+        operationId: operationId,
+      );
+    });
+    _notify({'album:$userId', 'photo:$userId', 'sync:$userId'});
   }
 
   @override
@@ -1474,40 +1486,86 @@ final class SqliteLibraryStore
     final ids = _uuidList(photoNoteIds, 'photoNoteIds');
     if (ids.isEmpty) return;
     await _database.transaction((transaction) async {
-      await _requireAlbumAndNotes(transaction, userId, albumId, ids);
-      for (final noteId in ids) {
-        await _upsert(
-          transaction,
-          'album_photo_notes',
-          LibrarySqliteCodec.albumPhotoNoteToMap(AlbumPhotoNote(
-            albumId: albumId,
-            photoNoteId: noteId,
-            addedAt: addedAt,
-            operationId: operationId,
-          )),
-          const ['album_id', 'photo_note_id'],
-        );
-      }
-      if (await _cloudBackupEnabled(transaction, userId)) {
-        await _enqueueExplicit(
-          transaction,
-          SyncOperation(
-            operationId: operationId,
-            userId: userId,
-            entityType: SyncEntityType.albumPhotoNote,
-            entityId: albumId,
-            operationType: SyncOperationType.relation,
-            payloadJson: {'action': 'add', 'photo_note_ids': ids},
-            dependencyIds: const [],
-            state: SyncOperationState.pending,
-            attemptCount: 0,
-            createdAt: addedAt,
-            updatedAt: addedAt,
-          ),
-        );
-      }
+      await _addPhotoNotesInTransaction(
+        transaction,
+        userId: userId,
+        albumId: albumId,
+        photoNoteIds: ids,
+        addedAt: addedAt,
+        operationId: operationId,
+      );
     });
     _notify({'album:$userId', 'photo:$userId', 'sync:$userId'});
+  }
+
+  Future<void> _saveAlbumInTransaction(
+    DatabaseExecutor transaction,
+    Album album,
+  ) async {
+    await _requireStableOwnerAndCreation(
+      transaction,
+      table: 'albums',
+      id: album.id,
+      userId: album.userId,
+      createdAt: album.createdAt,
+    );
+    await _upsert(
+      transaction,
+      'albums',
+      LibrarySqliteCodec.albumToMap(album),
+      const ['id'],
+    );
+    if (await _cloudBackupEnabled(transaction, album.userId)) {
+      await _enqueueGenerated(
+        transaction,
+        userId: album.userId,
+        entityType: SyncEntityType.album,
+        entityId: album.id,
+        operationType: SyncOperationType.update,
+      );
+    }
+  }
+
+  Future<void> _addPhotoNotesInTransaction(
+    DatabaseExecutor transaction, {
+    required String userId,
+    required String albumId,
+    required List<String> photoNoteIds,
+    required DateTime addedAt,
+    required String operationId,
+  }) async {
+    await _requireAlbumAndNotes(transaction, userId, albumId, photoNoteIds);
+    for (final noteId in photoNoteIds) {
+      await _upsert(
+        transaction,
+        'album_photo_notes',
+        LibrarySqliteCodec.albumPhotoNoteToMap(AlbumPhotoNote(
+          albumId: albumId,
+          photoNoteId: noteId,
+          addedAt: addedAt,
+          operationId: operationId,
+        )),
+        const ['album_id', 'photo_note_id'],
+      );
+    }
+    if (await _cloudBackupEnabled(transaction, userId)) {
+      await _enqueueExplicit(
+        transaction,
+        SyncOperation(
+          operationId: operationId,
+          userId: userId,
+          entityType: SyncEntityType.albumPhotoNote,
+          entityId: albumId,
+          operationType: SyncOperationType.relation,
+          payloadJson: {'action': 'add', 'photo_note_ids': photoNoteIds},
+          dependencyIds: const [],
+          state: SyncOperationState.pending,
+          attemptCount: 0,
+          createdAt: addedAt,
+          updatedAt: addedAt,
+        ),
+      );
+    }
   }
 
   @override
@@ -2915,33 +2973,54 @@ final class SqliteLibraryStore
 
   static Future<void> _upsert(DatabaseExecutor executor, String table,
       Map<String, Object?> values, List<String> conflictColumns,
-      {List<String> immutableColumns = const []}) {
-    return executor.rawInsert(
-      _upsertSql(
+      {List<String> immutableColumns = const []}) async {
+    final columns = values.keys.toList(growable: false);
+    final whereParts = <String>[];
+    final whereArgs = <Object?>[];
+    for (final column in conflictColumns) {
+      final value = values[column];
+      if (value == null) {
+        whereParts.add('$column IS NULL');
+      } else {
+        whereParts.add('$column = ?');
+        whereArgs.add(value);
+      }
+    }
+    final where = whereParts.join(' AND ');
+    final existing = await executor.query(
+      table,
+      columns: conflictColumns,
+      where: where,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+
+    // Android 9 ships SQLite 3.22, which predates INSERT ... ON CONFLICT
+    // DO UPDATE. Keeping the check, insert, and update in the caller's
+    // transaction gives the same upsert semantics on older SQLite versions.
+    if (existing.isEmpty) {
+      await executor.insert(
         table,
         values,
-        conflictColumns,
-        immutableColumns: immutableColumns,
-      ),
-      values.values.toList(),
-    );
-  }
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+      return;
+    }
 
-  static String _upsertSql(
-      String table, Map<String, Object?> values, List<String> conflictColumns,
-      {List<String> immutableColumns = const []}) {
-    final columns = values.keys.toList(growable: false);
-    final updates = columns
-        .where(
-          (column) =>
-              !conflictColumns.contains(column) &&
-              !immutableColumns.contains(column),
-        )
-        .map((column) => '$column = excluded.$column')
-        .join(', ');
-    return 'INSERT INTO $table (${columns.join(', ')}) '
-        'VALUES (${_placeholders(columns.length)}) '
-        'ON CONFLICT (${conflictColumns.join(', ')}) DO UPDATE SET $updates';
+    final updates = <String, Object?>{
+      for (final column in columns)
+        if (!conflictColumns.contains(column) &&
+            !immutableColumns.contains(column))
+          column: values[column],
+    };
+    if (updates.isNotEmpty) {
+      await executor.update(
+        table,
+        updates,
+        where: where,
+        whereArgs: whereArgs,
+      );
+    }
   }
 
   static List<String> _uuidList(Iterable<String> values, String fieldName) {

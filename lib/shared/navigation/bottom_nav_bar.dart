@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../widgets/sticker_button.dart';
 
 const _tabRoutes = ['/home', '/storage', '/pet-shop', '/friends'];
 
 const _ink = AppColors.ink;
 const _cream = AppColors.softWhite;
 const _blue = AppColors.blue;
-const _yellow = AppColors.neonYellow;
+const _cameraOrange = AppColors.duoOrange;
 const _green = AppColors.mint;
 const _purple = AppColors.lavender;
 const _avatarYellow = Color(0xFFFFC928);
@@ -24,18 +25,18 @@ class BottomNavBar extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.only(bottom: 8),
+      minimum: EdgeInsets.zero,
       child: SizedBox(
-        height: 100,
+        height: 110,
         child: Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.topCenter,
           children: [
             Positioned(
-              left: 12,
-              right: 17,
-              top: 22,
-              bottom: 5,
+              left: 0,
+              right: 0,
+              top: 32,
+              bottom: 0,
               child: DecoratedBox(
                 key: const Key('bottom-nav-shell'),
                 decoration: BoxDecoration(
@@ -53,10 +54,10 @@ class BottomNavBar extends StatelessWidget {
               ),
             ),
             Positioned.fill(
-              top: 22,
-              bottom: 5,
-              left: 15,
-              right: 20,
+              top: 32,
+              bottom: 0,
+              left: 3,
+              right: 3,
               child: Row(
                 children: [
                   Expanded(
@@ -83,7 +84,7 @@ class BottomNavBar extends StatelessWidget {
                       onTap: () => context.go('/storage'),
                     ),
                   ),
-                  const SizedBox(width: 76),
+                  const SizedBox(width: 86),
                   Expanded(
                     child: _NavItem(
                       iconWidget: _FramedNavIcon(
@@ -112,44 +113,26 @@ class BottomNavBar extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 0,
+              top: 35,
               child: Tooltip(
                 message: 'Quét ảnh từ vựng',
-                child: Container(
+                child: SizedBox(
                   key: const Key('bottom-nav-camera-frame'),
-                  width: 74,
-                  height: 74,
-                  decoration: BoxDecoration(
-                    color: _yellow,
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(color: _ink, width: 3.5),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: _ink,
-                        offset: Offset(3, 3.5),
-                        blurRadius: 0,
-                      ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(9.5),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      key: const Key('bottom-nav-camera-button'),
-                      onTap: () => context.push('/scan'),
-                      splashColor: Colors.white.withValues(alpha: 0.38),
-                      highlightColor: Colors.white.withValues(alpha: 0.18),
-                      child: Semantics(
-                        button: true,
-                        label: 'Quét ảnh từ vựng',
-                        child: const Center(
-                          child: CustomPaint(
-                            size: Size(45, 38),
-                            painter: _CameraIconPainter(),
-                          ),
-                        ),
-                      ),
+                  width: 66,
+                  height: 66,
+                  child: StickerButton(
+                    key: const Key('bottom-nav-camera-button'),
+                    onPressed: () => context.push('/scan'),
+                    semanticLabel: 'Quét ảnh từ vựng',
+                    surfaceColor: _cameraOrange,
+                    edgeColor: const Color(0xFFC96F00),
+                    borderColor: _ink,
+                    radius: 33,
+                    padding: EdgeInsets.zero,
+                    expand: true,
+                    icon: const CustomPaint(
+                      size: Size(38, 32),
+                      painter: _CameraIconPainter(),
                     ),
                   ),
                 ),

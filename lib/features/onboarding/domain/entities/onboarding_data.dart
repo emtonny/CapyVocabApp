@@ -4,6 +4,8 @@ class OnboardingData {
     this.username = '',
     this.age,
     this.phone = '',
+    this.interfaceLocale = 'vi-VN',
+    this.learningLocale = 'en-US',
     this.accountRole,
     this.reminderTime = '20:00',
     this.studyEndTime = '21:00',
@@ -16,6 +18,8 @@ class OnboardingData {
   final String username;
   final int? age;
   final String phone;
+  final String interfaceLocale;
+  final String learningLocale;
   final String? accountRole;
   final String? reminderTime;
   final String? studyEndTime;
@@ -26,6 +30,8 @@ class OnboardingData {
     String? username,
     Object? age = _notProvided,
     String? phone,
+    String? interfaceLocale,
+    String? learningLocale,
     Object? accountRole = _notProvided,
     Object? reminderTime = _notProvided,
     Object? studyEndTime = _notProvided,
@@ -36,6 +42,8 @@ class OnboardingData {
       username: username ?? this.username,
       age: identical(age, _notProvided) ? this.age : age as int?,
       phone: phone ?? this.phone,
+      interfaceLocale: interfaceLocale ?? this.interfaceLocale,
+      learningLocale: learningLocale ?? this.learningLocale,
       accountRole: identical(accountRole, _notProvided)
           ? this.accountRole
           : accountRole as String?,
@@ -56,6 +64,8 @@ class OnboardingData {
       displayName: displayName.trim(),
       username: username.trim().toLowerCase(),
       phone: phone.trim(),
+      interfaceLocale: interfaceLocale.trim(),
+      learningLocale: learningLocale.trim(),
     );
   }
 }

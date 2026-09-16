@@ -3,7 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/gemini_vision_service.dart' as scan_model;
+import '../../../../core/utils/random_uuid.dart';
 import '../../../../shared/navigation/bottom_nav_bar.dart';
+import '../../../../shared/widgets/graph_paper_background.dart';
+import '../../../../shared/widgets/sticker_button.dart';
+import '../../../../shared/widgets/top_notification.dart';
+import '../../domain/entities/album_models.dart';
 import '../../domain/entities/library_enums.dart';
 import '../../domain/entities/media_asset.dart';
 import '../../domain/entities/photo_note.dart';
@@ -15,163 +21,1153 @@ import '../../application/library_media_recovery_service.dart';
 import '../providers/library_media_integrity_provider.dart';
 import '../providers/library_cloud_media_restore_provider.dart';
 import '../providers/library_provider.dart';
+import '../../../ai_scan/presentation/widgets/emoji_picker_dialog.dart';
+import '../../../ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
+part 'storage_album_photos.dart';
+part 'storage_album_albums.dart';
+part 'storage_album_recovery.dart';
+part 'storage_album_trash.dart';
+part 'storage_album_detail.dart';
 
-/// Offline-first Library for saved scan aggregates.
-class StorageAlbumScreen extends ConsumerWidget {
+/// Offline-first Library for saved scan aggregates and personal Albums.
+class StorageAlbumScreen extends ConsumerStatefulWidget {
   const StorageAlbumScreen({this.onOpenPhotoNote, super.key});
 
   final ValueChanged<String>? onOpenPhotoNote;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notes = ref.watch(libraryPhotoNotesProvider);
-    final mediaRecovery = ref.watch(libraryMediaRecoverySnapshotProvider);
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+  ConsumerState<StorageAlbumScreen> createState() => _StorageAlbumScreenState();
+}
+
+/// Shows the selected Photo Notes in selection order and reveals each note's
+/// vocabulary only after its image is tapped.
+class SelectedPhotoVocabularyScreen extends ConsumerStatefulWidget {
+  const SelectedPhotoVocabularyScreen({required this.notes, super.key});
+
+  final List<PhotoNote> notes;
+
+  @override
+  ConsumerState<SelectedPhotoVocabularyScreen> createState() =>
+      _SelectedPhotoVocabularyScreenState();
+}
+
+class _SelectedPhotoVocabularyScreenState
+    extends ConsumerState<SelectedPhotoVocabularyScreen> {
+  final Set<String> _expandedPhotoNoteIds = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    return GraphPaperScaffold(
       body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Row(
-                children: [
-                  const Text('📚', style: TextStyle(fontSize: 28)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Thư viện của tôi',
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF3C2A21),
-                                  ),
-                        ),
-                        Text(
-                          notes.maybeWhen(
-                            data: (items) => items.isEmpty
-                                ? 'Các bài quét sẽ tự lưu tại đây'
-                                : '${items.length} bài trong thư viện',
-                            orElse: () => 'Đang đọc dữ liệu trên thiết bị',
-                          ),
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: const Color(0xFF786A61),
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    key: const Key('library-open-trash'),
-                    tooltip: 'Mở thùng rác',
-                    onPressed: () => context.push('/storage/trash'),
-                    icon: const Icon(Icons.delete_outline_rounded),
-                  ),
-                  const _OfflineBadge(),
-                ],
-              ),
-            ),
-            const _LibraryStorageSummaryCard(),
-            _MediaRecoveryBanner(
-              recovery: mediaRecovery,
-              onOpen: (snapshot) => _showMediaRecoverySheet(
-                context,
-                snapshot,
-              ),
-            ),
+            _SelectedPhotoVocabularyHeader(count: widget.notes.length),
             Expanded(
-              child: notes.when(
-                loading: () => const Center(
-                  child: CircularProgressIndicator(
-                    key: Key('library-loading-indicator'),
-                  ),
-                ),
-                error: (error, stackTrace) => _StateMessage(
-                  key: const Key('library-error-state'),
-                  icon: Icons.storage_rounded,
-                  title: 'Không thể đọc thư viện',
-                  message: 'Dữ liệu trên máy chưa tải được. Hãy thử lại.',
-                  actionLabel: 'Thử lại',
-                  onAction: () => ref.invalidate(libraryPhotoNotesProvider),
-                ),
-                data: (items) => items.isEmpty
-                    ? _StateMessage(
-                        key: const Key('library-empty-state'),
-                        icon: Icons.photo_library_outlined,
-                        title: 'Chưa có bài quét nào',
-                        message:
-                            'Quét một bức ảnh; kết quả sẽ tự lưu để bạn xem lại khi không có mạng.',
-                        actionLabel: 'Quét ảnh đầu tiên',
-                        onAction: () => context.push('/scan'),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          ref.invalidate(libraryPhotoNotesProvider);
-                          await ref.read(libraryPhotoNotesProvider.future);
-                        },
-                        child: ListView.separated(
-                          key: const Key('library-photo-note-list'),
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final note = items[index];
-                            return _PhotoNoteCard(
-                              note: note,
-                              onMoveToTrash: () =>
-                                  _movePhotoNoteToTrash(context, ref, note),
-                              onTap: () {
-                                final callback = onOpenPhotoNote;
-                                if (callback != null) {
-                                  callback(note.id);
-                                } else {
-                                  context.push('/storage/${note.id}');
-                                }
-                              },
-                            );
-                          },
-                        ),
-                      ),
-              ),
+              child: widget.notes.isEmpty
+                  ? const _StateMessage(
+                      key: Key('library-selected-vocabulary-empty'),
+                      icon: Icons.menu_book_outlined,
+                      title: 'Chưa có ảnh được chọn',
+                      message: 'Quay lại Thư viện và chọn ít nhất một ảnh.',
+                    )
+                  : ListView.separated(
+                      key: const Key('library-selected-vocabulary-list'),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      itemCount: widget.notes.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 14),
+                      itemBuilder: (context, index) {
+                        final note = widget.notes[index];
+                        return _SelectedPhotoVocabularyCard(
+                          key: Key(
+                              'library-selected-vocabulary-card-${note.id}'),
+                          note: note,
+                          position: index + 1,
+                          total: widget.notes.length,
+                          expanded: _expandedPhotoNoteIds.contains(note.id),
+                          onToggle: () => _toggleExpanded(note.id),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(),
     );
+  }
+
+  void _toggleExpanded(String photoNoteId) {
+    setState(() {
+      if (!_expandedPhotoNoteIds.add(photoNoteId)) {
+        _expandedPhotoNoteIds.remove(photoNoteId);
+      }
+    });
+  }
+}
+
+class _SelectedPhotoVocabularyHeader extends StatelessWidget {
+  const _SelectedPhotoVocabularyHeader({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      label: 'Xem từ vựng ($count ảnh)',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Container(
+          key: const Key('library-selected-vocabulary-header'),
+          constraints: const BoxConstraints(minHeight: 68),
+          decoration: BoxDecoration(
+            color: AppColors.cream,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.ink, width: 2.5),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.ink,
+                offset: Offset(0, 4),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(13),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              child: Row(
+                children: [
+                  SizedBox.square(
+                    dimension: 48,
+                    child: StickerButton(
+                      key: const Key('library-selected-vocabulary-back'),
+                      semanticLabel: 'Quay lại Thư viện',
+                      icon: const Icon(Icons.arrow_back_rounded, size: 22),
+                      surfaceColor: Colors.white,
+                      padding: const EdgeInsets.all(10),
+                      radius: 10,
+                      onPressed: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go('/storage');
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Xem từ vựng ($count)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontFamily: 'Fredoka',
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    constraints: const BoxConstraints(minWidth: 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.yellow,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.ink, width: 1.8),
+                    ),
+                    child: Text(
+                      '$count ảnh',
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontFamily: 'Nunito',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _LibrarySubview { photos, albums, trash }
+
+enum _LibraryDatePreset { all, today, yesterday, last7Days, last30Days, custom }
+
+class _LibraryDateFilter {
+  const _LibraryDateFilter(this.preset, [this.date]);
+
+  const _LibraryDateFilter.all()
+      : preset = _LibraryDatePreset.all,
+        date = null;
+
+  final _LibraryDatePreset preset;
+  final DateTime? date;
+
+  bool get isActive => preset != _LibraryDatePreset.all;
+}
+
+List<PhotoNote> _filterNotesByDate(
+  List<PhotoNote> notes,
+  _LibraryDateFilter filter,
+  DateTime? Function(PhotoNote note) dateOf,
+) {
+  if (!filter.isActive) return notes;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+
+  bool isSameDay(DateTime value, DateTime day) {
+    final local = value.toLocal();
+    return local.year == day.year &&
+        local.month == day.month &&
+        local.day == day.day;
+  }
+
+  return notes.where((note) {
+    final value = dateOf(note);
+    if (value == null) return false;
+    final local = value.toLocal();
+    final day = DateTime(local.year, local.month, local.day);
+    return switch (filter.preset) {
+      _LibraryDatePreset.all => true,
+      _LibraryDatePreset.today => isSameDay(local, today),
+      _LibraryDatePreset.yesterday =>
+        isSameDay(local, today.subtract(const Duration(days: 1))),
+      _LibraryDatePreset.last7Days =>
+        !day.isBefore(today.subtract(const Duration(days: 6))) &&
+            !day.isAfter(today),
+      _LibraryDatePreset.last30Days =>
+        !day.isBefore(today.subtract(const Duration(days: 29))) &&
+            !day.isAfter(today),
+      _LibraryDatePreset.custom =>
+        filter.date != null && isSameDay(local, filter.date!),
+    };
+  }).toList(growable: false);
+}
+
+class _StorageAlbumScreenState extends ConsumerState<StorageAlbumScreen> {
+  _LibrarySubview _subview = _LibrarySubview.photos;
+  Album? _openedAlbum;
+  Album? _assignmentTarget;
+  final Set<String> _selectedForAssignment = {};
+  final Set<String> _selectedAlbumIds = {};
+  final List<String> _selectedPhotoIds = [];
+  bool _selectingAlbums = false;
+  bool _selectingPhotos = false;
+  bool _albumActionBusy = false;
+  _LibraryDateFilter _photoDateFilter = const _LibraryDateFilter.all();
+  _LibraryDateFilter _trashDateFilter = const _LibraryDateFilter.all();
+
+  @override
+  Widget build(BuildContext context) {
+    final notes = ref.watch(libraryPhotoNotesProvider);
+    final mediaRecovery = ref.watch(libraryMediaRecoverySnapshotProvider);
+    final openedAlbum = _openedAlbum;
+
+    return GraphPaperScaffold(
+      extendBody: false,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _refreshLibrary,
+          child: CustomScrollView(
+            key: const Key('library-page-scroll'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              if (openedAlbum == null)
+                SliverToBoxAdapter(child: _LibraryHeader(notes: notes)),
+              if (openedAlbum == null)
+                SliverToBoxAdapter(
+                  child: _LibrarySubviewSwitcher(
+                    selected: _subview,
+                    onSelected: _switchSubview,
+                  ),
+                ),
+              if (openedAlbum == null &&
+                  _subview == _LibrarySubview.photos) ...[
+                const SliverToBoxAdapter(
+                  child: Offstage(
+                    child: _LibraryStorageSummaryCard(),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: _MediaRecoveryBanner(
+                    recovery: mediaRecovery,
+                    onOpen: (snapshot) =>
+                        _showMediaRecoverySheet(context, snapshot),
+                  ),
+                ),
+              ],
+              openedAlbum != null
+                  ? _AlbumDetailView(
+                      album: openedAlbum,
+                      onBack: () => setState(() => _openedAlbum = null),
+                      onAddPhotos: () => _startAssigningPhotos(openedAlbum),
+                      onOpenPhotoNote: _openPhotoNote,
+                      onRemovePhoto: (note) =>
+                          _removePhotoFromAlbum(openedAlbum, note),
+                    )
+                  : _subview == _LibrarySubview.albums
+                      ? _AlbumsView(
+                          onCreate: _createAlbum,
+                          onOpen: (album) =>
+                              setState(() => _openedAlbum = album),
+                          selectedAlbumIds: _selectedAlbumIds,
+                          selecting: _selectingAlbums,
+                          busy: _albumActionBusy,
+                          onStartAlbumSelection: _startAlbumSelection,
+                          onToggleAlbumSelection: _toggleAlbumSelection,
+                          onCancelAlbumSelection: _cancelAlbumSelection,
+                          onToggleFavorite: _toggleFavorite,
+                          onDelete: _deleteAlbum,
+                          onDeleteSelected: _deleteSelectedAlbums,
+                        )
+                      : _subview == _LibrarySubview.trash
+                          ? _buildTrash()
+                          : _buildPhotos(notes),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: _buildBottomNavigation(notes),
+    );
+  }
+
+  Future<void> _refreshLibrary() async {
+    final openedAlbum = _openedAlbum;
+    if (openedAlbum != null) {
+      final provider = libraryAlbumPhotoNotesProvider(openedAlbum.id);
+      ref.invalidate(provider);
+      await ref.read(provider.future);
+      return;
+    }
+
+    switch (_subview) {
+      case _LibrarySubview.photos:
+        ref.invalidate(libraryPhotoNotesProvider);
+        await ref.read(libraryPhotoNotesProvider.future);
+      case _LibrarySubview.albums:
+        ref.invalidate(libraryAlbumsProvider);
+        await ref.read(libraryAlbumsProvider.future);
+      case _LibrarySubview.trash:
+        ref.invalidate(libraryTrashPhotoNotesProvider);
+        await ref.read(libraryTrashPhotoNotesProvider.future);
+    }
+  }
+
+  Widget _buildBottomNavigation(AsyncValue<List<PhotoNote>> notes) {
+    final showPhotoActions =
+        _openedAlbum == null && _subview == _LibrarySubview.photos;
+    final showAlbumActions =
+        _openedAlbum == null && _subview == _LibrarySubview.albums;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showPhotoActions && _assignmentTarget != null)
+          _AlbumAssignmentAction(
+            selectedCount: _selectedForAssignment.length,
+            busy: _albumActionBusy,
+            onConfirm:
+                _selectedForAssignment.isEmpty ? null : _confirmPhotoAssignment,
+          )
+        else if (showPhotoActions && _selectingPhotos)
+          _PhotoSelectionAction(
+            selectedCount: _selectedPhotoIds.length,
+            busy: _albumActionBusy,
+            onViewVocabulary: _selectedPhotoIds.isEmpty
+                ? null
+                : () => _openSelectedPhotoVocabulary(
+                      notes.valueOrNull ?? const [],
+                    ),
+            onAddToAlbum: _selectedPhotoIds.isEmpty
+                ? null
+                : _chooseAlbumForSelectedPhotos,
+          )
+        else if (showAlbumActions && _selectingAlbums)
+          _AlbumSelectionAction(
+            selectedCount: _selectedAlbumIds.length,
+            busy: _albumActionBusy,
+            onViewVocabulary: _selectedAlbumIds.isEmpty
+                ? null
+                : () => _openSelectedAlbumVocabulary(
+                      ref.read(libraryAlbumsProvider).valueOrNull ?? const [],
+                    ),
+            onDelete: _selectedAlbumIds.isEmpty
+                ? null
+                : () => _deleteSelectedAlbums(
+                      ref
+                              .read(libraryAlbumsProvider)
+                              .valueOrNull
+                              ?.where((album) =>
+                                  _selectedAlbumIds.contains(album.id))
+                              .toList(growable: false) ??
+                          const [],
+                    ),
+          ),
+        const BottomNavBar(),
+      ],
+    );
+  }
+
+  Widget _buildPhotos(AsyncValue<List<PhotoNote>> notes) {
+    final assignmentTarget = _assignmentTarget;
+    return SliverMainAxisGroup(
+      slivers: [
+        if (assignmentTarget != null)
+          SliverToBoxAdapter(
+            child: _AlbumAssignmentBanner(
+              album: assignmentTarget,
+              selectedCount: _selectedForAssignment.length,
+              onCancel: _cancelAssignment,
+            ),
+          ),
+        notes.when(
+          loading: () => const SliverToBoxAdapter(
+            child: SizedBox(
+              height: 240,
+              child: Center(
+                child: CircularProgressIndicator(
+                  key: Key('library-loading-indicator'),
+                ),
+              ),
+            ),
+          ),
+          error: (error, stackTrace) => SliverToBoxAdapter(
+            child: _StateMessage(
+              key: const Key('library-error-state'),
+              icon: Icons.storage_rounded,
+              title: 'Không thể đọc thư viện',
+              message: 'Dữ liệu trên máy chưa tải được. Hãy thử lại.',
+              actionLabel: 'Thử lại',
+              onAction: () => ref.invalidate(libraryPhotoNotesProvider),
+            ),
+          ),
+          data: (items) {
+            if (items.isEmpty) {
+              return SliverToBoxAdapter(
+                child: _StateMessage(
+                  key: const Key('library-empty-state'),
+                  icon: Icons.photo_library_outlined,
+                  title: 'Chưa có bài quét nào',
+                  message:
+                      'Quét một bức ảnh; kết quả sẽ tự lưu để bạn xem lại khi không có mạng.',
+                  actionLabel: 'Quét ảnh đầu tiên',
+                  onAction: () => context.push('/scan'),
+                ),
+              );
+            }
+            final filteredItems = _filterNotesByDate(
+              items,
+              _photoDateFilter,
+              (note) => note.createdAt,
+            );
+            final bottomPadding = assignmentTarget != null
+                ? 184.0
+                : (_selectingPhotos ? 194.0 : 112.0);
+            return SliverMainAxisGroup(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _PhotoLibraryToolbar(
+                    filteredCount: filteredItems.length,
+                    allSelected: filteredItems.isNotEmpty &&
+                        (assignmentTarget != null
+                            ? filteredItems.every(
+                                (note) =>
+                                    _selectedForAssignment.contains(note.id),
+                              )
+                            : (_selectingPhotos &&
+                                filteredItems.every(
+                                  (note) => _selectedPhotoIds.contains(note.id),
+                                ))),
+                    onSelectAll: () => assignmentTarget != null
+                        ? _toggleSelectAllForAssignment(filteredItems)
+                        : _toggleSelectAllPhotos(filteredItems),
+                    onFilter: _showPhotoDateFilter,
+                  ),
+                ),
+                filteredItems.isEmpty
+                    ? const SliverToBoxAdapter(
+                        child: _FilteredLibraryEmptyState(),
+                      )
+                    : SliverLayoutBuilder(
+                        builder: (context, constraints) => SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+                          sliver: SliverGrid(
+                            key: const Key('library-photo-note-list'),
+                            gridDelegate: _photoNoteGridDelegate(
+                              constraints.crossAxisExtent,
+                              largeText: _usesLargeText(context),
+                            ),
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final note = filteredItems[index];
+                                return _PhotoNoteCard(
+                                  note: note,
+                                  selectionMode: assignmentTarget != null ||
+                                      _selectingPhotos,
+                                  selected: assignmentTarget != null
+                                      ? _selectedForAssignment.contains(note.id)
+                                      : _selectedPhotoIds.contains(note.id),
+                                  onMoveToTrash: () =>
+                                      _movePhotoNoteToTrash(context, note),
+                                  onTap: () {
+                                    if (assignmentTarget != null) {
+                                      _togglePhotoForAssignment(note.id);
+                                    } else if (_selectingPhotos) {
+                                      _togglePhotoSelection(note.id);
+                                    } else {
+                                      _startPhotoSelection(note.id);
+                                    }
+                                  },
+                                );
+                              },
+                              childCount: filteredItems.length,
+                            ),
+                          ),
+                        ),
+                      ),
+                SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTrash() {
+    final trashNotes = ref.watch(libraryTrashPhotoNotesProvider);
+    final filteredTrashCount = trashNotes.valueOrNull == null
+        ? 0
+        : _filterNotesByDate(
+            trashNotes.valueOrNull!,
+            _trashDateFilter,
+            (note) => note.deletedAt,
+          ).length;
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Ảnh đã xóa ($filteredTrashCount)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.mutedInk,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _NeoDateFilterButton(onTap: _showTrashDateFilter),
+              ],
+            ),
+          ),
+        ),
+        trashNotes.when(
+          loading: () => const SliverToBoxAdapter(
+            child: SizedBox(
+              height: 240,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ),
+          error: (_, __) => SliverToBoxAdapter(
+            child: _StateMessage(
+              key: const Key('library-trash-error'),
+              icon: Icons.delete_outline_rounded,
+              title: 'Không thể đọc thùng rác',
+              message: 'Dữ liệu local chưa đọc được. Hãy thử lại.',
+              actionLabel: 'Thử lại',
+              onAction: () => ref.invalidate(libraryTrashPhotoNotesProvider),
+            ),
+          ),
+          data: (items) {
+            if (items.isEmpty) {
+              return const SliverToBoxAdapter(
+                child: Center(
+                  child: Text(
+                    'Chưa có ảnh nào trong Thùng rác 🧹',
+                    style: TextStyle(
+                      color: AppColors.mutedInk,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              );
+            }
+            final filteredItems = _filterNotesByDate(
+              items,
+              _trashDateFilter,
+              (note) => note.deletedAt,
+            );
+            if (filteredItems.isEmpty) {
+              return const SliverToBoxAdapter(
+                child: _FilteredLibraryEmptyState(),
+              );
+            }
+            return SliverMainAxisGroup(
+              slivers: [
+                SliverLayoutBuilder(
+                  builder: (context, constraints) => SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    sliver: SliverGrid(
+                      key: const Key('library-trash-list'),
+                      gridDelegate:
+                          _trashGridDelegate(constraints.crossAxisExtent),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final note = filteredItems[index];
+                          return _TrashPhotoNoteCard(
+                            note: note,
+                            onRestore: () =>
+                                _restorePhotoNote(context, ref, note),
+                            onDelete: () =>
+                                _requestPermanentDelete(context, ref, note),
+                          );
+                        },
+                        childCount: filteredItems.length,
+                      ),
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 112)),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showPhotoDateFilter() async {
+    final result = await showDialog<_LibraryDateFilter>(
+      context: context,
+      builder: (_) => _LibraryDateFilterDialog(initial: _photoDateFilter),
+    );
+    if (result != null && mounted) {
+      setState(() => _photoDateFilter = result);
+    }
+  }
+
+  Future<void> _showTrashDateFilter() async {
+    final result = await showDialog<_LibraryDateFilter>(
+      context: context,
+      builder: (_) => _LibraryDateFilterDialog(initial: _trashDateFilter),
+    );
+    if (result != null && mounted) {
+      setState(() => _trashDateFilter = result);
+    }
+  }
+
+  void _switchSubview(_LibrarySubview value) {
+    setState(() {
+      _subview = value;
+      _assignmentTarget = null;
+      _selectedForAssignment.clear();
+      _selectedAlbumIds.clear();
+      _selectingAlbums = false;
+      _selectedPhotoIds.clear();
+      _selectingPhotos = false;
+    });
+  }
+
+  void _startAlbumSelection() {
+    if (_albumActionBusy) return;
+    setState(() => _selectingAlbums = true);
+  }
+
+  void _toggleAlbumSelection(Album album) {
+    if (_albumActionBusy) return;
+    setState(() {
+      if (!_selectedAlbumIds.add(album.id)) {
+        _selectedAlbumIds.remove(album.id);
+      }
+    });
+  }
+
+  void _cancelAlbumSelection() {
+    if (_albumActionBusy) return;
+    setState(() {
+      _selectedAlbumIds.clear();
+      _selectingAlbums = false;
+    });
+  }
+
+  void _toggleSelectAllForAssignment(List<PhotoNote> items) {
+    if (_albumActionBusy) return;
+    setState(() {
+      final allIds = items.map((e) => e.id).toSet();
+      if (allIds.isNotEmpty && _selectedForAssignment.containsAll(allIds)) {
+        _selectedForAssignment.clear();
+      } else {
+        _selectedForAssignment
+          ..clear()
+          ..addAll(allIds);
+      }
+    });
+  }
+
+  void _toggleSelectAllPhotos(List<PhotoNote> items) {
+    if (_albumActionBusy) return;
+    setState(() {
+      final allIds = items.map((e) => e.id).toList(growable: false);
+      final allSelected = allIds.isNotEmpty &&
+          _selectedPhotoIds.length == allIds.length &&
+          _selectedPhotoIds.toSet().containsAll(allIds);
+      if (allSelected) {
+        _selectedPhotoIds.clear();
+        _selectingPhotos = false;
+      } else {
+        _selectingPhotos = true;
+        _selectedPhotoIds
+          ..clear()
+          ..addAll(allIds);
+      }
+    });
+  }
+
+  void _startPhotoSelection(String noteId) {
+    if (_albumActionBusy) return;
+    setState(() {
+      _selectingPhotos = true;
+      _selectedPhotoIds.add(noteId);
+    });
+  }
+
+  void _togglePhotoSelection(String noteId) {
+    if (_albumActionBusy) return;
+    setState(() {
+      final index = _selectedPhotoIds.indexOf(noteId);
+      if (index == -1) {
+        _selectedPhotoIds.add(noteId);
+      } else {
+        _selectedPhotoIds.removeAt(index);
+        if (_selectedPhotoIds.isEmpty) {
+          _selectingPhotos = false;
+        }
+      }
+    });
+  }
+
+  void _cancelPhotoSelection() {
+    if (_albumActionBusy) return;
+    setState(() {
+      _selectedPhotoIds.clear();
+      _selectingPhotos = false;
+    });
+  }
+
+  void _openSelectedPhotoVocabulary(List<PhotoNote> items) {
+    final notesById = <String, PhotoNote>{
+      for (final note in items) note.id: note,
+    };
+    final selectedNotes = _selectedPhotoIds
+        .map((noteId) => notesById[noteId])
+        .whereType<PhotoNote>()
+        .toList(growable: false);
+    if (selectedNotes.isEmpty) return;
+
+    _cancelPhotoSelection();
+    context.push('/storage/vocabulary', extra: selectedNotes);
+  }
+
+  Future<void> _openSelectedAlbumVocabulary(List<Album> albums) async {
+    if (_albumActionBusy || _selectedAlbumIds.isEmpty) return;
+    final selectedAlbums = albums
+        .where((album) => _selectedAlbumIds.contains(album.id))
+        .toList(growable: false);
+    if (selectedAlbums.isEmpty) return;
+
+    setState(() => _albumActionBusy = true);
+    try {
+      final repository = await ref.read(libraryRepositoryProvider.future);
+      final notesByAlbum = await Future.wait(
+        selectedAlbums.map(
+          (album) => repository
+              .watchPhotoNotes(
+                PhotoNoteQuery(
+                  userId: album.userId,
+                  albumId: album.id,
+                  limit: 500,
+                ),
+              )
+              .first,
+        ),
+      );
+      final seenPhotoNoteIds = <String>{};
+      final selectedNotes = notesByAlbum
+          .expand((notes) => notes)
+          .where((note) => seenPhotoNoteIds.add(note.id))
+          .toList(growable: false);
+      if (!mounted) return;
+      if (selectedNotes.isEmpty) {
+        showTopNotification(
+          context,
+          const SnackBar(
+            content: Text('Các Album đã chọn chưa có ảnh để xem từ vựng.'),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _selectedAlbumIds.clear();
+        _selectingAlbums = false;
+        _albumActionBusy = false;
+      });
+      context.push('/storage/vocabulary', extra: selectedNotes);
+    } catch (_) {
+      if (mounted) {
+        showTopNotification(
+          context,
+          const SnackBar(
+            content: Text('Không thể mở từ vựng của các Album đã chọn.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted && _albumActionBusy) {
+        setState(() => _albumActionBusy = false);
+      }
+    }
+  }
+
+  Future<void> _chooseAlbumForSelectedPhotos() async {
+    if (_albumActionBusy || _selectedPhotoIds.isEmpty) return;
+
+    setState(() => _albumActionBusy = true);
+    try {
+      final albums = await ref.read(libraryAlbumsProvider.future);
+      if (!mounted) return;
+      setState(() => _albumActionBusy = false);
+
+      final selection = await showModalBottomSheet<Object>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => _AlbumPickerSheet(albums: albums),
+      );
+      if (!mounted || selection == null) return;
+
+      if (selection is _CreateAlbumChoice) {
+        await _createAlbum(
+          selectedPhotoNoteIds: List<String>.of(_selectedPhotoIds),
+        );
+        return;
+      }
+      if (selection is! Album) return;
+      final selectedAlbum = selection;
+
+      setState(() {
+        _assignmentTarget = selectedAlbum;
+        _selectedForAssignment
+          ..clear()
+          ..addAll(_selectedPhotoIds);
+        _selectedPhotoIds.clear();
+        _selectingPhotos = false;
+      });
+      await _confirmPhotoAssignment();
+    } catch (_) {
+      if (mounted) {
+        showTopNotification(
+          context,
+          const SnackBar(content: Text('Không thể đọc danh sách Album.')),
+        );
+      }
+    } finally {
+      if (mounted && _albumActionBusy) {
+        setState(() => _albumActionBusy = false);
+      }
+    }
+  }
+
+  void _openPhotoNote(String noteId) {
+    final callback = widget.onOpenPhotoNote;
+    if (callback != null) {
+      callback(noteId);
+    } else {
+      context.push('/storage/$noteId');
+    }
+  }
+
+  void _startAssigningPhotos(Album album) {
+    setState(() {
+      _openedAlbum = null;
+      _subview = _LibrarySubview.photos;
+      _assignmentTarget = album;
+      _selectedForAssignment.clear();
+    });
+  }
+
+  void _cancelAssignment() {
+    final album = _assignmentTarget;
+    setState(() {
+      _assignmentTarget = null;
+      _selectedForAssignment.clear();
+      _subview = _LibrarySubview.albums;
+      _openedAlbum = album;
+    });
+  }
+
+  void _togglePhotoForAssignment(String noteId) {
+    setState(() {
+      if (!_selectedForAssignment.add(noteId)) {
+        _selectedForAssignment.remove(noteId);
+      }
+    });
+  }
+
+  Future<void> _confirmPhotoAssignment() async {
+    final album = _assignmentTarget;
+    if (_albumActionBusy || album == null || _selectedForAssignment.isEmpty) {
+      return;
+    }
+    setState(() => _albumActionBusy = true);
+    try {
+      final repository = await ref.read(albumRepositoryProvider.future);
+      await repository.addPhotoNotes(
+        userId: album.userId,
+        albumId: album.id,
+        photoNoteIds: _selectedForAssignment,
+        addedAt: DateTime.now().toUtc(),
+        operationId: createRandomUuidV4(),
+      );
+      if (!mounted) return;
+      final count = _selectedForAssignment.length;
+      setState(() {
+        _albumActionBusy = false;
+        _assignmentTarget = null;
+        _selectedForAssignment.clear();
+        _subview = _LibrarySubview.albums;
+        _openedAlbum = album;
+      });
+      showTopNotification(
+        context,
+        SnackBar(content: Text('Đã thêm $count ảnh vào ${album.name}.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _albumActionBusy = false);
+      showTopNotification(
+        context,
+        const SnackBar(content: Text('Không thể thêm ảnh vào Album.')),
+      );
+    }
+  }
+
+  Future<void> _createAlbum({
+    Iterable<String> selectedPhotoNoteIds = const <String>[],
+  }) async {
+    final draft = await showDialog<_NewAlbumDraft>(
+      context: context,
+      builder: (_) => const _CreateAlbumDialog(),
+    );
+    final userId = ref.read(currentLibraryUserIdProvider);
+    if (draft == null || userId == null || !mounted) return;
+    if (_albumActionBusy) return;
+    final selectedIds = selectedPhotoNoteIds.toList(growable: false);
+    setState(() => _albumActionBusy = true);
+    try {
+      final repository = await ref.read(albumRepositoryProvider.future);
+      final now = DateTime.now().toUtc();
+      final album = Album(
+        id: createRandomUuidV4(),
+        userId: userId,
+        name: draft.name,
+        icon: draft.icon,
+        isFavorite: false,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: SyncStatus.localOnly,
+      );
+      if (selectedIds.isEmpty) {
+        await repository.saveAlbum(album);
+      } else {
+        await repository.createAlbumWithPhotoNotes(
+          album: album,
+          photoNoteIds: selectedIds,
+          addedAt: now,
+          operationId: createRandomUuidV4(),
+        );
+      }
+      if (mounted) {
+        setState(() {
+          _albumActionBusy = false;
+          if (selectedIds.isNotEmpty) {
+            _selectedPhotoIds.clear();
+            _selectingPhotos = false;
+            _subview = _LibrarySubview.albums;
+            _openedAlbum = album;
+          }
+        });
+        showTopNotification(
+          context,
+          SnackBar(
+            content: Text(
+              selectedIds.isEmpty
+                  ? 'Đã tạo Album “${draft.name}”.'
+                  : 'Đã tạo Album “${draft.name}” và thêm '
+                      '${selectedIds.length} ảnh.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _albumActionBusy = false);
+        showTopNotification(
+          context,
+          const SnackBar(content: Text('Không thể tạo Album.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleFavorite(Album album) async {
+    if (_albumActionBusy) return;
+    setState(() => _albumActionBusy = true);
+    try {
+      final repository = await ref.read(albumRepositoryProvider.future);
+      await repository.setFavorite(
+        userId: album.userId,
+        albumId: album.id,
+        isFavorite: !album.isFavorite,
+        updatedAt: DateTime.now().toUtc(),
+      );
+    } catch (_) {
+      if (mounted) {
+        showTopNotification(
+          context,
+          const SnackBar(content: Text('Không thể cập nhật Album yêu thích.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _albumActionBusy = false);
+    }
+  }
+
+  Future<void> _deleteAlbum(Album album) async {
+    await _deleteAlbums([album]);
+  }
+
+  Future<void> _deleteSelectedAlbums(List<Album> albums) async {
+    final selected = albums
+        .where((album) => _selectedAlbumIds.contains(album.id))
+        .toList(growable: false);
+    await _deleteAlbums(selected);
+  }
+
+  Future<void> _deleteAlbums(List<Album> albums) async {
+    if (_albumActionBusy || albums.isEmpty) return;
+    final albumLabel = albums.length == 1
+        ? 'Album “${albums.single.name}”'
+        : '${albums.length} Album đã chọn';
+    final confirmed = await _showLibraryConfirmation(
+      context: context,
+      title: 'Xóa $albumLabel?',
+      message:
+          'Album sẽ bị xóa nhưng các Photo Note bên trong vẫn được giữ trong Thư viện.',
+      confirmLabel: 'Xóa Album',
+      confirmKey: const Key('library-delete-album-confirm'),
+      confirmColor: _libraryDangerColor,
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _albumActionBusy = true);
+    try {
+      final repository = await ref.read(albumRepositoryProvider.future);
+      await repository.deleteAlbums(
+        userId: albums.first.userId,
+        albumIds: albums.map((album) => album.id),
+        deletedAt: DateTime.now().toUtc(),
+      );
+      if (mounted) {
+        setState(() {
+          _selectedAlbumIds.clear();
+          _selectingAlbums = false;
+        });
+        showTopNotification(
+          context,
+          SnackBar(content: Text('Đã xóa $albumLabel.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        showTopNotification(
+          context,
+          const SnackBar(content: Text('Không thể xóa Album.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _albumActionBusy = false);
+    }
+  }
+
+  Future<void> _removePhotoFromAlbum(Album album, PhotoNote note) async {
+    if (_albumActionBusy) return;
+    setState(() => _albumActionBusy = true);
+    try {
+      final repository = await ref.read(albumRepositoryProvider.future);
+      await repository.removePhotoNotes(
+        userId: album.userId,
+        albumId: album.id,
+        photoNoteIds: [note.id],
+        removedAt: DateTime.now().toUtc(),
+        operationId: createRandomUuidV4(),
+      );
+      if (mounted) {
+        showTopNotification(
+          context,
+          const SnackBar(
+            content: Text('Đã gỡ ảnh khỏi Album; ảnh vẫn còn trong Thư viện.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        showTopNotification(
+          context,
+          const SnackBar(content: Text('Không thể gỡ ảnh khỏi Album.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _albumActionBusy = false);
+    }
   }
 
   Future<void> _movePhotoNoteToTrash(
     BuildContext context,
-    WidgetRef ref,
     PhotoNote note,
   ) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await _showLibraryConfirmation(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Chuyển bài vào thùng rác?'),
-        content: const Text(
+      title: 'Chuyển bài vào thùng rác?',
+      message:
           'Bài sẽ không còn trong Thư viện chính. Bạn có thể khôi phục trong 30 ngày trước khi yêu cầu xóa vĩnh viễn.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            key: const Key('library-trash-confirm-action'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Chuyển bài'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Xác nhận',
+      confirmKey: const Key('library-trash-confirm-action'),
+      confirmColor: _libraryDangerColor,
     );
-    if (confirmed != true || !context.mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       final repository = await ref.read(libraryRepositoryProvider.future);
@@ -182,13 +1178,15 @@ class StorageAlbumScreen extends ConsumerWidget {
       );
       _invalidateLibraryProviders(ref, note.id);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showTopNotification(
+          context,
           const SnackBar(content: Text('Đã chuyển bài vào thùng rác.')),
         );
       }
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showTopNotification(
+          context,
           const SnackBar(
             content: Text('Không thể chuyển bài vào thùng rác.'),
           ),
@@ -213,1427 +1211,67 @@ class StorageAlbumScreen extends ConsumerWidget {
   }
 }
 
-class _LibraryStorageSummaryCard extends ConsumerWidget {
-  const _LibraryStorageSummaryCard();
+const _libraryToolbarButtonSize = Size(120, 48);
+const _libraryDangerColor = Color(0xFFE55353);
+const _libraryDialogBodyColor = Color(0xFF554A42);
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final summary = ref.watch(libraryStorageSummaryProvider);
-    return summary.maybeWhen(
-      data: (value) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        child: Container(
-          key: const Key('library-storage-summary'),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5EFE7),
-            borderRadius: BorderRadius.circular(14),
+Future<bool> _showLibraryConfirmation({
+  required BuildContext context,
+  required String title,
+  required String message,
+  required String confirmLabel,
+  required Key confirmKey,
+  required Color confirmColor,
+}) async {
+  return await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            side: const BorderSide(color: AppColors.ink, width: 2.5),
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: Row(
-            children: [
-              const Icon(Icons.sd_storage_outlined, color: Color(0xFF786A61)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '${value.localMediaCount}/${value.totalMediaCount} ảnh trên máy • '
-                  '${_formatBytes(value.localMediaBytes)}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-              Text(
-                _storageSecondarySummary(value),
-                textAlign: TextAlign.right,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF786A61),
-                    ),
-              ),
-            ],
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+            ),
           ),
-        ),
-      ),
-      orElse: () => const SizedBox.shrink(),
-    );
-  }
-}
-
-class _MediaRecoveryBanner extends StatelessWidget {
-  const _MediaRecoveryBanner({
-    required this.recovery,
-    required this.onOpen,
-  });
-
-  final AsyncValue<LibraryMediaRecoverySnapshot?> recovery;
-  final ValueChanged<LibraryMediaRecoverySnapshot> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final snapshot = recovery.valueOrNull;
-    if (snapshot == null || !snapshot.hasFindings) {
-      return const SizedBox.shrink();
-    }
-    final count = snapshot.integrity.orphanRelativePaths.length +
-        snapshot.integrity.missingRelativePaths.length +
-        snapshot.quarantined.length;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Card(
-        key: const Key('library-media-recovery-banner'),
-        margin: EdgeInsets.zero,
-        color: const Color(0xFFFFF3D6),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => onOpen(snapshot),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 64),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.health_and_safety_outlined,
-                    color: Color(0xFF9A5B00),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Kiểm tra ảnh trên máy',
-                          style:
-                              Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF5D3A00),
-                                  ),
-                        ),
-                        Text(
-                          '$count mục cần xử lý hoặc có thể khôi phục',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: const Color(0xFF6B460B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded),
-                ],
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: _libraryDialogBodyColor,
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: [
+            StickerButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              text: 'Hủy',
+              fontSize: 13,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MediaRecoverySheet extends ConsumerStatefulWidget {
-  const _MediaRecoverySheet({required this.initialSnapshot});
-
-  final LibraryMediaRecoverySnapshot initialSnapshot;
-
-  @override
-  ConsumerState<_MediaRecoverySheet> createState() =>
-      _MediaRecoverySheetState();
-}
-
-class _MediaRecoverySheetState extends ConsumerState<_MediaRecoverySheet> {
-  late LibraryMediaRecoverySnapshot _snapshot = widget.initialSnapshot;
-  bool _busy = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final orphans = _snapshot.integrity.orphanRelativePaths.toList()..sort();
-    final missingCount = _snapshot.integrity.missingRelativePaths.length;
-    return SafeArea(
-      top: false,
-      child: ListView(
-        key: const Key('library-media-recovery-sheet'),
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-        children: [
-          Text(
-            'Khôi phục ảnh cục bộ',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Chỉ quản lý ảnh trong vùng riêng của ứng dụng. Bài học, JSON và từ vựng không bị xóa ở đây.',
-          ),
-          if (missingCount > 0) ...[
-            const SizedBox(height: 16),
-            _RecoveryInfoCard(
-              key: const Key('library-media-missing-info'),
-              icon: Icons.broken_image_outlined,
-              title: '$missingCount ảnh được tham chiếu đang thiếu',
-              message:
-                  'Bài và từ vựng vẫn dùng offline. Mẫu liên quan bị loại khỏi tập train để AI không học từ dữ liệu thiếu.',
-            ),
-          ],
-          if (orphans.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _RecoveryHeading(
-              title: 'Ảnh chưa gắn với bài (${orphans.length})',
-              description:
-                  'Cách ly để giữ ảnh thêm 30 ngày trước khi ứng dụng xóa.',
-            ),
-            ...orphans.map(
-              (path) => _RecoveryFileCard(
-                key: Key('library-orphan-$path'),
-                filename: _mediaFilename(path),
-                child: FilledButton.icon(
-                  key: Key('library-quarantine-$path'),
-                  onPressed: _busy ? null : () => _confirmQuarantine(path),
-                  style: _recoveryButtonStyle(),
-                  icon: const Icon(Icons.inventory_2_outlined),
-                  label: const Text('Cách ly'),
-                ),
-              ),
-            ),
-          ],
-          if (_snapshot.quarantined.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _RecoveryHeading(
-              title: 'Đang cách ly (${_snapshot.quarantined.length})',
-              description: 'Có thể khôi phục hoặc xóa vĩnh viễn ngay.',
-            ),
-            ..._snapshot.quarantined.map(
-              (entry) => _RecoveryFileCard(
-                key: Key('library-quarantined-${entry.relativePath}'),
-                filename: _mediaFilename(entry.relativePath),
-                subtitle:
-                    'Giữ đến ${_formatDate(entry.purgeEligibleAt.toLocal())}',
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      key: Key('library-restore-${entry.relativePath}'),
-                      onPressed:
-                          _busy ? null : () => _restore(entry.relativePath),
-                      style: _recoveryButtonStyle(),
-                      icon: const Icon(Icons.restore_rounded),
-                      label: const Text('Khôi phục'),
-                    ),
-                    TextButton.icon(
-                      key: Key('library-delete-${entry.relativePath}'),
-                      onPressed: _busy
-                          ? null
-                          : () => _confirmDelete(entry.relativePath),
-                      style: _recoveryButtonStyle(
-                        foregroundColor: const Color(0xFFB3261E),
-                      ),
-                      icon: const Icon(Icons.delete_forever_outlined),
-                      label: const Text('Xóa ngay'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (!_snapshot.hasFindings) ...[
-            const SizedBox(height: 36),
-            const _RecoveryInfoCard(
-              icon: Icons.check_circle_outline_rounded,
-              title: 'Ảnh cục bộ đang ổn',
-              message: 'Không còn mục nào cần xử lý.',
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _confirmQuarantine(String path) async {
-    final confirmed = await _confirm(
-      title: 'Cách ly ảnh này?',
-      message:
-          'Ảnh chưa gắn với bài sẽ được chuyển sang vùng cách ly. Bạn có 30 ngày để khôi phục trước khi ảnh bị xóa tự động.',
-      actionLabel: 'Cách ly',
-    );
-    if (confirmed) {
-      await _runAction(
-        (service) => service.quarantineOrphan(
-          path,
-          now: DateTime.now().toUtc(),
-        ),
-        successMessage: 'Đã cách ly ảnh trong 30 ngày.',
-      );
-    }
-  }
-
-  Future<void> _restore(String path) => _runAction(
-        (service) => service.restore(path),
-        successMessage: 'Đã khôi phục ảnh về bộ nhớ ứng dụng.',
-      );
-
-  Future<void> _confirmDelete(String path) async {
-    final confirmed = await _confirm(
-      title: 'Xóa ảnh vĩnh viễn?',
-      message:
-          'Ảnh này sẽ bị xóa khỏi thiết bị và không thể khôi phục. Bài học và từ vựng không bị ảnh hưởng.',
-      actionLabel: 'Xóa vĩnh viễn',
-      destructive: true,
-    );
-    if (confirmed) {
-      await _runAction(
-        (service) => service.deleteQuarantined(path),
-        successMessage: 'Đã xóa ảnh khỏi thiết bị.',
-      );
-    }
-  }
-
-  Future<bool> _confirm({
-    required String title,
-    required String message,
-    required String actionLabel,
-    bool destructive = false,
-  }) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Hủy'),
-              ),
-              FilledButton(
-                key: const Key('library-recovery-confirm-action'),
-                style: destructive
-                    ? FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFB3261E),
-                        minimumSize: const Size(0, 48),
-                      )
-                    : _recoveryButtonStyle(),
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(actionLabel),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  Future<void> _runAction(
-    Future<void> Function(LibraryMediaRecoveryService service) action, {
-    required String successMessage,
-  }) async {
-    setState(() => _busy = true);
-    try {
-      final service =
-          await ref.read(libraryMediaRecoveryServiceProvider.future);
-      if (service == null) throw StateError('Recovery is unavailable');
-      await action(service);
-      ref.invalidate(libraryMediaIntegrityAuditProvider);
-      ref.invalidate(libraryMediaRecoverySnapshotProvider);
-      final refreshed =
-          await ref.read(libraryMediaRecoverySnapshotProvider.future);
-      if (!mounted) return;
-      if (refreshed != null) setState(() => _snapshot = refreshed);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(successMessage)),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không thể xử lý ảnh lúc này. Hãy thử lại.'),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-}
-
-class _RecoveryHeading extends StatelessWidget {
-  const _RecoveryHeading({required this.title, required this.description});
-
-  final String title;
-  final String description;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: 2),
-            Text(description),
-          ],
-        ),
-      );
-}
-
-class _RecoveryInfoCard extends StatelessWidget {
-  const _RecoveryInfoCard({
-    required this.icon,
-    required this.title,
-    required this.message,
-    super.key,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, color: const Color(0xFF9A5B00)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 4),
-                    Text(message),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-}
-
-class _RecoveryFileCard extends StatelessWidget {
-  const _RecoveryFileCard({
-    required this.filename,
-    required this.child,
-    this.subtitle,
-    super.key,
-  });
-
-  final String filename;
-  final String? subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                filename,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 2),
-                Text(subtitle!),
-              ],
-              const SizedBox(height: 8),
-              Align(alignment: Alignment.centerRight, child: child),
-            ],
-          ),
-        ),
-      );
-}
-
-ButtonStyle _recoveryButtonStyle({Color? foregroundColor}) =>
-    FilledButton.styleFrom(
-      minimumSize: const Size(0, 48),
-      foregroundColor: foregroundColor,
-    );
-
-String _mediaFilename(String relativePath) =>
-    relativePath.replaceAll('\\', '/').split('/').last;
-
-class LibraryTrashScreen extends ConsumerWidget {
-  const LibraryTrashScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notes = ref.watch(libraryTrashPhotoNotesProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Thùng rác')),
-      body: SafeArea(
-        child: notes.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) => _StateMessage(
-            key: const Key('library-trash-error'),
-            icon: Icons.delete_outline_rounded,
-            title: 'Không thể đọc thùng rác',
-            message: 'Dữ liệu local chưa đọc được. Hãy thử lại.',
-            actionLabel: 'Thử lại',
-            onAction: () => ref.invalidate(libraryTrashPhotoNotesProvider),
-          ),
-          data: (items) => items.isEmpty
-              ? const _StateMessage(
-                  key: Key('library-trash-empty'),
-                  icon: Icons.delete_sweep_outlined,
-                  title: 'Thùng rác đang trống',
-                  message:
-                      'Bài đã chuyển vào đây có thể khôi phục trong 30 ngày.',
-                )
-              : ListView(
-                  key: const Key('library-trash-list'),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-                  children: [
-                    const Card(
-                      color: Color(0xFFFFF3D6),
-                      child: Padding(
-                        padding: EdgeInsets.all(14),
-                        child: Text(
-                          'Bài trong thùng rác được giữ 30 ngày. Xóa vĩnh viễn có thể cần chờ đồng bộ cloud khi thiết bị có mạng.',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...items.map(
-                      (note) => _TrashPhotoNoteCard(
-                        note: note,
-                        onRestore: () => _restorePhotoNote(context, ref, note),
-                        onDelete: () =>
-                            _requestPermanentDelete(context, ref, note),
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _restorePhotoNote(
-    BuildContext context,
-    WidgetRef ref,
-    PhotoNote note,
-  ) async {
-    try {
-      final repository = await ref.read(libraryRepositoryProvider.future);
-      await repository.restorePhotoNotes(
-        userId: note.userId,
-        photoNoteIds: [note.id],
-        restoredAt: DateTime.now().toUtc(),
-      );
-      _invalidateLibraryProviders(ref, note.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã khôi phục bài vào Thư viện.')),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không thể khôi phục bài.')),
-        );
-      }
-    }
-  }
-
-  Future<void> _requestPermanentDelete(
-    BuildContext context,
-    WidgetRef ref,
-    PhotoNote note,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Yêu cầu xóa vĩnh viễn?'),
-        content: const Text(
-          'Bài, ảnh và dữ liệu nguồn sẽ bị xóa khỏi thiết bị và không thể khôi phục. Nếu đã sao lưu, bản cloud cũng được đưa vào hàng chờ xóa kể cả khi Cloud Backup đang tắt.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Hủy'),
-          ),
-          FilledButton(
-            key: const Key('library-permanent-delete-confirm-action'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Xóa vĩnh viễn'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-
-    try {
-      final repository = await ref.read(libraryRepositoryProvider.future);
-      await repository.requestPermanentDeletion(
-        userId: note.userId,
-        photoNoteIds: [note.id],
-        requestedAt: DateTime.now().toUtc(),
-      );
-      final deletionService =
-          await ref.read(libraryPhotoNoteDeletionServiceProvider.future);
-      await deletionService?.maintain(
-        userId: note.userId,
-        now: DateTime.now().toUtc(),
-      );
-      _invalidateLibraryProviders(ref, note.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Đã xóa khỏi thiết bị. Nếu có bản cloud, app sẽ tiếp tục xóa khi có mạng.',
-            ),
-          ),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không thể tạo yêu cầu xóa.')),
-        );
-      }
-    }
-  }
-}
-
-class _TrashPhotoNoteCard extends StatelessWidget {
-  const _TrashPhotoNoteCard({
-    required this.note,
-    required this.onRestore,
-    required this.onDelete,
-  });
-
-  final PhotoNote note;
-  final VoidCallback onRestore;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final deletedAt = note.deletedAt!;
-    final purgeAt = deletedAt.add(const Duration(days: 30));
-    final daysLeft = purgeAt.difference(DateTime.now().toUtc()).inDays + 1;
-    return Card(
-      key: Key('library-trash-note-${note.id}'),
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${note.emoji ?? '📝'}  ${note.title}',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              daysLeft > 0
-                  ? 'Còn $daysLeft ngày • xóa lúc ${_formatDate(purgeAt)}'
-                  : 'Đã đến hạn xóa vĩnh viễn',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF786A61),
-                  ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  key: Key('library-trash-restore-${note.id}'),
-                  onPressed: onRestore,
-                  icon: const Icon(Icons.restore_rounded),
-                  label: const Text('Khôi phục'),
-                ),
-                TextButton.icon(
-                  key: Key('library-trash-delete-${note.id}'),
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_forever_outlined),
-                  label: const Text('Xóa vĩnh viễn'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class LibraryPhotoNoteDetailScreen extends ConsumerWidget {
-  const LibraryPhotoNoteDetailScreen({required this.photoNoteId, super.key});
-
-  final String photoNoteId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final snapshot = ref.watch(
-      libraryPhotoNoteSnapshotProvider(photoNoteId),
-    );
-    return Scaffold(
-      appBar: AppBar(title: const Text('Bài đã lưu')),
-      body: SafeArea(
-        child: snapshot.when(
-          loading: () => const Center(
-            child: CircularProgressIndicator(
-              key: Key('library-detail-loading-indicator'),
-            ),
-          ),
-          error: (error, stackTrace) => _StateMessage(
-            key: const Key('library-detail-error-state'),
-            icon: Icons.menu_book_rounded,
-            title: 'Không thể mở bài đã lưu',
-            message: 'Dữ liệu trên máy chưa đọc được. Hãy thử lại.',
-            actionLabel: 'Thử lại',
-            onAction: () =>
-                ref.invalidate(libraryPhotoNoteSnapshotProvider(photoNoteId)),
-          ),
-          data: (value) => value == null
-              ? const _StateMessage(
-                  key: Key('library-detail-missing-state'),
-                  icon: Icons.search_off_rounded,
-                  title: 'Không tìm thấy bài này',
-                  message: 'Bài có thể đã bị xóa khỏi thư viện trên thiết bị.',
-                )
-              : _PhotoNoteDetail(snapshot: value),
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoNoteCard extends ConsumerWidget {
-  const _PhotoNoteCard({
-    required this.note,
-    required this.onTap,
-    required this.onMoveToTrash,
-  });
-
-  final PhotoNote note;
-  final VoidCallback onTap;
-  final VoidCallback onMoveToTrash;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final snapshot = ref.watch(libraryPhotoNoteSnapshotProvider(note.id));
-    return Card(
-      key: Key('library-photo-note-${note.id}'),
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Semantics(
-          button: true,
-          label: 'Mở bài đã lưu ${note.title}',
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                SizedBox.square(
-                  dimension: 84,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: snapshot.when(
-                      loading: () => const _ImagePlaceholder(isLoading: true),
-                      error: (_, __) => const _ImagePlaceholder(),
-                      data: (value) => value == null
-                          ? const _ImagePlaceholder()
-                          : _LocalLibraryImage(
-                              mediaAsset: value.mediaAsset,
-                              semanticLabel: 'Ảnh của ${note.title}',
-                            ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${note.emoji ?? '📝'}  ${note.title}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF3C2A21),
-                                ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        snapshot.maybeWhen(
-                          data: (value) => value == null
-                              ? 'Không tìm thấy dữ liệu chi tiết'
-                              : '${value.vocabCount} từ vựng • ${_formatDate(note.createdAt)}',
-                          orElse: () => _formatDate(note.createdAt),
-                        ),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: const Color(0xFF786A61),
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          _SyncStatusChip(status: note.syncStatus),
-                          snapshot.maybeWhen(
-                            data: (value) => value == null
-                                ? const SizedBox.shrink()
-                                : _MediaAvailabilityChip(
-                                    mediaAsset: value.mediaAsset,
-                                  ),
-                            orElse: () => const SizedBox.shrink(),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                PopupMenuButton<_PhotoNoteAction>(
-                  key: Key('library-note-menu-${note.id}'),
-                  tooltip: 'Tùy chọn bài đã lưu',
-                  onSelected: (action) {
-                    if (action == _PhotoNoteAction.moveToTrash) {
-                      onMoveToTrash();
-                    }
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: _PhotoNoteAction.moveToTrash,
-                      child: Text('Đưa vào thùng rác'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-enum _PhotoNoteAction { moveToTrash }
-
-class _PhotoNoteDetail extends StatelessWidget {
-  const _PhotoNoteDetail({required this.snapshot});
-
-  final PhotoNoteSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final note = snapshot.photoNote;
-    final media = snapshot.mediaAsset;
-    final imageRatio = (media.width / media.height).clamp(0.65, 1.8);
-    return ListView(
-      key: const Key('library-photo-note-detail'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: AspectRatio(
-            aspectRatio: imageRatio,
-            child: _LocalLibraryImage(
-              mediaAsset: media,
-              semanticLabel: 'Ảnh đã lưu của ${note.title}',
-              showRetry: true,
-              allowCloudRestore: true,
-            ),
-          ),
-        ),
-        const SizedBox(height: 18),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                '${note.emoji ?? '📝'}  ${note.title}',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF3C2A21),
-                    ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            _SyncStatusChip(status: note.syncStatus),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '${snapshot.vocabCount} từ vựng • ${_formatDateTime(note.createdAt)}',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF786A61),
-              ),
-        ),
-        const SizedBox(height: 12),
-        _OfflineNotice(mediaAsset: media),
-        const SizedBox(height: 22),
-        Text(
-          'Từ vựng nhận diện',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 10),
-        if (snapshot.detections.isEmpty)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Bài quét này không có từ vựng được nhận diện.'),
-            ),
-          )
-        else
-          ...snapshot.detections.map(
-            (detection) => _DetectionCard(
-              detection: detection,
-              annotations:
-                  snapshot.annotationsByDetectionId[detection.id] ?? const [],
-            ),
-          ),
-        if (snapshot.primaryScanRun != null) ...[
-          const SizedBox(height: 14),
-          Text(
-            'Nguồn nhận diện: ${snapshot.primaryScanRun!.modelName}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF786A61),
-                ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _DetectionCard extends StatelessWidget {
-  const _DetectionCard({
-    required this.detection,
-    required this.annotations,
-  });
-
-  final VocabDetection detection;
-  final List<VocabAnnotation> annotations;
-
-  @override
-  Widget build(BuildContext context) {
-    final annotation =
-        annotations.where((item) => item.deletedAt == null).lastOrNull;
-    final word = annotation?.correctedWord ?? detection.wordRaw;
-    final phonetic = annotation?.correctedPhonetic ?? detection.phonetic;
-    final meaning = annotation?.correctedMeaningVi ?? detection.meaningVi;
-    return Card(
-      key: Key('library-detection-${detection.id}'),
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    word,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.duoBlue,
-                        ),
-                  ),
-                ),
-                if (detection.partOfSpeech != null)
-                  Text(
-                    detection.partOfSpeech!,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: const Color(0xFF786A61),
-                        ),
-                  ),
-              ],
-            ),
-            if (phonetic != null) ...[
-              const SizedBox(height: 2),
-              Text(phonetic),
-            ],
-            if (meaning != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                meaning,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ],
-            if (detection.exampleEn != null) ...[
-              const SizedBox(height: 8),
-              Text('“${detection.exampleEn}”'),
-            ],
-            if (detection.exampleVi != null)
-              Text(
-                detection.exampleVi!,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LocalLibraryImage extends ConsumerStatefulWidget {
-  const _LocalLibraryImage({
-    required this.mediaAsset,
-    required this.semanticLabel,
-    this.showRetry = false,
-    this.allowCloudRestore = false,
-  });
-
-  final MediaAsset mediaAsset;
-  final String semanticLabel;
-  final bool showRetry;
-  final bool allowCloudRestore;
-
-  @override
-  ConsumerState<_LocalLibraryImage> createState() => _LocalLibraryImageState();
-}
-
-class _LocalLibraryImageState extends ConsumerState<_LocalLibraryImage> {
-  bool _restoring = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final relativePath = widget.mediaAsset.displayRelativePath;
-    final bytes = ref.watch(libraryMediaBytesProvider(relativePath));
-    return bytes.when(
-      loading: () => const _ImagePlaceholder(isLoading: true),
-      error: (error, stackTrace) {
-        final restoreService =
-            ref.watch(libraryCloudMediaRestoreServiceProvider);
-        final canRestore = widget.allowCloudRestore &&
-            widget.mediaAsset.remoteDisplayPath != null &&
-            restoreService != null;
-        return _ImagePlaceholder(
-          isLoading: _restoring,
-          message: widget.showRetry
-              ? canRestore
-                  ? 'Ảnh đang có trên Cloud Backup'
-                  : 'Không tìm thấy ảnh local'
-              : null,
-          actionLabel: canRestore ? 'Tải ảnh từ cloud' : 'Thử lại',
-          onAction: widget.showRetry && !_restoring
-              ? canRestore
-                  ? () => _restoreFromCloud(restoreService)
-                  : () =>
-                      ref.invalidate(libraryMediaBytesProvider(relativePath))
-              : null,
-        );
-      },
-      data: (value) => Image.memory(
-        value,
-        key: Key('library-media-$relativePath'),
-        fit: BoxFit.cover,
-        semanticLabel: widget.semanticLabel,
-        gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _ImagePlaceholder(
-          message: widget.showRetry ? 'Ảnh local không đọc được' : null,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _restoreFromCloud(
-    LibraryCloudMediaRestoreService restoreService,
-  ) async {
-    setState(() => _restoring = true);
-    try {
-      await restoreService.restoreDisplay(widget.mediaAsset);
-      ref.invalidate(
-        libraryMediaBytesProvider(widget.mediaAsset.displayRelativePath),
-      );
-      ref.invalidate(libraryStorageSummaryProvider);
-      ref.invalidate(libraryMediaRecoverySnapshotProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã tải ảnh về thiết bị.')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Không thể tải ảnh từ Cloud Backup.'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _restoring = false);
-    }
-  }
-}
-
-class _ImagePlaceholder extends StatelessWidget {
-  const _ImagePlaceholder({
-    this.isLoading = false,
-    this.message,
-    this.actionLabel,
-    this.onAction,
-  });
-
-  final bool isLoading;
-  final String? message;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: const Color(0xFFEFE6D8),
-      child: Center(
-        child: isLoading
-            ? const SizedBox.square(
-                dimension: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.broken_image_outlined,
-                    color: Color(0xFF786A61),
-                  ),
-                  if (message != null) ...[
-                    const SizedBox(height: 6),
-                    Text(message!, textAlign: TextAlign.center),
-                  ],
-                  if (onAction != null && actionLabel != null)
-                    TextButton(onPressed: onAction, child: Text(actionLabel!)),
-                ],
-              ),
-      ),
-    );
-  }
-}
-
-class _OfflineBadge extends StatelessWidget {
-  const _OfflineBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Dữ liệu có thể xem khi không có mạng',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: AppColors.duoGreen.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.offline_pin_rounded, size: 17, color: Color(0xFF3F8F00)),
-            SizedBox(width: 4),
-            Text(
-              'Offline',
-              style: TextStyle(
-                color: Color(0xFF3F8F00),
-                fontWeight: FontWeight.w800,
+            StickerButton(
+              key: confirmKey,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              surfaceColor: confirmColor,
+              textColor: Colors.white,
+              text: confirmLabel,
+              fontSize: 13,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
+      ) ??
+      false;
 }
-
-class _MediaAvailabilityChip extends ConsumerWidget {
-  const _MediaAvailabilityChip({required this.mediaAsset});
-
-  final MediaAsset mediaAsset;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final bytes = ref.watch(
-      libraryMediaBytesProvider(mediaAsset.displayRelativePath),
-    );
-    return bytes.when(
-      loading: () => const _AvailabilityChip(
-        label: 'Đang kiểm tra ảnh',
-        icon: Icons.hourglass_top_rounded,
-        color: Color(0xFF786A61),
-      ),
-      data: (_) => const _AvailabilityChip(
-        label: 'Ảnh trên máy',
-        icon: Icons.phone_android_rounded,
-        color: Color(0xFF3F8F00),
-      ),
-      error: (_, __) => mediaAsset.remoteDisplayPath == null
-          ? const _AvailabilityChip(
-              label: 'Thiếu ảnh',
-              icon: Icons.broken_image_outlined,
-              color: Color(0xFFB5483A),
-            )
-          : const _AvailabilityChip(
-              label: 'Ảnh trên cloud',
-              icon: Icons.cloud_outlined,
-              color: Color(0xFF2879A7),
-            ),
-    );
-  }
-}
-
-class _AvailabilityChip extends StatelessWidget {
-  const _AvailabilityChip({
-    required this.label,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OfflineNotice extends ConsumerWidget {
-  const _OfflineNotice({required this.mediaAsset});
-
-  final MediaAsset mediaAsset;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final bytes = ref.watch(
-      libraryMediaBytesProvider(mediaAsset.displayRelativePath),
-    );
-    final (icon, color, message) = bytes.when(
-      loading: () => (
-        Icons.hourglass_top_rounded,
-        const Color(0xFF786A61),
-        'Từ vựng đã lưu trên máy. Đang kiểm tra ảnh local.',
-      ),
-      data: (_) => (
-        Icons.phone_android_rounded,
-        const Color(0xFF3F8F00),
-        'Ảnh và từ vựng này được đọc từ bộ nhớ trên máy, không cần mạng.',
-      ),
-      error: (_, __) => mediaAsset.remoteDisplayPath == null
-          ? (
-              Icons.broken_image_outlined,
-              const Color(0xFFB5483A),
-              'Từ vựng đã lưu trên máy và vẫn xem offline. Ảnh local đang bị thiếu.',
-            )
-          : (
-              Icons.cloud_outlined,
-              const Color(0xFF2879A7),
-              'Từ vựng đã lưu trên máy. Ảnh vẫn ở Cloud Backup và chỉ tải khi bạn chọn.',
-            ),
-    );
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(message),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SyncStatusChip extends StatelessWidget {
-  const _SyncStatusChip({required this.status});
-
-  final SyncStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, icon, color) = switch (status) {
-      SyncStatus.synced => (
-          'Đã sao lưu',
-          Icons.cloud_done_rounded,
-          const Color(0xFF2879A7),
-        ),
-      SyncStatus.pending || SyncStatus.syncing => (
-          'Đang sao lưu',
-          Icons.cloud_upload_rounded,
-          const Color(0xFFE07B00),
-        ),
-      SyncStatus.failedRetryable => (
-          'Sẽ thử lại',
-          Icons.cloud_sync_rounded,
-          const Color(0xFFE07B00),
-        ),
-      SyncStatus.blockedAuth || SyncStatus.blockedContract => (
-          'Chưa sao lưu',
-          Icons.cloud_off_rounded,
-          const Color(0xFFB5483A),
-        ),
-      SyncStatus.quarantined => (
-          'Cần kiểm tra',
-          Icons.warning_amber_rounded,
-          const Color(0xFFB5483A),
-        ),
-      SyncStatus.localOnly => (
-          'Chỉ trên máy',
-          Icons.phone_android_rounded,
-          const Color(0xFF786A61),
-        ),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StateMessage extends StatelessWidget {
-  const _StateMessage({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.actionLabel,
-    this.onAction,
-    super.key,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 64, color: const Color(0xFF9E8F85)),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF786A61),
-                  ),
-            ),
-            if (onAction != null && actionLabel != null) ...[
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: onAction,
-                icon: const Icon(Icons.arrow_forward_rounded),
-                label: Text(actionLabel!),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-String _formatDate(DateTime value) {
-  final local = value.toLocal();
-  return '${_twoDigits(local.day)}/${_twoDigits(local.month)}/${local.year}';
-}
-
-String _formatDateTime(DateTime value) {
-  final local = value.toLocal();
-  return '${_formatDate(value)} lúc ${_twoDigits(local.hour)}:${_twoDigits(local.minute)}';
-}
-
-void _invalidateLibraryProviders(WidgetRef ref, String photoNoteId) {
-  ref.invalidate(libraryPhotoNotesProvider);
-  ref.invalidate(libraryTrashPhotoNotesProvider);
-  ref.invalidate(libraryStorageSummaryProvider);
-  ref.invalidate(libraryPhotoNoteSnapshotProvider(photoNoteId));
-}
-
-String _formatBytes(int bytes) {
-  if (bytes < 1024) return '$bytes B';
-  final kilobytes = bytes / 1024;
-  if (kilobytes < 1024) return '${kilobytes.toStringAsFixed(1)} KB';
-  final megabytes = kilobytes / 1024;
-  if (megabytes < 1024) return '${megabytes.toStringAsFixed(1)} MB';
-  return '${(megabytes / 1024).toStringAsFixed(1)} GB';
-}
-
-String _storageSecondarySummary(LibraryStorageSummary summary) {
-  final parts = <String>[
-    if (summary.cloudOnlyMediaCount > 0)
-      '${summary.cloudOnlyMediaCount} trên cloud',
-    if (summary.missingMediaCount > 0) '${summary.missingMediaCount} bị thiếu',
-    '${summary.trashCount} trong rác',
-  ];
-  return parts.join('\n');
-}
-
-String _twoDigits(int value) => value.toString().padLeft(2, '0');

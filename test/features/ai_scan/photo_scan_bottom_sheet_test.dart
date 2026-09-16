@@ -15,6 +15,7 @@ import 'package:capy_vocab/features/ai_scan/presentation/screens/photo_scan_bott
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/scan_paper_background.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/scan_loading_overlay.dart';
+import 'package:capy_vocab/shared/widgets/sticker_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,6 +59,36 @@ void main() {
     expect(painter.verticalFiberOpacity, inInclusiveRange(0.05, 0.08));
     expect(painter.horizontalFiberOpacity, inInclusiveRange(0.05, 0.08));
     expect(painter.secondaryFiberOpacity, lessThan(0.04));
+  });
+
+  testWidgets('hai nút nguồn ảnh dùng StickerButton đồng bộ', (tester) async {
+    await _pumpScreen(
+      tester,
+      picker: _FakePicker(onPick: (_) async => null),
+      compressor: _FakeCompressor(
+        onCompress: (_) => throw UnimplementedError(),
+      ),
+      storage: _FakeStorage(),
+      visionClient: _FakeVisionClient(
+        onAnalyze: (_, __) => throw UnimplementedError(),
+      ),
+    );
+
+    final cameraButton = tester.widget<StickerButton>(
+      find.byKey(const Key('pick-camera-button')),
+    );
+    final galleryButton = tester.widget<StickerButton>(
+      find.byKey(const Key('pick-gallery-button')),
+    );
+
+    expect(cameraButton.surfaceColor, AppColors.yellow);
+    expect(galleryButton.surfaceColor, AppColors.mint);
+    expect(cameraButton.semanticLabel, 'CHỤP ẢNH THÔ');
+    expect(galleryButton.semanticLabel, 'TẢI ẢNH LÊN');
+    expect(cameraButton.radius, 10);
+    expect(galleryButton.radius, 10);
+    expect(cameraButton.expand, isTrue);
+    expect(galleryButton.expand, isTrue);
   });
 
   test('device picker ánh xạ đúng gallery và camera sang image_picker',
@@ -640,6 +671,249 @@ void main() {
 
     await tester.tap(find.text('Đóng'));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('hiện 4 nút điều khiển nhãn và tương tác khi scan ảnh thành công',
+      (tester) async {
+    final sourceBytes = _testImageBytes();
+    final picker = _FakePicker(
+      onPick: (source) async => PickedScanImage(
+        bytes: sourceBytes,
+        name: 'test.png',
+      ),
+    );
+    final compressor = _FakeCompressor(
+      onCompress: (bytes) async => bytes,
+    );
+    final storage = _FakeStorage();
+    final visionClient = _FakeVisionClient(
+      onAnalyze: (bytes, requestId) async => const GeminiVisionResult(
+        detectedVocabulary: [
+          VocabDetection(
+            word: 'cây xanh',
+            phonetic: '/cay xanh/',
+            meaning: 'plant',
+            x: 0.1,
+            y: 0.1,
+            w: 0.2,
+            h: 0.2,
+          ),
+        ],
+      ),
+    );
+
+    await _pumpScreen(
+      tester,
+      picker: picker,
+      compressor: compressor,
+      storage: storage,
+      visionClient: visionClient,
+      debugIsWebOverride: true,
+    );
+
+    // Trước khi scan hoàn tất: 4 nút không hiển thị
+    expect(find.byKey(const Key('scan-result-control-bar')), findsNothing);
+
+    await tester.runAsync(
+      () => precacheImage(
+        MemoryImage(sourceBytes),
+        tester.element(find.byType(PhotoScanBottomSheet)),
+      ),
+    );
+
+    // Chọn ảnh từ gallery để bắt đầu scan
+    final galleryButton = find.byKey(const Key('pick-gallery-button'));
+    await tester.ensureVisible(galleryButton);
+    await tester.tap(galleryButton);
+    await tester.pumpAndSettle();
+
+    // Khi scan đã done: thanh 4 button điều khiển xuất hiện
+    expect(find.byKey(const Key('scan-result-control-bar')), findsOneWidget);
+    expect(find.byKey(const Key('toggle-labels-button')), findsOneWidget);
+    expect(find.byKey(const Key('toggle-word-button')), findsOneWidget);
+    expect(find.byKey(const Key('toggle-phonetic-button')), findsOneWidget);
+    expect(find.byKey(const Key('toggle-meaning-button')), findsOneWidget);
+
+    // Kiểm tra text ban đầu
+    expect(find.text('ẨN LABEL'), findsOneWidget);
+    expect(find.text('TỪ VỰNG'), findsOneWidget);
+    expect(find.text('PHIÊN ÂM'), findsOneWidget);
+    expect(find.text('DỊCH'), findsOneWidget);
+
+    VocabOverlayPainter previewPainter() {
+      final paint = tester.widget<CustomPaint>(
+        find.descendant(
+          of: find.byKey(const Key('scan-image-preview')),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is CustomPaint && widget.painter is VocabOverlayPainter,
+          ),
+        ),
+      );
+      return paint.painter! as VocabOverlayPainter;
+    }
+
+    Color controlColor(Key key) {
+      final material = tester.widget<Material>(
+        find
+            .ancestor(
+              of: find.byKey(key),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      return material.color!;
+    }
+
+    var painter = previewPainter();
+    expect(painter.showLabels, isTrue);
+    expect(painter.showWord, isTrue);
+    expect(painter.showPhonetic, isTrue);
+    expect(painter.showMeaning, isTrue);
+    expect(
+      controlColor(const Key('toggle-labels-button')),
+      const Color(0xFFE2E8F0),
+    );
+    expect(
+      controlColor(const Key('toggle-word-button')),
+      const Color(0xFFE2E8F0),
+    );
+    expect(
+      controlColor(const Key('toggle-phonetic-button')),
+      const Color(0xFFE2E8F0),
+    );
+    expect(
+      controlColor(const Key('toggle-meaning-button')),
+      const Color(0xFFE2E8F0),
+    );
+
+    // Click 'ẨN LABEL' -> chuyển thành 'HIỆN LABEL'
+    await tester.tap(find.byKey(const Key('toggle-labels-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('HIỆN LABEL'), findsOneWidget);
+    expect(find.text('ẨN LABEL'), findsNothing);
+    painter = previewPainter();
+    expect(painter.showLabels, isFalse);
+    expect(painter.showWord, isFalse);
+    expect(painter.showPhonetic, isFalse);
+    expect(painter.showMeaning, isFalse);
+    expect(
+      controlColor(const Key('toggle-labels-button')),
+      const Color(0xFFFDE047),
+    );
+    expect(
+      controlColor(const Key('toggle-word-button')),
+      const Color(0xFFE2E8F0),
+    );
+    expect(
+      controlColor(const Key('toggle-phonetic-button')),
+      const Color(0xFFE2E8F0),
+    );
+    expect(
+      controlColor(const Key('toggle-meaning-button')),
+      const Color(0xFFE2E8F0),
+    );
+
+    // Click 'HIỆN LABEL' -> chuyển lại 'ẨN LABEL'
+    await tester.tap(find.byKey(const Key('toggle-labels-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('ẨN LABEL'), findsOneWidget);
+    painter = previewPainter();
+    expect(painter.showLabels, isTrue);
+    expect(painter.showWord, isTrue);
+    expect(painter.showPhonetic, isTrue);
+    expect(painter.showMeaning, isTrue);
+
+    // Khôi phục mặc định đủ 3 dòng nhưng các nút vẫn chưa được chọn.
+    expect(
+      controlColor(const Key('toggle-labels-button')),
+      const Color(0xFFE2E8F0),
+    );
+    expect(
+      controlColor(const Key('toggle-word-button')),
+      const Color(0xFFE2E8F0),
+    );
+
+    // Chọn 1 dòng: chỉ từ vựng.
+    await tester.tap(find.byKey(const Key('toggle-word-button')));
+    await tester.pumpAndSettle();
+    painter = previewPainter();
+    expect(painter.showLabels, isTrue);
+    expect(painter.showWord, isTrue);
+    expect(painter.showPhonetic, isFalse);
+    expect(painter.showMeaning, isFalse);
+    expect(
+      controlColor(const Key('toggle-word-button')),
+      const Color(0xFFBBF7D0),
+    );
+    expect(
+      controlColor(const Key('toggle-phonetic-button')),
+      const Color(0xFFE2E8F0),
+    );
+
+    // Chọn thêm phiên âm: hiển thị 2 dòng.
+    await tester.tap(find.byKey(const Key('toggle-phonetic-button')));
+    await tester.pumpAndSettle();
+    painter = previewPainter();
+    expect(painter.showLabels, isTrue);
+    expect(painter.showWord, isTrue);
+    expect(painter.showPhonetic, isTrue);
+    expect(painter.showMeaning, isFalse);
+    expect(
+      controlColor(const Key('toggle-word-button')),
+      const Color(0xFFBBF7D0),
+    );
+    expect(
+      controlColor(const Key('toggle-phonetic-button')),
+      const Color(0xFFBAE6FD),
+    );
+
+    // Chọn thêm dịch: hiển thị đủ 3 dòng.
+    await tester.tap(find.byKey(const Key('toggle-meaning-button')));
+    await tester.pumpAndSettle();
+    painter = previewPainter();
+    expect(painter.showLabels, isTrue);
+    expect(painter.showWord, isTrue);
+    expect(painter.showPhonetic, isTrue);
+    expect(painter.showMeaning, isTrue);
+
+    // Bỏ chọn từng dòng vẫn giữ đúng số dòng đang được chọn.
+    await tester.tap(find.byKey(const Key('toggle-word-button')));
+    await tester.pumpAndSettle();
+    painter = previewPainter();
+    expect(painter.showWord, isFalse);
+    expect(painter.showPhonetic, isTrue);
+    expect(painter.showMeaning, isTrue);
+
+    await tester.tap(find.byKey(const Key('toggle-phonetic-button')));
+    await tester.pumpAndSettle();
+    painter = previewPainter();
+    expect(painter.showWord, isFalse);
+    expect(painter.showPhonetic, isFalse);
+    expect(painter.showMeaning, isTrue);
+
+    // Ẩn dòng cuối cùng sẽ trở về ảnh gốc và trạng thái hide label.
+    await tester.tap(find.byKey(const Key('toggle-meaning-button')));
+    await tester.pumpAndSettle();
+    painter = previewPainter();
+    expect(painter.showLabels, isFalse);
+    expect(painter.showWord, isFalse);
+    expect(painter.showPhonetic, isFalse);
+    expect(painter.showMeaning, isFalse);
+    expect(find.text('HIỆN LABEL'), findsOneWidget);
+
+    // Chọn lại một dòng sẽ bật label và làm nút hide về màu xám.
+    await tester.tap(find.byKey(const Key('toggle-word-button')));
+    await tester.pumpAndSettle();
+    painter = previewPainter();
+    expect(painter.showLabels, isTrue);
+    expect(painter.showWord, isTrue);
+    expect(painter.showPhonetic, isFalse);
+    expect(painter.showMeaning, isFalse);
+    expect(
+      controlColor(const Key('toggle-labels-button')),
+      const Color(0xFFE2E8F0),
+    );
   });
 }
 

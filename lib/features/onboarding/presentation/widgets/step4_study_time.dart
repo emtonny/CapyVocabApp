@@ -132,7 +132,7 @@ class _Step4StudyTimeState extends ConsumerState<Step4StudyTime> {
         ),
         // Step Title Header
         const Text(
-          '4. Khung giờ học hàng ngày của bạn? ⏰',
+          '5. Khung giờ học hàng ngày của bạn? ⏰',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,

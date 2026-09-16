@@ -612,6 +612,51 @@ void main() {
     expect(_overlayPainter(tester).solveInvocationCount, 2);
   });
 
+  testWidgets('visible line selection recomputes a tight label footprint',
+      (tester) async {
+    final imageProvider = MemoryImage(_testImageBytes());
+    final harnessKey = GlobalKey<_OverlayHarnessState>();
+    await _pumpHarness(
+      tester,
+      harness: _OverlayHarness(
+        key: harnessKey,
+        imageProvider: imageProvider,
+        initialWords: const [_appleWord],
+      ),
+      imageProvider: imageProvider,
+    );
+
+    var painter = _overlayPainter(tester);
+    final allLines = painter.geometryFor(painter.placedLabels.single);
+    expect(painter.solveInvocationCount, 1);
+
+    harnessKey.currentState!.update(
+      showPhonetic: false,
+      showMeaning: false,
+    );
+    await tester.pump();
+    painter = _overlayPainter(tester);
+    final wordOnly = painter.geometryFor(painter.placedLabels.single);
+    expect(painter.solveInvocationCount, 2);
+    expect(wordOnly.cardRect.height, lessThan(allLines.cardRect.height));
+    expect(
+        wordOnly.footprintRect.height, lessThan(allLines.footprintRect.height));
+
+    harnessKey.currentState!.update(showPhonetic: true);
+    await tester.pump();
+    painter = _overlayPainter(tester);
+    final wordAndPhonetic = painter.geometryFor(painter.placedLabels.single);
+    expect(painter.solveInvocationCount, 3);
+    expect(
+      wordAndPhonetic.cardRect.height,
+      greaterThan(wordOnly.cardRect.height),
+    );
+    expect(
+      wordAndPhonetic.cardRect.height,
+      lessThan(allLines.cardRect.height),
+    );
+  });
+
   testWidgets('a real source image size change recomputes placement once',
       (tester) async {
     final firstProvider = MemoryImage(_testImageBytes());
@@ -1201,6 +1246,10 @@ class _OverlayHarnessState extends State<_OverlayHarness> {
   late ImageProvider _imageProvider = widget.imageProvider;
   late List<VocabDetection> _words = widget.initialWords;
   late Size _size = widget.initialSize;
+  bool _showLabels = true;
+  bool _showWord = true;
+  bool _showPhonetic = true;
+  bool _showMeaning = true;
 
   void rebuildWithoutChanges() => setState(() {});
 
@@ -1208,11 +1257,19 @@ class _OverlayHarnessState extends State<_OverlayHarness> {
     ImageProvider? imageProvider,
     List<VocabDetection>? words,
     Size? size,
+    bool? showLabels,
+    bool? showWord,
+    bool? showPhonetic,
+    bool? showMeaning,
   }) {
     setState(() {
       _imageProvider = imageProvider ?? _imageProvider;
       _words = words ?? _words;
       _size = size ?? _size;
+      _showLabels = showLabels ?? _showLabels;
+      _showWord = showWord ?? _showWord;
+      _showPhonetic = showPhonetic ?? _showPhonetic;
+      _showMeaning = showMeaning ?? _showMeaning;
     });
   }
 
@@ -1227,6 +1284,10 @@ class _OverlayHarnessState extends State<_OverlayHarness> {
             imageProvider: _imageProvider,
             words: _words,
             onLabelTap: widget.onLabelTap,
+            showLabels: _showLabels,
+            showWord: _showWord,
+            showPhonetic: _showPhonetic,
+            showMeaning: _showMeaning,
           ),
         ),
       ),

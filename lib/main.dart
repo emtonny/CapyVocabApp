@@ -7,6 +7,7 @@ import 'core/services/supabase_service.dart';
 import 'features/onboarding/application/onboarding_status_store.dart';
 import 'features/onboarding/data/datasources/supabase_onboarding_status_loader.dart';
 import 'features/onboarding/presentation/providers/onboarding_status_provider.dart';
+import 'shared/widgets/graph_paper_background.dart';
 import 'app.dart';
 
 Future<void> main() async {
@@ -56,7 +57,7 @@ Future<void> main() async {
     debugPrint('❌ Supabase initialization error: $e');
     rootApp = const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
+      home: GraphPaperScaffold(
         body: Center(
           child: Padding(
             padding: EdgeInsets.all(24),

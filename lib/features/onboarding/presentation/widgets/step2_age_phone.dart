@@ -23,7 +23,7 @@ class Step2AgePhone extends ConsumerWidget {
         ),
         // Step Title Header
         const Text(
-          '2. Độ tuổi & Số điện thoại 📱',
+          '3. Độ tuổi & Số điện thoại 📱',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,

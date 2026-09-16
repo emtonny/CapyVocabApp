@@ -9,6 +9,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/local_storage_service.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../shared/widgets/graph_paper_background.dart';
+import '../../../../shared/widgets/top_notification.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/capy_video_header.dart';
@@ -629,7 +630,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         SocialAuthButton(
           provider: SocialProvider.google,
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
+            showTopNotification(
+              context,
               const SnackBar(
                 content: Text('Đăng nhập Google (Demo)'),
                 duration: Duration(seconds: 2),
@@ -641,7 +643,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         SocialAuthButton(
           provider: SocialProvider.facebook,
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
+            showTopNotification(
+              context,
               const SnackBar(
                 content: Text('Đăng nhập Facebook (Demo)'),
                 duration: Duration(seconds: 2),

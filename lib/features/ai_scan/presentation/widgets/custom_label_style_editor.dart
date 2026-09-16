@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../shared/widgets/top_notification.dart';
 import '../../../vocab_scan/domain/label_connector_geometry.dart';
 import '../../../vocab_scan/presentation/label_connector_painter.dart';
 import '../label_template_store.dart';
@@ -324,12 +325,14 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
       if (!mounted) return;
       widget.onTemplatesChanged(templates);
       widget.onChanged(widget.style);
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         SnackBar(content: Text('Đã lưu và áp dụng mẫu “${result.name}”')),
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        showTopNotification(
+          context,
           const SnackBar(content: Text('Không thể lưu mẫu. Vui lòng thử lại.')),
         );
       }

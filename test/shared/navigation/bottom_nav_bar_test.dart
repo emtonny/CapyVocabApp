@@ -1,5 +1,7 @@
 import 'package:capy_vocab/features/home/presentation/screens/home_screen.dart';
+import 'package:capy_vocab/core/constants/app_colors.dart';
 import 'package:capy_vocab/shared/navigation/bottom_nav_bar.dart';
+import 'package:capy_vocab/shared/widgets/sticker_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -65,14 +67,32 @@ void main() {
     );
     expect(
       tester.getSize(find.byKey(const Key('bottom-nav-camera-frame'))),
-      const Size.square(74),
+      const Size.square(66),
     );
 
-    final shellTop =
-        tester.getTopLeft(find.byKey(const Key('bottom-nav-shell'))).dy;
+    final shellRect = tester.getRect(find.byKey(const Key('bottom-nav-shell')));
+    expect(shellRect.left, closeTo(0, 0.01));
+    expect(shellRect.right, closeTo(320, 0.01));
+    expect(shellRect.bottom, closeTo(640, 0.01));
+
+    final shellTop = shellRect.top;
     final cameraTop =
         tester.getTopLeft(find.byKey(const Key('bottom-nav-camera-frame'))).dy;
-    expect(cameraTop, lessThan(shellTop));
+    expect(cameraTop - shellTop, closeTo(3, 0.01));
+
+    final cameraCenter =
+        tester.getCenter(find.byKey(const Key('bottom-nav-camera-frame'))).dy;
+    final homeCenter =
+        tester.getCenter(find.byKey(const Key('bottom-nav-home-icon'))).dy;
+    expect(cameraCenter, closeTo(homeCenter - 3, 0.5));
+
+    final cameraButton = tester.widget<StickerButton>(
+      find.byKey(const Key('bottom-nav-camera-button')),
+    );
+    expect(cameraButton.surfaceColor, AppColors.duoOrange);
+    expect(cameraButton.radius, 33);
+    expect(cameraButton.flat, isFalse);
+    expect(cameraButton.semanticLabel, 'Quét ảnh từ vựng');
   });
 
   testWidgets('khớp golden của thanh điều hướng neo-brutal', (tester) async {
