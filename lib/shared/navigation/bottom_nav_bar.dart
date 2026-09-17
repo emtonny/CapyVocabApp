@@ -26,119 +26,124 @@ class BottomNavBar extends StatelessWidget {
     return SafeArea(
       top: false,
       minimum: EdgeInsets.zero,
-      child: SizedBox(
-        height: 110,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.topCenter,
-          children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 32,
-              bottom: 0,
-              child: DecoratedBox(
-                key: const Key('bottom-nav-shell'),
-                decoration: BoxDecoration(
-                  color: _cream,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _ink, width: 3.2),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: _ink,
-                      offset: Offset(2.5, 2.5),
-                      blurRadius: 0,
+      child: Center(
+        heightFactor: 1,
+        child: SizedBox(
+          key: const Key('bottom-nav-responsive-frame'),
+          width: 720,
+          height: 110,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.topCenter,
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 32,
+                bottom: 0,
+                child: DecoratedBox(
+                  key: const Key('bottom-nav-shell'),
+                  decoration: BoxDecoration(
+                    color: _cream,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _ink, width: 3.2),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: _ink,
+                        offset: Offset(2.5, 2.5),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                top: 32,
+                bottom: 0,
+                left: 3,
+                right: 3,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _NavItem(
+                        iconWidget: _FramedNavIcon(
+                          key: const Key('bottom-nav-home-icon'),
+                          isActive: activeIndex == 0,
+                          painter: const _HouseIconPainter(),
+                        ),
+                        label: 'Trang chủ',
+                        isActive: activeIndex == 0,
+                        onTap: () => context.go('/home'),
+                      ),
+                    ),
+                    Expanded(
+                      child: _NavItem(
+                        iconWidget: _FramedNavIcon(
+                          key: const Key('bottom-nav-library-icon'),
+                          isActive: activeIndex == 1,
+                          painter: const _BookIconPainter(),
+                        ),
+                        label: 'Thư viện',
+                        isActive: activeIndex == 1,
+                        onTap: () => context.go('/storage'),
+                      ),
+                    ),
+                    const SizedBox(width: 86),
+                    Expanded(
+                      child: _NavItem(
+                        iconWidget: _FramedNavIcon(
+                          key: const Key('bottom-nav-shop-icon'),
+                          isActive: activeIndex == 2,
+                          painter: const _ShopIconPainter(),
+                        ),
+                        label: 'Cửa hàng',
+                        isActive: activeIndex == 2,
+                        onTap: () => context.go('/pet-shop'),
+                      ),
+                    ),
+                    Expanded(
+                      child: _NavItem(
+                        iconWidget: _FramedNavIcon(
+                          key: const Key('bottom-nav-friends-icon'),
+                          isActive: activeIndex == 3,
+                          painter: const _FriendsIconPainter(),
+                        ),
+                        label: 'Bạn bè',
+                        isActive: activeIndex == 3,
+                        onTap: () => context.go('/friends'),
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            Positioned.fill(
-              top: 32,
-              bottom: 0,
-              left: 3,
-              right: 3,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _NavItem(
-                      iconWidget: _FramedNavIcon(
-                        key: const Key('bottom-nav-home-icon'),
-                        isActive: activeIndex == 0,
-                        painter: const _HouseIconPainter(),
+              Positioned(
+                top: 35,
+                child: Tooltip(
+                  message: 'Quét ảnh từ vựng',
+                  child: SizedBox(
+                    key: const Key('bottom-nav-camera-frame'),
+                    width: 66,
+                    height: 66,
+                    child: StickerButton(
+                      key: const Key('bottom-nav-camera-button'),
+                      onPressed: () => context.push('/scan'),
+                      semanticLabel: 'Quét ảnh từ vựng',
+                      surfaceColor: _cameraOrange,
+                      edgeColor: const Color(0xFFC96F00),
+                      borderColor: _ink,
+                      radius: 33,
+                      padding: EdgeInsets.zero,
+                      expand: true,
+                      icon: const CustomPaint(
+                        size: Size(38, 32),
+                        painter: _CameraIconPainter(),
                       ),
-                      label: 'Trang chủ',
-                      isActive: activeIndex == 0,
-                      onTap: () => context.go('/home'),
-                    ),
-                  ),
-                  Expanded(
-                    child: _NavItem(
-                      iconWidget: _FramedNavIcon(
-                        key: const Key('bottom-nav-library-icon'),
-                        isActive: activeIndex == 1,
-                        painter: const _BookIconPainter(),
-                      ),
-                      label: 'Thư viện',
-                      isActive: activeIndex == 1,
-                      onTap: () => context.go('/storage'),
-                    ),
-                  ),
-                  const SizedBox(width: 86),
-                  Expanded(
-                    child: _NavItem(
-                      iconWidget: _FramedNavIcon(
-                        key: const Key('bottom-nav-shop-icon'),
-                        isActive: activeIndex == 2,
-                        painter: const _ShopIconPainter(),
-                      ),
-                      label: 'Cửa hàng',
-                      isActive: activeIndex == 2,
-                      onTap: () => context.go('/pet-shop'),
-                    ),
-                  ),
-                  Expanded(
-                    child: _NavItem(
-                      iconWidget: _FramedNavIcon(
-                        key: const Key('bottom-nav-friends-icon'),
-                        isActive: activeIndex == 3,
-                        painter: const _FriendsIconPainter(),
-                      ),
-                      label: 'Bạn bè',
-                      isActive: activeIndex == 3,
-                      onTap: () => context.go('/friends'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              top: 35,
-              child: Tooltip(
-                message: 'Quét ảnh từ vựng',
-                child: SizedBox(
-                  key: const Key('bottom-nav-camera-frame'),
-                  width: 66,
-                  height: 66,
-                  child: StickerButton(
-                    key: const Key('bottom-nav-camera-button'),
-                    onPressed: () => context.push('/scan'),
-                    semanticLabel: 'Quét ảnh từ vựng',
-                    surfaceColor: _cameraOrange,
-                    edgeColor: const Color(0xFFC96F00),
-                    borderColor: _ink,
-                    radius: 33,
-                    padding: EdgeInsets.zero,
-                    expand: true,
-                    icon: const CustomPaint(
-                      size: Size(38, 32),
-                      painter: _CameraIconPainter(),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

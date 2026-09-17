@@ -95,6 +95,20 @@ void main() {
     expect(cameraButton.semanticLabel, 'Quét ảnh từ vựng');
   });
 
+  testWidgets('giới hạn chiều rộng thanh điều hướng trên Web', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_navOnlyApp());
+
+    expect(
+      tester.getSize(find.byKey(const Key('bottom-nav-responsive-frame'))),
+      const Size(720, 110),
+    );
+  });
+
   testWidgets('khớp golden của thanh điều hướng neo-brutal', (tester) async {
     tester.view.physicalSize = const Size(390, 180);
     tester.view.devicePixelRatio = 1;

@@ -28,6 +28,10 @@ class CapyOnboardingHeader extends StatefulWidget {
       'subtitle': 'Bạn dùng ứng dụng làm cá nhân hay phụ huynh theo dõi con?',
     },
     {
+      'title': 'Chọn ngôn ngữ trò chuyện 🌏',
+      'subtitle': 'Để câu gốc và câu dịch luôn nằm đúng vị trí dành cho bạn!',
+    },
+    {
       'title': 'Lên lịch học tập ⏰',
       'subtitle': 'Bật thông báo nhắc học vào khung giờ vàng mỗi ngày nhé!',
     },

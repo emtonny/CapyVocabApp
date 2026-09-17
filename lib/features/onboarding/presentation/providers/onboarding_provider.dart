@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/supabase_service.dart';
+import '../../../language_profile/application/language_profile_store.dart';
+import '../../../language_profile/domain/entities/language_profile.dart';
+import '../../../language_profile/presentation/language_profile_provider.dart';
 import '../../application/onboarding_status_store.dart';
 import '../../data/repositories/onboarding_repository.dart';
 import '../../domain/entities/onboarding_data.dart';
@@ -88,15 +91,19 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   OnboardingNotifier({
     required OnboardingRepository repository,
     OnboardingStatusStore? onboardingStatusStore,
+    LanguageProfileStore? languageProfileStore,
     String? Function()? currentUserId,
   })  : _repository = repository,
         _onboardingStatusStore =
             onboardingStatusStore ?? MemoryOnboardingStatusStore(),
+        _languageProfileStore =
+            languageProfileStore ?? MemoryLanguageProfileStore(),
         _currentUserId = currentUserId ?? (() => null),
         super(const OnboardingState());
 
   final OnboardingRepository _repository;
   final OnboardingStatusStore _onboardingStatusStore;
+  final LanguageProfileStore _languageProfileStore;
   final String? Function() _currentUserId;
 
   Future<void> loadInitialData() async {
@@ -109,6 +116,20 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
     try {
       final data = await _repository.loadDraft();
+      if (data.nativeLanguageCode != null &&
+          data.learningLanguageCode != null) {
+        final userId = _currentUserId();
+        if (userId != null) {
+          await _languageProfileStore.setProfile(
+            LanguageProfile(
+              userId: userId,
+              nativeLanguageCode: data.nativeLanguageCode!,
+              learningLanguageCode: data.learningLanguageCode!,
+              proficiencyLevel: data.proficiencyLevel,
+            ),
+          );
+        }
+      }
       state = state.copyWith(
         data: data,
         isInitializing: false,
@@ -184,6 +205,30 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     );
   }
 
+  void updateNativeLanguage(String value) {
+    state = state.copyWith(
+      data: state.data.copyWith(nativeLanguageCode: value),
+      fieldErrors: _withoutLanguageErrors(),
+      saveError: null,
+    );
+  }
+
+  void updateLearningLanguage(String value) {
+    state = state.copyWith(
+      data: state.data.copyWith(learningLanguageCode: value),
+      fieldErrors: _withoutLanguageErrors(),
+      saveError: null,
+    );
+  }
+
+  void updateProficiencyLevel(String value) {
+    state = state.copyWith(
+      data: state.data.copyWith(proficiencyLevel: value),
+      fieldErrors: _withoutErrors('proficiencyLevel'),
+      saveError: null,
+    );
+  }
+
   void updateReminderTime(String value) {
     state = state.copyWith(
       data: state.data.copyWith(reminderTime: value),
@@ -225,14 +270,15 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       1 => Future.value(_validateLanguageStep()),
       2 => _validateAgePhoneStep(),
       3 => Future.value(_validateRoleStep()),
-      4 => Future.value(_validateStudyTimeStep()),
-      5 => Future.value(_validateDailyTargetStep()),
+      4 => Future.value(_validateLanguageProfileStep()),
+      5 => Future.value(_validateStudyTimeStep()),
+      6 => Future.value(_validateDailyTargetStep()),
       _ => Future.value(false),
     };
   }
 
   Future<bool> nextStep() async {
-    if (state.isBusy || state.currentStep >= 5) return false;
+    if (state.isBusy || state.currentStep >= 6) return false;
     if (!await validateCurrentStep()) return false;
 
     state = state.copyWith(
@@ -263,6 +309,14 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       await _repository.completeOnboarding(normalized);
       final userId = _currentUserId();
       if (userId != null) {
+        await _languageProfileStore.setProfile(
+          LanguageProfile(
+            userId: userId,
+            nativeLanguageCode: normalized.nativeLanguageCode!,
+            learningLanguageCode: normalized.learningLanguageCode!,
+            proficiencyLevel: normalized.proficiencyLevel,
+          ),
+        );
         await _onboardingStatusStore.setStatus(
           userId,
           OnboardingStatus.complete,
@@ -479,6 +533,28 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     return isValid;
   }
 
+  bool _validateLanguageProfileStep() {
+    final native = state.data.nativeLanguageCode;
+    final learning = state.data.learningLanguageCode;
+    final proficiency = state.data.proficiencyLevel;
+    final errors = <String, String>{};
+
+    if (!supportedLanguageCodes.contains(native)) {
+      errors['nativeLanguageCode'] = 'Vui lòng chọn ngôn ngữ gốc.';
+    }
+    if (!supportedLanguageCodes.contains(learning)) {
+      errors['learningLanguageCode'] = 'Vui lòng chọn ngôn ngữ muốn học.';
+    } else if (native == learning) {
+      errors['learningLanguageCode'] = 'Ngôn ngữ học phải khác ngôn ngữ gốc.';
+    }
+    if (!supportedProficiencyLevels.contains(proficiency)) {
+      errors['proficiencyLevel'] = 'Vui lòng chọn trình độ hiện tại.';
+    }
+
+    state = state.copyWith(fieldErrors: errors);
+    return errors.isEmpty;
+  }
+
   bool _validateStudyTimeStep() {
     final reminderTime = state.data.reminderTime;
     final studyEndTime = state.data.studyEndTime;
@@ -523,6 +599,14 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     return errors;
   }
 
+  Map<String, String> _withoutLanguageErrors() {
+    final errors = Map<String, String>.from(state.fieldErrors);
+    errors
+      ..remove('nativeLanguageCode')
+      ..remove('learningLanguageCode');
+    return errors;
+  }
+
   Map<String, String> _withoutErrors(String key) {
     final errors = Map<String, String>.from(state.fieldErrors)..remove(key);
     return errors;
@@ -534,6 +618,7 @@ final onboardingProvider =
   final notifier = OnboardingNotifier(
     repository: ref.watch(onboardingRepositoryProvider),
     onboardingStatusStore: ref.watch(onboardingStatusStoreProvider),
+    languageProfileStore: ref.watch(languageProfileStoreProvider),
     currentUserId: () => SupabaseService.auth.currentUser?.id,
   );
   unawaited(notifier.loadInitialData());

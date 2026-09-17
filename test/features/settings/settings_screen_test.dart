@@ -5,6 +5,10 @@ import 'package:capy_vocab/features/auth/domain/repositories/auth_repository.dar
 import 'package:capy_vocab/features/auth/presentation/providers/auth_provider.dart';
 import 'package:capy_vocab/features/library/domain/entities/library_enums.dart';
 import 'package:capy_vocab/features/library/domain/entities/local_account.dart';
+import 'package:capy_vocab/features/language_profile/application/language_profile_store.dart';
+import 'package:capy_vocab/features/language_profile/data/language_profile_repository.dart';
+import 'package:capy_vocab/features/language_profile/domain/entities/language_profile.dart';
+import 'package:capy_vocab/features/language_profile/presentation/language_profile_provider.dart';
 import 'package:capy_vocab/features/settings/presentation/providers/cloud_backup_consent_provider.dart';
 import 'package:capy_vocab/features/settings/presentation/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -190,6 +194,56 @@ void main() {
     expect(find.byKey(const Key('pro-badge')), findsOneWidget);
   });
 
+  testWidgets('hồ sơ ngôn ngữ đọc cache owner và lưu lựa chọn mới',
+      (tester) async {
+    final store = MemoryLanguageProfileStore();
+    addTearDown(store.dispose);
+    const initialProfile = LanguageProfile(
+      userId: _userId,
+      nativeLanguageCode: 'vi',
+      learningLanguageCode: 'en',
+    );
+    await store.setProfile(initialProfile);
+    final languageRepository = _LanguageProfileRepository(initialProfile);
+
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      languageUserId: _userId,
+      languageStore: store,
+      languageRepository: languageRepository,
+    );
+
+    expect(
+      find.text('Tiếng Việt → Tiếng Anh · Mới bắt đầu'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Tiếng Việt → Tiếng Anh · Mới bắt đầu'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('settings-native-language-field')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tiếng Anh').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('settings-learning-language-field')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tiếng Việt').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('save-language-profile-button')));
+    await tester.pumpAndSettle();
+
+    expect(languageRepository.saved.single.nativeLanguageCode, 'en');
+    expect(languageRepository.saved.single.learningLanguageCode, 'vi');
+    expect(find.text('Đã cập nhật ngôn ngữ của bạn.'), findsOneWidget);
+  });
+
   testWidgets('bật cloud backup cần xác nhận rõ trước khi ghi consent',
       (tester) async {
     final changes = <bool>[];
@@ -351,6 +405,9 @@ Future<void> _pumpSettingsScreen(
   LocalAccount? cloudBackupAccount,
   SetCloudBackupConsent? setCloudBackupConsent,
   BackfillExistingPhotoNotes? backfillExistingPhotoNotes,
+  String? languageUserId,
+  LanguageProfileStore? languageStore,
+  LanguageProfileRepository? languageRepository,
 }) async {
   final router = GoRouter(
     initialLocation: '/settings',
@@ -371,6 +428,16 @@ Future<void> _pumpSettingsScreen(
       overrides: [
         authRepositoryProvider.overrideWithValue(repository),
         resetOnboardingProvider.overrideWithValue(resetOnboarding),
+        if (languageUserId != null)
+          currentLanguageProfileUserIdProvider.overrideWithValue(
+            languageUserId,
+          ),
+        if (languageStore != null)
+          languageProfileStoreProvider.overrideWithValue(languageStore),
+        if (languageRepository != null)
+          languageProfileRepositoryProvider.overrideWithValue(
+            languageRepository,
+          ),
         if (entitlementNotifier != null)
           entitlementProvider.overrideWith((ref) => entitlementNotifier),
         if (libraryUserId != null)
@@ -392,6 +459,22 @@ Future<void> _pumpSettingsScreen(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+class _LanguageProfileRepository implements LanguageProfileRepository {
+  _LanguageProfileRepository(this.profile);
+
+  LanguageProfile? profile;
+  final List<LanguageProfile> saved = [];
+
+  @override
+  Future<LanguageProfile?> load(String userId) async => profile;
+
+  @override
+  Future<void> save(LanguageProfile profile) async {
+    saved.add(profile);
+    this.profile = profile;
+  }
 }
 
 class _RecordingAuthRepository implements AuthRepository {

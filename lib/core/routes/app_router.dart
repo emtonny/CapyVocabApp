@@ -10,6 +10,7 @@ import '../../features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart
 import '../../features/ai_scan/presentation/screens/scan_result_overlay_screen.dart';
 import '../../features/auth/presentation/screens/auth_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
+import '../../features/chat/presentation/operational_chat_screen.dart';
 import '../../features/friends/presentation/screens/friends_leaderboard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/library/presentation/screens/storage_album_screen.dart';
@@ -214,6 +215,22 @@ List<RouteBase> _buildAppRoutes(
       pageBuilder: (context, state) => _softPage(
         state,
         child: const SettingsScreen(),
+      ),
+    ),
+    GoRoute(
+      path: '/chat',
+      pageBuilder: (context, state) => _softPage(
+        state,
+        child: const OperationalChatScreen(),
+      ),
+    ),
+    GoRoute(
+      path: '/chat/:conversationId',
+      pageBuilder: (context, state) => _softPage(
+        state,
+        child: OperationalChatScreen(
+          conversationId: state.pathParameters['conversationId'],
+        ),
       ),
     ),
   ];

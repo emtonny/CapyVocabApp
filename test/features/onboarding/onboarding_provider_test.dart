@@ -4,10 +4,11 @@ import 'package:capy_vocab/features/onboarding/data/repositories/onboarding_repo
 import 'package:capy_vocab/features/onboarding/application/onboarding_status_store.dart';
 import 'package:capy_vocab/features/onboarding/domain/entities/onboarding_data.dart';
 import 'package:capy_vocab/features/onboarding/presentation/providers/onboarding_provider.dart';
+import 'package:capy_vocab/features/language_profile/application/language_profile_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('wizard validate và chuyển đúng thứ tự 6 bước', () async {
+  test('wizard validate và chuyển đúng thứ tự 7 bước', () async {
     final repository = _FakeOnboardingRepository();
     final notifier = OnboardingNotifier(repository: repository);
     addTearDown(notifier.dispose);
@@ -58,6 +59,22 @@ void main() {
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 4);
 
+    expect(await notifier.nextStep(), isFalse);
+    expect(notifier.state.fieldErrors['nativeLanguageCode'], isNotNull);
+
+    notifier.updateNativeLanguage('vi');
+    notifier.updateLearningLanguage('vi');
+    expect(await notifier.nextStep(), isFalse);
+    expect(
+      notifier.state.fieldErrors['learningLanguageCode'],
+      contains('phải khác'),
+    );
+
+    notifier.updateLearningLanguage('en');
+    notifier.updateProficiencyLevel('intermediate');
+    expect(await notifier.nextStep(), isTrue);
+    expect(notifier.state.currentStep, 5);
+
     notifier.updateReminderTime('25:00');
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['reminderTime'], isNotNull);
@@ -72,7 +89,7 @@ void main() {
 
     notifier.updateStudyTimeRange(start: '22:00', end: '02:00');
     expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 5);
+    expect(notifier.state.currentStep, 6);
 
     notifier.updateDailyTargetWords(0);
     expect(await notifier.validateCurrentStep(), isFalse);
@@ -137,19 +154,25 @@ void main() {
   test('complete thành công cập nhật cache đúng owner', () async {
     final repository = _FakeOnboardingRepository();
     final store = MemoryOnboardingStatusStore();
+    final languageStore = MemoryLanguageProfileStore();
     final notifier = OnboardingNotifier(
       repository: repository,
       onboardingStatusStore: store,
+      languageProfileStore: languageStore,
       currentUserId: () => 'user-a',
     );
     addTearDown(notifier.dispose);
     addTearDown(store.dispose);
+    addTearDown(languageStore.dispose);
     await notifier.loadInitialData();
     await _moveToFinalStep(notifier);
 
     expect(await notifier.completeOnboarding(), isTrue);
     expect(store.statusFor('user-a'), OnboardingStatus.complete);
     expect(store.statusFor('user-b'), OnboardingStatus.unknown);
+    expect(languageStore.profileFor('user-a')?.nativeLanguageCode, 'vi');
+    expect(languageStore.profileFor('user-a')?.learningLanguageCode, 'en');
+    expect(languageStore.profileFor('user-b'), isNull);
   });
 
   test('lỗi lưu giữ onboarding chưa hoàn tất và cho phép thử lại', () async {
@@ -163,7 +186,7 @@ void main() {
     await _moveToFinalStep(notifier);
 
     expect(await notifier.completeOnboarding(), isFalse);
-    expect(notifier.state.currentStep, 5);
+    expect(notifier.state.currentStep, 6);
     expect(notifier.state.isSaving, isFalse);
     expect(notifier.state.saveError, contains('thử lại'));
   });
@@ -189,7 +212,7 @@ void main() {
     (
       field: OnboardingConflictField.email,
       message: 'Email đã được sử dụng. Vui lòng dùng email khác.',
-      expectedStep: 5,
+      expectedStep: 6,
       expectedErrorKey: null,
     ),
   ]) {
@@ -224,6 +247,10 @@ Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
   notifier.updatePhone('0987654321');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAccountRole('personal');
+  expect(await notifier.nextStep(), isTrue);
+  notifier.updateNativeLanguage('vi');
+  notifier.updateLearningLanguage('en');
+  notifier.updateProficiencyLevel('beginner');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateStudyTimeRange(start: '20:00', end: '21:00');
   expect(await notifier.nextStep(), isTrue);

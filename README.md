@@ -48,13 +48,27 @@ flutter emulators --launch Capy_Pixel_API_35
 flutter devices
 flutter run -d emulator-5554 --no-dds
 
-# Web
+# Web mặc định/Production
 flutter run -d chrome --web-port=3000
+
+# Web Staging có Chat test; tự lấy public key vào file tạm và cleanup khi dừng
+powershell -ExecutionPolicy Bypass -File tool/run_staging_device_smoke.ps1 `
+  -FlutterCommand 'C:\fulter\flutter\bin\flutter.bat' `
+  -Target web-device -WebPort 3000 -ChatRelayEnabled
 ```
 
 Nếu ID emulator khác `emulator-5554`, dùng ID do `flutter devices` trả về. Cờ
 `--no-dds` là workaround cho Dart Development Service trên môi trường Windows
 hiện tại; có thể bỏ cờ này nếu DDS hoạt động bình thường trên máy khác.
+
+Không dùng lệnh Web mặc định để thử tài khoản Staging: khi thiếu `dart-define`,
+ứng dụng cố ý fallback về project trong `assets/config/client.config` (Production).
+
+Nếu ID emulator không phải `emulator-5554`, dùng ID Android do
+`flutter devices` trả về. Cờ `--no-dds` tránh lỗi Dart Development Service
+trên môi trường Windows hiện tại và vẫn hỗ trợ quy trình debug/hot reload cơ
+bản. Cấu hình public của Supabase được nạp từ
+`assets/config/client.config`; không đưa khóa API bí mật vào Flutter assets.
 
 ## Kiểm tra
 

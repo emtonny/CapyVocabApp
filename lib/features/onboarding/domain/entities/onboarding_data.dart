@@ -7,6 +7,9 @@ class OnboardingData {
     this.interfaceLocale = 'vi-VN',
     this.learningLocale = 'en-US',
     this.accountRole,
+    this.nativeLanguageCode,
+    this.learningLanguageCode,
+    this.proficiencyLevel = 'beginner',
     this.reminderTime = '20:00',
     this.studyEndTime = '21:00',
     this.dailyTargetWords = 10,
@@ -21,6 +24,9 @@ class OnboardingData {
   final String interfaceLocale;
   final String learningLocale;
   final String? accountRole;
+  final String? nativeLanguageCode;
+  final String? learningLanguageCode;
+  final String proficiencyLevel;
   final String? reminderTime;
   final String? studyEndTime;
   final int? dailyTargetWords;
@@ -33,6 +39,9 @@ class OnboardingData {
     String? interfaceLocale,
     String? learningLocale,
     Object? accountRole = _notProvided,
+    Object? nativeLanguageCode = _notProvided,
+    Object? learningLanguageCode = _notProvided,
+    String? proficiencyLevel,
     Object? reminderTime = _notProvided,
     Object? studyEndTime = _notProvided,
     Object? dailyTargetWords = _notProvided,
@@ -47,6 +56,13 @@ class OnboardingData {
       accountRole: identical(accountRole, _notProvided)
           ? this.accountRole
           : accountRole as String?,
+      nativeLanguageCode: identical(nativeLanguageCode, _notProvided)
+          ? this.nativeLanguageCode
+          : nativeLanguageCode as String?,
+      learningLanguageCode: identical(learningLanguageCode, _notProvided)
+          ? this.learningLanguageCode
+          : learningLanguageCode as String?,
+      proficiencyLevel: proficiencyLevel ?? this.proficiencyLevel,
       reminderTime: identical(reminderTime, _notProvided)
           ? this.reminderTime
           : reminderTime as String?,

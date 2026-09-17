@@ -9,6 +9,8 @@ import 'features/onboarding/data/datasources/supabase_onboarding_status_loader.d
 import 'features/onboarding/presentation/providers/onboarding_status_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'shared/widgets/graph_paper_background.dart';
+import 'features/language_profile/application/language_profile_store.dart';
+import 'features/language_profile/presentation/language_profile_provider.dart';
 import 'app.dart';
 
 Future<void> main() async {
@@ -33,6 +35,14 @@ Future<void> main() async {
     onboardingStatusStore = MemoryOnboardingStatusStore();
   }
 
+  late final LanguageProfileStore languageProfileStore;
+  try {
+    languageProfileStore = await SharedPreferencesLanguageProfileStore.create();
+  } catch (error) {
+    debugPrint('Language profile cache initialization warning: $error');
+    languageProfileStore = MemoryLanguageProfileStore();
+  }
+
   Widget rootApp;
   try {
     await SupabaseService.initialize();
@@ -48,6 +58,7 @@ Future<void> main() async {
         onboardingStatusRefresherProvider.overrideWithValue(
           onboardingStatusRefresher,
         ),
+        languageProfileStoreProvider.overrideWithValue(languageProfileStore),
       ],
       child: CapyVocabApp(
         onboardingStatusStore: onboardingStatusStore,

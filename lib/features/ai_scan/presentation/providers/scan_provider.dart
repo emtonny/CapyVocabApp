@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/gemini_vision_service.dart';
@@ -38,11 +37,9 @@ final libraryStoreProvider = FutureProvider<SqliteLibraryStore>((ref) async {
 });
 
 final scanResultStoreProvider = Provider<ScanResultStore>(
-  (ref) => kIsWeb
-      ? MemoryScanResultStore()
-      : ScanResultLocalDataSource(
-          openLibraryStore: () => ref.read(libraryStoreProvider.future),
-        ),
+  (ref) => ScanResultLocalDataSource(
+    openLibraryStore: () => ref.read(libraryStoreProvider.future),
+  ),
 );
 
 class ScanNotifier extends StateNotifier<AsyncValue<ScanResultRecord?>> {

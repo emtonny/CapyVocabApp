@@ -43,7 +43,7 @@ void main() {
     );
   });
 
-  testWidgets('hiển thị và điều hướng đúng thứ tự 6 bước', (tester) async {
+  testWidgets('hiển thị và điều hướng đúng thứ tự 7 bước', (tester) async {
     final repository = _WidgetTestRepository();
     await tester.pumpWidget(
       ProviderScope(
@@ -119,6 +119,12 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
+    expect(find.text('Ngôn ngữ của bạn'), findsWidgets);
+
+    await _selectLanguages(tester);
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
     expect(find.text('Chọn giờ học hằng ngày'), findsOneWidget);
     expect(find.text('20:00'), findsOneWidget);
 
@@ -131,6 +137,11 @@ void main() {
     await tester.tap(find.byKey(const Key('onboarding-back-button')));
     await tester.pumpAndSettle();
     expect(find.text('Chọn giờ học hằng ngày'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
+    await tester.tap(find.byKey(const Key('onboarding-back-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Ngôn ngữ của bạn'), findsWidgets);
 
     await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
     await tester.tap(find.byKey(const Key('onboarding-back-button')));
@@ -232,7 +243,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Đi qua bước 1, 2, 3, 4.
+    // Đi qua bước danh tính, locale, tuổi/liên hệ, vai trò và hồ sơ ngôn ngữ.
     await tester.enterText(
       find.byKey(const Key('onboarding-username-field')),
       'capy_may',
@@ -260,7 +271,12 @@ void main() {
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
 
-    // Bước 5: mở picker, thay đổi giờ kết thúc và xác nhận.
+    await _selectLanguages(tester);
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.pumpAndSettle();
+
+    // Bước 6: mở picker, thay đổi giờ kết thúc và xác nhận.
     expect(find.text('Tùy chỉnh khung giờ'), findsOneWidget);
     expect(find.byKey(const Key('custom-study-time-card')), findsOneWidget);
 
@@ -384,6 +400,20 @@ void main() {
       const Color(0xFF58CC02),
     );
   });
+}
+
+Future<void> _selectLanguages(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key('native-language-field')));
+  await tester.tap(find.byKey(const Key('native-language-field')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tiếng Việt').last);
+  await tester.pumpAndSettle();
+
+  await tester.ensureVisible(find.byKey(const Key('learning-language-field')));
+  await tester.tap(find.byKey(const Key('learning-language-field')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tiếng Anh').last);
+  await tester.pumpAndSettle();
 }
 
 Color _cardBorderColor(WidgetTester tester, Key cardKey) {

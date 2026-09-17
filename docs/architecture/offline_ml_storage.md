@@ -1,6 +1,6 @@
 # Kiến trúc Offline-first và ML-ready cho Thư viện
 
-> Trạng thái: **DRAFT — chờ duyệt D1–D10**  
+> Trạng thái: **ACTIVE DESIGN — D1–D4 và D9 đã duyệt; xem decision log**
 > Ngày lập: 2026-09-01  
 > Phạm vi milestone: M0 — chốt data contract, nguồn sự thật, quyền riêng tư và vòng đời dữ liệu.  
 > Tài liệu này không phải migration và không xác nhận tính năng đã được triển khai.
@@ -17,7 +17,10 @@ trên thiết bị.
 
 - Native lưu JPEG trong thư mục ứng dụng và lưu kết quả scan vào bảng SQLite
   `scan_results`.
-- Web dùng memory store; reload làm mất ảnh và record.
+- Web scan ghi JPEG và Library JSON/aggregate vào SQLite WASM/IndexedDB; Chrome
+  reload/cold-restart smoke vẫn là checkpoint runtime còn thiếu.
+- Flutter Web service worker hiện tự unregister, nên PWA app-shell cold-start
+  offline chưa thuộc phần đã triển khai.
 - `ScanResultStore` mới có thao tác `save`; chưa có list/read/update/delete.
 - Luồng scan hiện không gọi `StorageService`, không đồng bộ Album theo user và
   không chuyển sang một Thư viện đã hoạt động.
@@ -194,8 +197,8 @@ Không có mạng thì không tạo scan Gemini mới, nhưng mọi nội dung �
 | --- | --- | --- |
 | Structured persistence | Persistent local DB | Persistent browser DB, quyết định tại D1 |
 | Media | App-private file system | Persistent browser media store |
-| Offline Library | Bắt buộc | Bắt buộc nếu D4 được duyệt |
-| Cloud sync | Supabase | Supabase |
+| Offline Library | Bắt buộc | Đã triển khai local persistence; browser smoke còn thiếu |
+| Cloud sync | Supabase | Chưa bật; Settings fail-closed |
 | On-device training | Mục tiêu tương lai | Ngoài phạm vi giai đoạn đầu |
 | Checkpoint | App-private file | Không cam kết trong giai đoạn đầu |
 
@@ -211,7 +214,7 @@ Các recommendation dưới đây là đề xuất, chưa phải quyết định
 | D1 | Local DB engine nào? | Giữ `sqflite` + Web adapter; hoặc DB cross-platform/type-safe | Giữ họ `sqflite`: native plugin trên Android/iOS, FFI cho test/desktop, WASM + IndexedDB cho Web | APPROVED — 2026-09-02 |
 | D2 | Có giữ ảnh gốc? | Luôn giữ; giữ theo quota; chỉ giữ bản chuẩn hóa | Luôn giữ local display + model-input khi note active; original chỉ khi opt-in và còn quota | APPROVED — 2026-09-03 |
 | D3 | Cloud backup mặc định? | Bật; tắt; hỏi khi onboarding | Mặc định OFF; explicit opt-in; private theo account; tắt backup phải hỏi trước khi purge | APPROVED — 2026-09-03 |
-| D4 | Web có offline parity? | Có; read-only cache; không hỗ trợ | Có persistence cho Library; chưa train model trên Web | PENDING |
+| D4 | Web có offline parity? | Có; read-only cache; không hỗ trợ | Có local persistence cho Library; chưa cloud sync/restore hoặc train model trên Web | APPROVED — 2026-09-12 |
 | D5 | Model cá nhân đầu tiên? | SRS/recommendation; vision head; embedding reranker | SRS/recommendation nhỏ để chứng minh pipeline và rollback | PENDING |
 | D6 | Nhãn nào được train? | AI-only; confirmed; corrected; mixed threshold | Chỉ `user_confirmed` và `user_corrected` mặc định eligible | PENDING |
 | D7 | UX sau scan? | Auto sang Library; preview rồi Save; auto-save + preview | Auto-save local sau commit, hiển thị preview; điều hướng theo CTA/UX đã duyệt | PENDING |
@@ -247,6 +250,19 @@ Các recommendation dưới đây là đề xuất, chưa phải quyết định
 - Tắt backup không tự động xóa dữ liệu cloud. UI phải hỏi user trước khi tạo
   purge request.
 - D2/D3 không tự phê duyệt D4–D10.
+
+### D4 — Quyết định được duyệt ngày 2026-09-12
+
+- Người duyệt: chủ dự án, qua yêu cầu khắc phục các vấn đề Web và cập nhật
+  hướng dẫn đồng bộ.
+- Web phải lưu bền JPEG và Library JSON/aggregate trong SQLite WASM/IndexedDB;
+  reload/cold restart không được quay lại memory-only.
+- Cloud sync/restore Web tiếp tục fail-closed cho tới khi có gateway và browser
+  smoke riêng; Cloud Backup trên Web không cho bật nhầm.
+- Local data persistence không đồng nghĩa PWA app-shell offline; service worker
+  cache và hosting cần một increment riêng.
+- On-device training Web nằm ngoài phạm vi D4. Native data contract, schema
+  Supabase, consent và retention không thay đổi.
 
 ### D9 — Quyết định được duyệt ngày 2026-09-08
 

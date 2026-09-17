@@ -23,6 +23,29 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('banner Staging test hiển thị responsive và mặc định ẩn',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await _pumpAuthScreen(
+      tester,
+      _RecordingAuthRepository(),
+      stagingTestMode: true,
+    );
+
+    expect(find.byKey(const Key('staging-test-banner')), findsOneWidget);
+    expect(find.text('STAGING TEST · WEB'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('staging-test-banner')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await _pumpAuthScreen(tester, _RecordingAuthRepository());
+    expect(find.byKey(const Key('staging-test-banner')), findsNothing);
+  });
+
   testWidgets('Họ tên chỉ xuất hiện trong form đăng ký', (tester) async {
     await _pumpAuthScreen(tester, _RecordingAuthRepository());
 
@@ -636,6 +659,7 @@ Future<void> _pumpAuthScreen(
   WidgetTester tester,
   AuthRepository repository, {
   String? initialMessage,
+  bool? stagingTestMode,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -643,7 +667,10 @@ Future<void> _pumpAuthScreen(
         authRepositoryProvider.overrideWithValue(repository),
       ],
       child: MaterialApp(
-        home: AuthScreen(initialMessage: initialMessage),
+        home: AuthScreen(
+          initialMessage: initialMessage,
+          stagingTestMode: stagingTestMode,
+        ),
       ),
     ),
   );
