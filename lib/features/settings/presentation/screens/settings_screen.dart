@@ -1,5 +1,5 @@
 // UC-SETT-01: profile, theme, PRO paywall, đăng xuất
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +9,8 @@ import '../../../../core/entitlements/entitlement_provider.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../shared/widgets/graph_paper_background.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../language_profile/domain/entities/language_profile.dart';
+import '../../../language_profile/presentation/language_profile_provider.dart';
 import '../../../onboarding/application/onboarding_status_store.dart';
 import '../../../onboarding/presentation/providers/onboarding_status_provider.dart';
 import '../providers/cloud_backup_consent_provider.dart';
@@ -39,6 +41,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isLoggingOut = false;
   bool _isUpdatingCloudBackup = false;
   bool _isBackfillingCloudBackup = false;
+
+  Future<void> _editLanguageProfile(LanguageProfile? profile) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _LanguageProfileDialog(initialProfile: profile),
+    );
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã cập nhật ngôn ngữ của bạn.')),
+      );
+    }
+  }
 
   Future<void> _changeCloudBackupConsent(bool enabled) async {
     if (enabled) {
@@ -311,8 +325,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final entitlements = ref.watch(entitlementProvider);
     final user = SupabaseService.auth.currentUser;
+    final languageUserId = ref.watch(currentLanguageProfileUserIdProvider);
+    final languageState = ref.watch(languageProfileProvider);
+    final languageProfile = languageState.profile;
     final libraryUserId = ref.watch(currentLibraryUserIdProvider);
     final cloudBackupConsent = ref.watch(cloudBackupConsentProvider);
+    const cloudBackupAvailable = !kIsWeb;
     final cloudBackupEnabled = cloudBackupConsent.maybeWhen(
       data: (account) => account?.cloudBackupEnabled ?? false,
       orElse: () => false,
@@ -519,7 +537,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           icon: Icons.language_rounded,
                           iconColor: AppColors.duoBlue,
                           title: 'Ngôn ngữ học',
-                          subtitle: 'Tiếng Anh (English)',
+                          subtitle: languageProfile == null
+                              ? languageUserId == null
+                                  ? 'Đăng nhập để thiết lập'
+                                  : 'Chưa thiết lập'
+                              : '${languageLabel(languageProfile.nativeLanguageCode)} → '
+                                  '${languageLabel(languageProfile.learningLanguageCode)} · '
+                                  '${proficiencyLabel(languageProfile.proficiencyLevel)}',
+                          onTap:
+                              languageUserId == null || languageState.isSaving
+                                  ? null
+                                  : () => _editLanguageProfile(languageProfile),
+                          trailing: languageState.isRefreshing
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.chevron_right_rounded),
                         ),
                         const Divider(
                           height: 1,
@@ -562,7 +598,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         SwitchListTile.adaptive(
                           key: const Key('cloud-backup-switch'),
                           value: cloudBackupEnabled,
-                          onChanged: libraryUserId == null ||
+                          onChanged: !cloudBackupAvailable ||
+                                  libraryUserId == null ||
                                   cloudBackupLoading ||
                                   _isUpdatingCloudBackup ||
                                   _isBackfillingCloudBackup
@@ -598,13 +635,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ),
                           ),
                           subtitle: Text(
-                            libraryUserId == null
-                                ? 'Đăng nhập để bật sao lưu'
-                                : cloudBackupError
-                                    ? 'Không đọc được trạng thái trên máy'
-                                    : cloudBackupEnabled
-                                        ? 'Bài mới tự sao lưu; bài cũ chỉ khi bạn chọn'
-                                        : 'Chỉ lưu trên thiết bị',
+                            !cloudBackupAvailable
+                                ? 'Web đang lưu cục bộ; đồng bộ cloud chưa được bật'
+                                : libraryUserId == null
+                                    ? 'Đăng nhập để bật sao lưu'
+                                    : cloudBackupError
+                                        ? 'Không đọc được trạng thái trên máy'
+                                        : cloudBackupEnabled
+                                            ? 'Bài mới tự sao lưu; bài cũ chỉ khi bạn chọn'
+                                            : 'Chỉ lưu trên thiết bị',
                             style: const TextStyle(
                               fontSize: 13,
                               color: Color(0xFF8D6E63),
@@ -615,7 +654,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             vertical: 4,
                           ),
                         ),
-                        if (cloudBackupEnabled)
+                        if (cloudBackupAvailable && cloudBackupEnabled)
                           ListTile(
                             key: const Key('cloud-backup-backfill-button'),
                             enabled: !_isUpdatingCloudBackup &&
@@ -789,45 +828,197 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required Color iconColor,
     required String title,
     required String subtitle,
+    VoidCallback? onTap,
+    Widget? trailing,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF3C2A21),
-                  ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF8D6E63),
-                  ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF3C2A21),
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF8D6E63),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing,
               ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+class _LanguageProfileDialog extends ConsumerStatefulWidget {
+  const _LanguageProfileDialog({required this.initialProfile});
+
+  final LanguageProfile? initialProfile;
+
+  @override
+  ConsumerState<_LanguageProfileDialog> createState() =>
+      _LanguageProfileDialogState();
+}
+
+class _LanguageProfileDialogState
+    extends ConsumerState<_LanguageProfileDialog> {
+  String? _nativeLanguageCode;
+  String? _learningLanguageCode;
+  late String _proficiencyLevel;
+  String? _validationError;
+
+  @override
+  void initState() {
+    super.initState();
+    _nativeLanguageCode = widget.initialProfile?.nativeLanguageCode;
+    _learningLanguageCode = widget.initialProfile?.learningLanguageCode;
+    _proficiencyLevel = widget.initialProfile?.proficiencyLevel ?? 'beginner';
+  }
+
+  Future<void> _save() async {
+    final native = _nativeLanguageCode;
+    final learning = _learningLanguageCode;
+    if (native == null || learning == null) {
+      setState(() => _validationError = 'Vui lòng chọn đủ hai ngôn ngữ.');
+      return;
+    }
+    if (native == learning) {
+      setState(
+        () => _validationError = 'Ngôn ngữ học phải khác ngôn ngữ gốc.',
+      );
+      return;
+    }
+
+    final saved = await ref.read(languageProfileProvider.notifier).save(
+          nativeLanguageCode: native,
+          learningLanguageCode: learning,
+          proficiencyLevel: _proficiencyLevel,
+        );
+    if (saved && mounted) Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(languageProfileProvider);
+    const languageItems = <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: 'vi', child: Text('Tiếng Việt')),
+      DropdownMenuItem(value: 'en', child: Text('Tiếng Anh')),
+    ];
+
+    return AlertDialog(
+      title: const Text('Ngôn ngữ của bạn'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              key: const Key('settings-native-language-field'),
+              initialValue: _nativeLanguageCode,
+              decoration: const InputDecoration(labelText: 'Ngôn ngữ gốc'),
+              items: languageItems,
+              onChanged: state.isSaving
+                  ? null
+                  : (value) => setState(() {
+                        _nativeLanguageCode = value;
+                        _validationError = null;
+                      }),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('settings-learning-language-field'),
+              initialValue: _learningLanguageCode,
+              decoration: const InputDecoration(labelText: 'Ngôn ngữ muốn học'),
+              items: languageItems,
+              onChanged: state.isSaving
+                  ? null
+                  : (value) => setState(() {
+                        _learningLanguageCode = value;
+                        _validationError = null;
+                      }),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: const Key('settings-proficiency-level-field'),
+              initialValue: _proficiencyLevel,
+              decoration: const InputDecoration(labelText: 'Trình độ hiện tại'),
+              items: supportedProficiencyLevels
+                  .map(
+                    (level) => DropdownMenuItem(
+                      value: level,
+                      child: Text(proficiencyLabel(level)),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: state.isSaving
+                  ? null
+                  : (value) {
+                      if (value != null) {
+                        setState(() => _proficiencyLevel = value);
+                      }
+                    },
+            ),
+            if (_validationError != null || state.errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _validationError ?? state.errorMessage!,
+                key: const Key('language-profile-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              state.isSaving ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(
+          key: const Key('save-language-profile-button'),
+          onPressed: state.isSaving ? null : _save,
+          child: state.isSaving
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Lưu'),
+        ),
+      ],
     );
   }
 }

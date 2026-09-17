@@ -43,6 +43,13 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
           .select('reminder_time, study_end_time, daily_target_words')
           .eq('user_id', user.id)
           .maybeSingle();
+      final languageProfile = await _client
+          .from('user_language_profiles')
+          .select(
+            'native_language_code, learning_language_code, proficiency_level',
+          )
+          .eq('user_id', user.id)
+          .maybeSingle();
 
       return OnboardingData(
         displayName: profile['display_name'] as String? ?? '',
@@ -50,6 +57,11 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
         age: (profile['age'] as num?)?.toInt(),
         phone: profile['phone'] as String? ?? '',
         accountRole: profile['account_role'] as String?,
+        nativeLanguageCode: languageProfile?['native_language_code'] as String?,
+        learningLanguageCode:
+            languageProfile?['learning_language_code'] as String?,
+        proficiencyLevel:
+            languageProfile?['proficiency_level'] as String? ?? 'beginner',
         reminderTime: settings?['reminder_time'] as String? ?? '20:00',
         studyEndTime: settings?['study_end_time'] as String? ?? '21:00',
         dailyTargetWords:
@@ -122,6 +134,9 @@ class SupabaseOnboardingRepository implements OnboardingRepository {
           'p_age': normalized.age,
           'p_phone': normalized.phone,
           'p_account_role': normalized.accountRole,
+          'p_native_language_code': normalized.nativeLanguageCode,
+          'p_learning_language_code': normalized.learningLanguageCode,
+          'p_proficiency_level': normalized.proficiencyLevel,
           'p_reminder_time': normalized.reminderTime,
           'p_study_end_time': normalized.studyEndTime,
           'p_daily_target_words': normalized.dailyTargetWords,

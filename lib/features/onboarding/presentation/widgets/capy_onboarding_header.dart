@@ -24,6 +24,10 @@ class CapyOnboardingHeader extends StatefulWidget {
       'subtitle': 'Bạn dùng ứng dụng làm cá nhân hay phụ huynh theo dõi con?',
     },
     {
+      'title': 'Chọn ngôn ngữ trò chuyện 🌏',
+      'subtitle': 'Để câu gốc và câu dịch luôn nằm đúng vị trí dành cho bạn!',
+    },
+    {
       'title': 'Lên lịch học tập ⏰',
       'subtitle': 'Bật thông báo nhắc học vào khung giờ vàng mỗi ngày nhé!',
     },
@@ -76,9 +80,9 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
 
   @override
   Widget build(BuildContext context) {
-    final stepIndex = widget.currentStep.clamp(0, 4);
+    final stepIndex = widget.currentStep.clamp(0, 5);
     final prompt = CapyOnboardingHeader._prompts[stepIndex];
-    final progress = (stepIndex + 1) / 5;
+    final progress = (stepIndex + 1) / 6;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -88,7 +92,7 @@ class _CapyOnboardingHeaderState extends State<CapyOnboardingHeader> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Bước ${stepIndex + 1} / 5',
+              'Bước ${stepIndex + 1} / 6',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,

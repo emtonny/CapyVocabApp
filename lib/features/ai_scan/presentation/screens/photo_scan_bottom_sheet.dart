@@ -468,6 +468,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                   child: Container(
                     width: double.infinity,
                     constraints: BoxConstraints(
+                      maxWidth: 760,
                       maxHeight: maxSheetHeight,
                     ),
                     decoration: BoxDecoration(

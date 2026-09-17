@@ -10,6 +10,7 @@ import '../widgets/capy_onboarding_header.dart';
 import '../widgets/step1_name_username.dart';
 import '../widgets/step2_age_phone.dart';
 import '../widgets/step3_role_selector.dart';
+import '../widgets/step4_language_profile.dart';
 import '../widgets/step4_study_time.dart';
 import '../widgets/step5_daily_target.dart';
 
@@ -20,6 +21,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
     Step1NameUsername(),
     Step2AgePhone(),
     Step3RoleSelector(),
+    Step4LanguageProfile(),
     Step4StudyTime(),
     Step5DailyTarget(),
   ];
@@ -28,6 +30,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
     'Thông tin cá nhân',
     'Độ tuổi & Liên hệ',
     'Vai trò sử dụng',
+    'Ngôn ngữ của bạn',
     'Thời gian học tập',
     'Mục tiêu hàng ngày',
   ];
@@ -183,7 +186,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Bước ${state.currentStep + 1}/5: ${_stepTitles[state.currentStep]}',
+                        'Bước ${state.currentStep + 1}/${_steps.length}: ${_stepTitles[state.currentStep]}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -341,7 +344,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
     int currentStep,
     OnboardingNotifier notifier,
   ) async {
-    if (currentStep < 4) {
+    if (currentStep < _steps.length - 1) {
       await notifier.nextStep();
       return;
     }

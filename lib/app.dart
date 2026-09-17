@@ -5,6 +5,7 @@ import 'core/services/supabase_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/onboarding/application/onboarding_status_store.dart';
 import 'features/library/presentation/widgets/library_sync_runtime.dart';
+import 'features/chat/presentation/operational_chat_runtime.dart';
 import 'features/onboarding/presentation/widgets/onboarding_status_runtime.dart';
 
 class CapyVocabApp extends StatefulWidget {
@@ -52,7 +53,8 @@ class _CapyVocabAppState extends State<CapyVocabApp> {
 
   @override
   Widget build(BuildContext context) {
-    Widget app = LibrarySyncRuntime(
+    Widget app = OperationalChatRuntime(
+        child: LibrarySyncRuntime(
       child: MaterialApp.router(
         title: 'Deery Vocab',
         debugShowCheckedModeBanner: false,
@@ -60,7 +62,7 @@ class _CapyVocabAppState extends State<CapyVocabApp> {
         darkTheme: AppTheme.dark,
         routerConfig: _appRouter.router,
       ),
-    );
+    ));
 
     final refresher = widget.onboardingStatusRefresher;
     if (refresher != null) {

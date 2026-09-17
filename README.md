@@ -8,9 +8,17 @@ flutter emulators --launch Capy_Pixel_API_35
 flutter devices
 flutter run -d emulator-5554 --no-dds
 
-# Web
+# Web mặc định/Production
 flutter run -d chrome --web-port=3000
+
+# Web Staging có Chat test; tự lấy public key vào file tạm và cleanup khi dừng
+powershell -ExecutionPolicy Bypass -File tool/run_staging_device_smoke.ps1 `
+  -FlutterCommand 'C:\fulter\flutter\bin\flutter.bat' `
+  -Target web-device -WebPort 3000 -ChatRelayEnabled
 ```
+
+Không dùng lệnh Web mặc định để thử tài khoản Staging: khi thiếu `dart-define`,
+ứng dụng cố ý fallback về project trong `assets/config/client.config` (Production).
 
 Nếu ID emulator không phải `emulator-5554`, dùng ID Android do
 `flutter devices` trả về. Cờ `--no-dds` tránh lỗi Dart Development Service

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../shared/navigation/bottom_nav_bar.dart';
+import '../../../../shared/widgets/graph_paper_background.dart';
 import '../../domain/entities/library_enums.dart';
 import '../../domain/entities/media_asset.dart';
 import '../../domain/entities/photo_note.dart';
@@ -28,118 +29,122 @@ class StorageAlbumScreen extends ConsumerWidget {
     final mediaRecovery = ref.watch(libraryMediaRecoverySnapshotProvider);
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Row(
-                children: [
-                  const Text('📚', style: TextStyle(fontSize: 28)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Thư viện của tôi',
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF3C2A21),
-                                  ),
-                        ),
-                        Text(
-                          notes.maybeWhen(
-                            data: (items) => items.isEmpty
-                                ? 'Các bài quét sẽ tự lưu tại đây'
-                                : '${items.length} bài trong thư viện',
-                            orElse: () => 'Đang đọc dữ liệu trên thiết bị',
+      body: AdaptiveContentFrame(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                child: Row(
+                  children: [
+                    const Text('📚', style: TextStyle(fontSize: 28)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Thư viện của tôi',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF3C2A21),
+                                ),
                           ),
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: const Color(0xFF786A61),
-                                  ),
-                        ),
-                      ],
+                          Text(
+                            notes.maybeWhen(
+                              data: (items) => items.isEmpty
+                                  ? 'Các bài quét sẽ tự lưu tại đây'
+                                  : '${items.length} bài trong thư viện',
+                              orElse: () => 'Đang đọc dữ liệu trên thiết bị',
+                            ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: const Color(0xFF786A61),
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      key: const Key('library-open-trash'),
+                      tooltip: 'Mở thùng rác',
+                      onPressed: () => context.push('/storage/trash'),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                    const _OfflineBadge(),
+                  ],
+                ),
+              ),
+              const _LibraryStorageSummaryCard(),
+              _MediaRecoveryBanner(
+                recovery: mediaRecovery,
+                onOpen: (snapshot) => _showMediaRecoverySheet(
+                  context,
+                  snapshot,
+                ),
+              ),
+              Expanded(
+                child: notes.when(
+                  loading: () => const Center(
+                    child: CircularProgressIndicator(
+                      key: Key('library-loading-indicator'),
                     ),
                   ),
-                  IconButton(
-                    key: const Key('library-open-trash'),
-                    tooltip: 'Mở thùng rác',
-                    onPressed: () => context.push('/storage/trash'),
-                    icon: const Icon(Icons.delete_outline_rounded),
+                  error: (error, stackTrace) => _StateMessage(
+                    key: const Key('library-error-state'),
+                    icon: Icons.storage_rounded,
+                    title: 'Không thể đọc thư viện',
+                    message: 'Dữ liệu trên máy chưa tải được. Hãy thử lại.',
+                    actionLabel: 'Thử lại',
+                    onAction: () => ref.invalidate(libraryPhotoNotesProvider),
                   ),
-                  const _OfflineBadge(),
-                ],
-              ),
-            ),
-            const _LibraryStorageSummaryCard(),
-            _MediaRecoveryBanner(
-              recovery: mediaRecovery,
-              onOpen: (snapshot) => _showMediaRecoverySheet(
-                context,
-                snapshot,
-              ),
-            ),
-            Expanded(
-              child: notes.when(
-                loading: () => const Center(
-                  child: CircularProgressIndicator(
-                    key: Key('library-loading-indicator'),
-                  ),
-                ),
-                error: (error, stackTrace) => _StateMessage(
-                  key: const Key('library-error-state'),
-                  icon: Icons.storage_rounded,
-                  title: 'Không thể đọc thư viện',
-                  message: 'Dữ liệu trên máy chưa tải được. Hãy thử lại.',
-                  actionLabel: 'Thử lại',
-                  onAction: () => ref.invalidate(libraryPhotoNotesProvider),
-                ),
-                data: (items) => items.isEmpty
-                    ? _StateMessage(
-                        key: const Key('library-empty-state'),
-                        icon: Icons.photo_library_outlined,
-                        title: 'Chưa có bài quét nào',
-                        message:
-                            'Quét một bức ảnh; kết quả sẽ tự lưu để bạn xem lại khi không có mạng.',
-                        actionLabel: 'Quét ảnh đầu tiên',
-                        onAction: () => context.push('/scan'),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          ref.invalidate(libraryPhotoNotesProvider);
-                          await ref.read(libraryPhotoNotesProvider.future);
-                        },
-                        child: ListView.separated(
-                          key: const Key('library-photo-note-list'),
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final note = items[index];
-                            return _PhotoNoteCard(
-                              note: note,
-                              onMoveToTrash: () =>
-                                  _movePhotoNoteToTrash(context, ref, note),
-                              onTap: () {
-                                final callback = onOpenPhotoNote;
-                                if (callback != null) {
-                                  callback(note.id);
-                                } else {
-                                  context.push('/storage/${note.id}');
-                                }
-                              },
-                            );
+                  data: (items) => items.isEmpty
+                      ? _StateMessage(
+                          key: const Key('library-empty-state'),
+                          icon: Icons.photo_library_outlined,
+                          title: 'Chưa có bài quét nào',
+                          message:
+                              'Quét một bức ảnh; kết quả sẽ tự lưu để bạn xem lại khi không có mạng.',
+                          actionLabel: 'Quét ảnh đầu tiên',
+                          onAction: () => context.push('/scan'),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () async {
+                            ref.invalidate(libraryPhotoNotesProvider);
+                            await ref.read(libraryPhotoNotesProvider.future);
                           },
+                          child: ListView.separated(
+                            key: const Key('library-photo-note-list'),
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final note = items[index];
+                              return _PhotoNoteCard(
+                                note: note,
+                                onMoveToTrash: () =>
+                                    _movePhotoNoteToTrash(context, ref, note),
+                                onTap: () {
+                                  final callback = onOpenPhotoNote;
+                                  if (callback != null) {
+                                    callback(note.id);
+                                  } else {
+                                    context.push('/storage/${note.id}');
+                                  }
+                                },
+                              );
+                            },
+                          ),
                         ),
-                      ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: const BottomNavBar(),
@@ -668,49 +673,52 @@ class LibraryTrashScreen extends ConsumerWidget {
     final notes = ref.watch(libraryTrashPhotoNotesProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Thùng rác')),
-      body: SafeArea(
-        child: notes.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, __) => _StateMessage(
-            key: const Key('library-trash-error'),
-            icon: Icons.delete_outline_rounded,
-            title: 'Không thể đọc thùng rác',
-            message: 'Dữ liệu local chưa đọc được. Hãy thử lại.',
-            actionLabel: 'Thử lại',
-            onAction: () => ref.invalidate(libraryTrashPhotoNotesProvider),
-          ),
-          data: (items) => items.isEmpty
-              ? const _StateMessage(
-                  key: Key('library-trash-empty'),
-                  icon: Icons.delete_sweep_outlined,
-                  title: 'Thùng rác đang trống',
-                  message:
-                      'Bài đã chuyển vào đây có thể khôi phục trong 30 ngày.',
-                )
-              : ListView(
-                  key: const Key('library-trash-list'),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-                  children: [
-                    const Card(
-                      color: Color(0xFFFFF3D6),
-                      child: Padding(
-                        padding: EdgeInsets.all(14),
-                        child: Text(
-                          'Bài trong thùng rác được giữ 30 ngày. Xóa vĩnh viễn có thể cần chờ đồng bộ cloud khi thiết bị có mạng.',
+      body: AdaptiveContentFrame(
+        child: SafeArea(
+          child: notes.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, __) => _StateMessage(
+              key: const Key('library-trash-error'),
+              icon: Icons.delete_outline_rounded,
+              title: 'Không thể đọc thùng rác',
+              message: 'Dữ liệu local chưa đọc được. Hãy thử lại.',
+              actionLabel: 'Thử lại',
+              onAction: () => ref.invalidate(libraryTrashPhotoNotesProvider),
+            ),
+            data: (items) => items.isEmpty
+                ? const _StateMessage(
+                    key: Key('library-trash-empty'),
+                    icon: Icons.delete_sweep_outlined,
+                    title: 'Thùng rác đang trống',
+                    message:
+                        'Bài đã chuyển vào đây có thể khôi phục trong 30 ngày.',
+                  )
+                : ListView(
+                    key: const Key('library-trash-list'),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                    children: [
+                      const Card(
+                        color: Color(0xFFFFF3D6),
+                        child: Padding(
+                          padding: EdgeInsets.all(14),
+                          child: Text(
+                            'Bài trong thùng rác được giữ 30 ngày. Xóa vĩnh viễn có thể cần chờ đồng bộ cloud khi thiết bị có mạng.',
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...items.map(
-                      (note) => _TrashPhotoNoteCard(
-                        note: note,
-                        onRestore: () => _restorePhotoNote(context, ref, note),
-                        onDelete: () =>
-                            _requestPermanentDelete(context, ref, note),
+                      const SizedBox(height: 8),
+                      ...items.map(
+                        (note) => _TrashPhotoNoteCard(
+                          note: note,
+                          onRestore: () =>
+                              _restorePhotoNote(context, ref, note),
+                          onDelete: () =>
+                              _requestPermanentDelete(context, ref, note),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
@@ -883,30 +891,33 @@ class LibraryPhotoNoteDetailScreen extends ConsumerWidget {
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Bài đã lưu')),
-      body: SafeArea(
-        child: snapshot.when(
-          loading: () => const Center(
-            child: CircularProgressIndicator(
-              key: Key('library-detail-loading-indicator'),
+      body: AdaptiveContentFrame(
+        child: SafeArea(
+          child: snapshot.when(
+            loading: () => const Center(
+              child: CircularProgressIndicator(
+                key: Key('library-detail-loading-indicator'),
+              ),
             ),
+            error: (error, stackTrace) => _StateMessage(
+              key: const Key('library-detail-error-state'),
+              icon: Icons.menu_book_rounded,
+              title: 'Không thể mở bài đã lưu',
+              message: 'Dữ liệu trên máy chưa đọc được. Hãy thử lại.',
+              actionLabel: 'Thử lại',
+              onAction: () =>
+                  ref.invalidate(libraryPhotoNoteSnapshotProvider(photoNoteId)),
+            ),
+            data: (value) => value == null
+                ? const _StateMessage(
+                    key: Key('library-detail-missing-state'),
+                    icon: Icons.search_off_rounded,
+                    title: 'Không tìm thấy bài này',
+                    message:
+                        'Bài có thể đã bị xóa khỏi thư viện trên thiết bị.',
+                  )
+                : _PhotoNoteDetail(snapshot: value),
           ),
-          error: (error, stackTrace) => _StateMessage(
-            key: const Key('library-detail-error-state'),
-            icon: Icons.menu_book_rounded,
-            title: 'Không thể mở bài đã lưu',
-            message: 'Dữ liệu trên máy chưa đọc được. Hãy thử lại.',
-            actionLabel: 'Thử lại',
-            onAction: () =>
-                ref.invalidate(libraryPhotoNoteSnapshotProvider(photoNoteId)),
-          ),
-          data: (value) => value == null
-              ? const _StateMessage(
-                  key: Key('library-detail-missing-state'),
-                  icon: Icons.search_off_rounded,
-                  title: 'Không tìm thấy bài này',
-                  message: 'Bài có thể đã bị xóa khỏi thư viện trên thiết bị.',
-                )
-              : _PhotoNoteDetail(snapshot: value),
         ),
       ),
     );

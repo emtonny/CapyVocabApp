@@ -2,9 +2,13 @@
 -- Viết toàn bộ schema SQL định năng tại đây
 -- =============================================================================
 -- CAPY VOCAB - SUPABASE POSTGRESQL DATABASE SCHEMA & ROW LEVEL SECURITY (RLS)
--- Reference snapshot for 20 product/Library tables. The ordered migration
+-- Reference snapshot for 21 product/Library/chat-profile tables. The ordered migration
 -- chain is canonical for deployment and also creates operational tables such
 -- as public.gemini_model_health.
+-- C2 Operational Chat is intentionally not flattened into this partial snapshot.
+-- Its five tables/RLS/RPC/friendship guard are canonical in
+-- migrations/20260915120000_add_operational_chat_security.sql (Staging applied
+-- 2026-09-15; Production not applied). Do not deploy this snapshot as a full DB.
 -- =============================================================================
 
 -- Enable UUID Extension
@@ -534,6 +538,44 @@ CREATE TABLE IF NOT EXISTS public.vocab_annotations (
         REFERENCES public.vocab_detections(id, user_id) ON DELETE CASCADE
 );
 
+-- =============================================================================
+-- C1 CHAT LANGUAGE PROFILE
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.user_language_profiles (
+    user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    native_language_code TEXT NOT NULL
+        CHECK (native_language_code IN ('vi', 'en')),
+    learning_language_code TEXT NOT NULL
+        CHECK (learning_language_code IN ('vi', 'en')),
+    proficiency_level TEXT NOT NULL DEFAULT 'beginner'
+        CHECK (proficiency_level IN ('beginner', 'intermediate', 'advanced')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (native_language_code <> learning_language_code),
+    CHECK (updated_at >= created_at)
+);
+
+CREATE OR REPLACE FUNCTION private.touch_user_language_profile_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $function$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION private.touch_user_language_profile_updated_at()
+FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS touch_user_language_profile_updated_at
+ON public.user_language_profiles;
+CREATE TRIGGER touch_user_language_profile_updated_at
+BEFORE UPDATE ON public.user_language_profiles
+FOR EACH ROW
+EXECUTE FUNCTION private.touch_user_language_profile_updated_at();
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -597,6 +639,7 @@ ALTER TABLE public.media_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scan_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vocab_detections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vocab_annotations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_language_profiles ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE public.subscriptions FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.subscriptions TO authenticated;
@@ -616,6 +659,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.media_assets TO authenticat
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.scan_runs TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.vocab_detections TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.vocab_annotations TO authenticated;
+REVOKE ALL ON TABLE public.user_language_profiles FROM PUBLIC, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE
+ON TABLE public.user_language_profiles TO authenticated;
 
 -- 1. users: All authenticated users can read (for profiles & leaderboards), owner can update
 CREATE POLICY "Public profiles are viewable by authenticated users"
@@ -663,6 +709,11 @@ WITH CHECK ((SELECT auth.uid()) = user_id);
 
 CREATE POLICY "Users manage their own vocab annotations"
 ON public.vocab_annotations FOR ALL TO authenticated
+USING ((SELECT auth.uid()) = user_id)
+WITH CHECK ((SELECT auth.uid()) = user_id);
+
+CREATE POLICY "Users manage their own language profile"
+ON public.user_language_profiles FOR ALL TO authenticated
 USING ((SELECT auth.uid()) = user_id)
 WITH CHECK ((SELECT auth.uid()) = user_id);
 

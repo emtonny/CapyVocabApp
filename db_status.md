@@ -2,8 +2,53 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-11 — đồng bộ UI GitHub `cbd7318`, giữ nguyên contract offline/Production**  
-> Trạng thái tổng thể: **Nhánh `AI-scan` đã fast-forward đủ 6 commit giao diện/auth mới tới `cbd7318`. UI neo-brutalist, graph-paper, soft page transition và password recovery đã được hòa trộn với router onboarding synchronous, Library detail/trash, entitlement và Cloud Backup local hiện có; analyzer sạch và nhóm test liên quan đạt 73/73. Các file Edge Function đang chạy theo quota/circuit-breaker/ledger local được giữ nguyên trong working tree; thay đổi Vilao gateway từ commit mới chưa được đưa vào runtime/deploy và cần một increment backend riêng. Production M3A/M4.5 vẫn giữ nguyên, bucket private, default `LIBRARY_SYNC_ENABLED=false`; không có migration, cloud write hay deploy trong lần đồng bộ UI này.**
+> Cập nhật gần nhất: **2026-09-17 — C3 operational raw chat COMPLETE trên Staging**
+> Trạng thái tổng thể: **C2 đã apply Staging theo approval sau backup mới;
+> 47 local SQL/RLS checks và 10 nhóm REST/Realtime multi-user smoke pass,
+> fixtures cleanup 0. Staging history 23/23, dry-run up to date. C1 backend
+> regression pass; approved pair + primary Settings/cache device smoke pass,
+> general onboarding/second-account UI pending. Production chưa apply C1/C2;
+> C3A/B/C đã COMPLETE trên exact Staging: bidirectional Web/Android raw relay,
+> cold Web restore, Android offline enqueue/restart/reconnect/single-render và
+> physical A→B→A owner-cache restoration đều verified. Lost-ACK/idempotency và
+> inactive-membership fail-closed được đóng bằng 57 client tests + live 10/10
+> REST/Realtime/RLS smoke. Final full suite 495 pass/1 existing skip/0 failure;
+> analyzer clean. Runtime vẫn opt-in `CHAT_RELAY_ENABLED`, exact Staging và
+> foreground. C4–C6/T0–T5 chưa triển khai. Training OFF.**
+
+> Earlier increment 2026-09-16: raw `flutter run -d chrome` was confirmed unsafe
+> for Staging because missing defines fall back to Production `client.config`.
+> Added guarded `web-device` runner, exact-Staging/Chat banner and responsive Auth
+> test. Exact Staging dry-run remains up to date; final Web build and real Chrome
+> login UI at `localhost:3000` pass. No schema, migration, remote row, Storage,
+> Production, Gemini or Training write occurred. Demo login and two-client raw relay
+> were later verified in the live smoke recorded immediately below.
+
+> Latest live smoke 2026-09-16: user sent one raw message Web→Android and one
+> Android→Web. Android received the Web message; read-only linked Staging table stats
+> report estimates of 1 conversation/2 members/2 operational messages and 0 translations.
+> Web stale-history root cause is fixed and verified: Web no longer pauses the chat
+> runtime when hidden; initial/resume reconciliation starts immediately; Realtime
+> connect no longer invalidates an in-flight pull; every UUID cursor explicitly orders
+> ascending to match `gt`. Cold reload issued conversation/history HTTP 200 reads and
+> the detail rendered both raw bubbles from its owner-scoped cache. The final C3 gates
+> above now supersede the earlier partial state; C4/C5 translation UI remains
+> unimplemented.
+
+> Earlier live setup 2026-09-16: user explicitly confirmed primary `vi→en` and
+> second test account `en→vi`. Exact Staging now has 2 verified C1 rows at beginner;
+> Android Settings loaded `Tiếng Việt → Tiếng Anh`, picker showed one accepted peer,
+> and `open_direct_chat` produced exactly 1 conversation/2 active members/0 messages.
+> Gemini/Training/Production writes remained 0 at that checkpoint. Later live smokes
+> above supersede all raw relay, offline/reconnect, account-switch, exact lost-ACK and
+> membership-revocation gaps for C3.
+
+> Previous increment 2026-09-16: user approved only the two named test accounts
+> becoming accepted friends. Exact Staging pair has 2 accepted directions, verified
+> with both owner JWTs. Friends tab now renders accepted IDs (14 widget tests pass);
+> full regression 492 pass/1 existing skip/0 failure, analyzer clean (89 combined chat).
+> Android network-status channel fixed and device UI shows exactly one accepted peer;
+> both C1 profiles remain unchanged/unknown, so opening/sending a new chat stays blocked.
 
 ## Quy tắc bắt buộc cho các phiên sau
 
@@ -39,12 +84,19 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Supabase upload | IMPLEMENTED/STAGING + ANDROID + PRODUCTION FIXTURE E2E VERIFIED | Android Staging scan và Production isolated fixture đều upload private + normalized evidence/raw JSON thành công. Build thường vẫn không upload vì rollout flag mặc định tắt |
 | Cloud restore/download | IMPLEMENTED/ANDROID E2E VERIFIED | Android synced Photo Note bị tạm thiếu local JPEG chỉ hiện CTA ở detail; 0 download trước tap. Explicit tap tải private media, tạo lại đúng 116,892 byte/SHA-256, bỏ CTA và offline cold restart vẫn mở ảnh + 4 từ. Cloud-only metadata nay có thể xuất hiện trên máy mới nhưng JPEG vẫn chỉ tải sau explicit tap |
 | Cloud metadata pull | IMPLEMENTED/STAGING + ANDROID + PRODUCTION FIXTURE VERIFIED | Auth + consent + build-flag gated; owner cursor/atomic merge và no-auto-media-download pass. Production fixture pull sang SQLite thứ hai + delete feed pass |
-| Remote staging workflow | IMPLEMENTED/STAGING VERIFIED | Project inactive đã được restore làm Staging trên organization Free; repo link Staging; 21/21 migration đồng bộ và remote database up to date. Staging có đúng demo user do chủ dự án chỉ định, đã confirm email, có `public.users` profile và password login pass ngày 2026-09-05 |
+| Remote staging workflow | C1/C2 STAGING BACKEND VERIFIED | Repo link Staging; history 23/23, post-C2 dry-run up to date. C2 backup/apply/REST + Realtime/cleanup pass 2026-09-15. Demo giữ nguyên; không gọi Production |
 | Production rollout safety | GATE 0–3 VERIFIED | DPAPI backup, fingerprint, history repair, exact two-migration apply, full worker E2E, two-user RLS/Storage và cleanup pass. Repo không relink; client rollout bật sync chưa thực hiện |
 | Sync outbox | IMPLEMENTED/STAGING + ANDROID E2E VERIFIED | Upload consent-gated đã pass. Explicit pre-consent backfill tạo graph atomic/idempotent chỉ cho active owner note đủ media; live Staging upload/pull/purge/cleanup pass. Privacy purge vẫn chạy đúng owner kể cả Cloud Backup OFF và giữ tombstone khi remote lỗi |
 | Cloud-backup consent UI | IMPLEMENTED/ANDROID VERIFIED | Settings switch ghi audit `cloud_backup`; hai consent AI độc lập. Khi ON có action `Sao lưu bài đã có`, dialog riêng trước enqueue, bỏ qua missing/Trash và báo số queued. Android zero-candidate UX pass; không tự backfill khi chỉ bật switch |
-| Web scan durability | PENDING | Web scan vẫn dùng memory store dù SQLite WASM repository đã tồn tại |
+| Web scan durability | IMPLEMENTED/PARTIAL BROWSER VERIFY | Web scan ghi JPEG vào media SQLite WASM/IndexedDB riêng và ghi JSON/aggregate vào SQLite Library; loader/purger Web đã nối. VM persistence contract, analyzer và Web build pass; guarded Chrome Staging runner/login UI đã chạy, nhưng scan → reload/cold-restart persistence chưa browser-smoke. Generated service worker tự unregister nên PWA app-shell cold-start offline chưa được triển khai |
+| Chat language profile (C1) | IMPLEMENTED/LOCAL + STAGING BACKEND VERIFIED, UI SMOKE PENDING | `vi`/`en` self-declared; onboarding + Settings + owner-scoped cache/repository đã nối. Staging migration/RLS/atomic RPC/legacy compatibility/server timestamp và two-account fixture cleanup pass. Account cũ không tự backfill; Production chưa apply C1; chat/Training vẫn OFF |
+| Operational Chat (C2) | IMPLEMENTED / LOCAL + STAGING REST/REALTIME VERIFIED | 47 SQL checks + 10 nhóm smoke ba account/real WebSockets pass; A/B raw trước translation, shared derived relay, outsider REST empty/0 events trong cửa sổ test; RLS/service-only/immutable/idempotent/inactive pass. Exact C2 applied, history 23/23; cleanup baseline preserved. C3 client complete trên Staging; Training chưa nối |
 | Training dataset | PARTIAL/FAIL-CLOSED VERIFIED | Có schema lineage/consent; AI prediction không tự thành nhãn. Missing media quarantine example liên quan. Permanent purge xóa source example + manifest/run links và invalidates model đã dùng source; historical non-content audit có thể còn. Builder/D6 vẫn chưa triển khai |
+| Operational Chat local (C3A) | IMPLEMENTED/VERIFIED; C3 COMPLETE | Separate SQLite chat v1 (2 tables), project+owner scope, atomic raw/outbox, single-flight/durable backoff/cap, immutable ACK/ordering, complete inventory/history reconcile/local streams. Durable restart/lost-response and physical multi-owner restoration verified |
+| Operational Chat adapter (C3B.1) | IMPLEMENTED/VERIFIED; C3 COMPLETE | Private SDK captured JWT, exact Staging only; insert/conflict/RPC, exhausted keyset pages, visibility checks and guarded Realtime lifecycle. Local HTTP/WebSocket tests plus live REST/Realtime smoke pass |
+| Operational Chat runtime (C3B.2) | IMPLEMENTED/STAGING VERIFIED; C3 COMPLETE | Single-flight/cache/runtime guards, foreground reconnect and explicit ascending UUID cursors verified. Default flag OFF; exact Staging only |
+| Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | `/chat` inbox/detail and friend picker; bidirectional raw relay, cold Web restore, offline Android cache/outbox/restart/reconnect, no duplicate, A→B→A isolation and inactive-membership fail-closed verified. Sent means server accepted, not delivery/read receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
+| Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
 ## Luồng runtime native hiện tại
@@ -125,10 +177,11 @@ không xóa Library aggregate nhưng fail-close training lineage liên quan.
 
 ## Supabase — trạng thái upload và pull hiện tại
 
-M3A cloud schema/private Storage, M3B worker và M3C runtime coordinator đã có.
-Runtime chỉ được tạo trên native khi build với
-`--dart-define=LIBRARY_SYNC_ENABLED=true`; mặc định cờ là `false` vì Production
-chưa có M3A. Worker/gateway đã pass E2E trên Staging. Android app đã pass
+M3A cloud schema/private Storage đã có trên cả Staging và Production; M3B
+worker và M3C runtime coordinator đã có trên native. Runtime chỉ được tạo khi
+build với `--dart-define=LIBRARY_SYNC_ENABLED=true`; mặc định cờ là `false` để
+rollout vẫn fail-closed. Worker/gateway đã pass E2E trên Staging và bằng fixture
+cô lập trên Production. Android app đã pass
 install/startup, background/resume lifecycle và authenticated consent-to-upload
 E2E trên chính device:
 
@@ -142,7 +195,8 @@ E2E trên chính device:
   tự nối trong cùng single-flight; Library list/detail vẫn chỉ đọc SQLite và
   không tự tải JPEG từ Storage.
 
-Audit M3 ngày 2026-09-03 xác nhận contract cũ chưa được phép tái sử dụng:
+Audit M3 ngày 2026-09-03 từng xác nhận contract trước M3A không được phép tái
+sử dụng (đây là evidence lịch sử, không phải trạng thái remote hiện tại):
 
 - Bucket `photo_notes` trong schema snapshot đang `public = true`.
 - Storage SELECT policy hiện cho phép đọc mọi object trong bucket.
@@ -151,13 +205,10 @@ Audit M3 ngày 2026-09-03 xác nhận contract cũ chưa được phép tái s�
 - `StorageService` cũ trả public URL và tạo key bằng timestamp; không dùng
   MediaAsset ID/idempotency key.
 
-M3A đã thay contract trong source bằng private bucket + owner-prefixed
-deterministic object key. Production vẫn giữ trạng thái cũ cho đến khi migration
-được review và apply; không được trỏ M3B runtime vào Production trước bước đó.
-
-Đổi bucket sang private sẽ làm public URL legacy ngừng hoạt động. Production
-rollout bắt buộc kiểm kê/backfill `image_path`, deploy signed-URL reader và có
-rollback trước khi apply migration.
+M3A đã thay contract bằng private bucket + owner-prefixed deterministic object
+key và được apply Production ngày 2026-09-11 sau audit/backup. Production không
+có legacy Library row/object cần backfill; audit 2026-09-12 tiếp tục xác nhận
+bucket private và inventory complete.
 
 ## Decision log
 
@@ -166,7 +217,7 @@ rollback trước khi apply migration.
 | D1 | Giữ họ `sqflite`: native + FFI + Web WASM/IndexedDB | APPROVED — 2026-09-02 |
 | D2 | Giữ display/model-input khi note active; original chỉ opt-in/quota | APPROVED — 2026-09-03 |
 | D3 | Cloud backup OFF mặc định; private; hỏi trước khi purge | APPROVED — 2026-09-03 |
-| D4 | Mức offline parity trên Web | PENDING |
+| D4 | Web có local persistence cho Library; chưa bật cloud sync/restore hoặc on-device training trên Web | APPROVED — 2026-09-12 |
 | D5 | Model cá nhân đầu tiên | PENDING |
 | D6 | Loại nhãn đủ điều kiện training | PENDING |
 | D7 | UX/save/navigation sau scan | PENDING |
@@ -180,7 +231,7 @@ rollback trước khi apply migration.
 | --- | --- | --- |
 | M0 | DOCUMENTED | Kiến trúc offline-first, data ownership, privacy và decision log |
 | M1 | IMPLEMENTED | Pure-Dart entities và 6 repository contracts |
-| M2A | IMPLEMENTED/PARTIAL WEB VERIFY | SQLite v3 + migration v2→v3; native/FFI pass, Web build pass, Chrome runtime runner bị treo |
+| M2A | IMPLEMENTED/PARTIAL WEB RUNTIME VERIFY | SQLite v3 + media blob store; native/FFI persistence pass, Web build pass, Chrome runtime runner bị treo trước test |
 | M2B | IMPLEMENTED | SQLite codecs và repository implementations |
 | M2C | IMPLEMENTED | Native scan ghi trực tiếp legacy + normalized aggregate local |
 | M3A | IMPLEMENTED/STAGING + PRODUCTION VERIFIED | Normalized schema/RLS/private bucket/change feed history 21/21; full fixture upload/pull/purge và two-user isolation pass Production |
@@ -1017,6 +1068,619 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-17 — C3 COMPLETE: cross-layer gates and physical A→B→A verified
+
+- Current-source client suite for relay/coordinator/screen passed **57/57**. It covers
+  durable lost-response retry using the same client key after restart, canonical ACK
+  merge without duplicate, late ACK rejection after owner change, account-scoped
+  history/draft removal and inactive-membership cache hiding/pending blocking.
+- First live backend run stopped before fixture creation because current PostgREST
+  returns HTTP 206 for exact-count HEAD while the old guard accepted only 200. Updated
+  `Count-Rows` to accept 200/206 but still require an exact `Content-Range` total before
+  mutation; no broad/unknown cleanup was introduced.
+- Live exact-Staging synthetic smoke then passed **10/10**: real A/B Realtime raw relay,
+  retry duplicate rejection/no second row, inactive member fail-closed, outsider RLS,
+  and cleanup baseline preservation. `fixture_count_remaining=0`, Gemini calls 0,
+  Training writes 0. Persistent demo accounts/conversation were not mutated.
+- These combined layers close the induced lost-ACK/idempotency and membership-
+  revocation contracts. Physical Android A→B→A switch is verified: B loaded the
+  expected `en→vi` profile and distinct owner scope; after manual A sign-in, A loaded
+  `vi→en` and reopened its original conversation/history/composer with Wi-Fi and mobile
+  data both disabled. No account history/draft/profile was mixed.
+- Network was restored to its pre-check state (Wi-Fi OFF, mobile data ON); ping passed
+  and the current process had 0 matching chat-sync/Failed/Exception log entries.
+- Final `flutter analyze --no-pub` is clean. Full regression is **495 pass / 1 existing
+  opt-in skip / 0 failures**. C3 is COMPLETE; C4/C5 translation/correction remains a
+  separate, unimplemented milestone.
+- B's Cloud Backup remained OFF. A coordinate-based attempt opened its consent dialog;
+  the test selected `Để sau`, then used semantic bounds for logout. No consent changed.
+- No schema/migration, Production, Gemini, Training or Library data change.
+
+### 2026-09-17 — Fresh post-install Web→Android receive confirmed
+
+- User completed the requested live send from Web after the corrected Android APK
+  was installed and explicitly confirmed it appeared/operated on the phone. No extra
+  diagnostic message was sent by the agent because this supplied the missing live
+  direction evidence.
+- On reconnect the phone was authorized, online and still had package update time
+  2026-09-16 21:51. Previous logcat entries had rotated and the app was stopped, so
+  no claim is made from unavailable historical logs.
+- Independent persistence check cold-started the app in 5,485 ms, navigated to the
+  cached detail and observed the chat SQLite mtime update to 2026-09-17 18:37. The
+  current foreground process had zero matching `capy.chat.sync`, `Failed` or
+  `Exception` log entries. UI semantics materialized 7 viewport bubbles; this is not
+  reported as total row count because the list is virtualized.
+- Combined evidence closes the fresh post-install Web→Android receive check. Android→
+  Web and earlier bidirectional raw rendering were already verified. C3 remains
+  **PARTIAL** only for account-switch, induced lost-ACK and membership revocation.
+  No schema/migration, Production, Gemini, translation, Training or Library write;
+  no new test message was created in this checkpoint.
+
+### 2026-09-16 — Stale Android APK replaced; missing Web history restored
+
+- Confirmed version skew before mutation: installed APK `lastUpdateTime=13:22` and
+  existing artifact `13:21`, while the shared coordinator/gateway/runtime fixes were
+  modified at 20:26–20:58. Phone was foreground and internet-reachable; Web port 3001
+  was listening with an established browser connection. Port choice was therefore not
+  the Android receive boundary; different ports only create separate Web origins/cache.
+- Guarded exact-Staging Android build ran with Chat + Library sync enabled. Migration
+  preflight returned `upToDate=true`, empty migration list and dry-run only. Gradle
+  `assembleDebug` passed in 110.2 s.
+- `adb install -r` returned `Success`; no uninstall or clear-data. Both SQLite files
+  retained their sizes and all 3 app-private JPEG remained. Package update time became
+  21:51. Cold activity launch passed in 7,569 ms.
+- Before replacement the Android detail rendered 3 message bubbles. After the new cold
+  start and owner-scoped refresh it rendered 7, proving previously missing remote rows
+  were pulled into the Android cache. The new process had zero matching
+  `capy.chat.sync`, `Failed` or `Exception` log entries.
+- This verifies startup/history recovery on the corrected APK, not yet a fresh
+  post-install Web→Android Realtime event. No schema/migration apply, Production,
+  Gemini, translation, Training or Library data mutation occurred.
+
+### 2026-09-16 — Android offline pending, cold restart and reconnect verified
+
+- Confirmed the installed `com.capyvocab.app` build exposes `Trò chuyện · Staging`
+  and uses the approved cached direct conversation. Disabled Wi-Fi and mobile data;
+  Android reported both settings off and a probe returned `Network is unreachable`.
+- Enqueued one neutral diagnostic raw message while offline. It appeared immediately
+  from the local chat store, survived `am force-stop` plus a cold launch while still
+  offline, and remained visible after navigating Home → Friends → Chat → detail.
+  Offline activity launch completed in 5,527 ms without waiting for a network timeout.
+- Re-enabled Wi-Fi only. The row changed to `Server đã nhận`; after a second online
+  force-stop/cold launch (5,122 ms), its diagnostic marker appeared exactly once in
+  the rendered detail. This verifies durable pending → ACK → reconcile and no local
+  duplicate for this normal reconnect path; it is not an induced lost-ACK test and
+  does not prove delivery/read receipt on the second client.
+- Current-process log scan found no `Failed`, `Exception` or `capy.chat.sync` failure.
+  The temporary screenshot and device UI dump were removed. Mobile data remains off;
+  Wi-Fi was restored and external reachability succeeded.
+- One operational Staging test message was intentionally accepted by the server.
+  No schema/migration, Production, Gemini, translation, Training or Library mutation
+  occurred. C3 remains **PARTIAL** for account-switch, exact lost-ACK,
+  membership-revocation and second-client receipt of this reconnect marker.
+
+### 2026-09-16 — Web incoming raw history sync fixed and live verified
+
+- Reproduced exact Staging mismatch after the approved accounts exchanged one raw
+  message each direction: Android rendered the Web row, while Web cache initially
+  retained only its own row even though Staging held two operational messages.
+- Confirmed three client causes without reading/logging message payloads or tokens:
+  Web lifecycle paused the coordinator when hidden; first start/resume depended on a
+  throttled 150 ms timer; PostgREST 2.9.1 `.order()` defaults descending while the UUID
+  cursor implementation requires ascending `gt`. A Realtime connect during inventory
+  could also supersede the same pull before history.
+- Web now remains cache/sync-active while hidden; native foreground behavior is
+  unchanged. Start/resume invokes the existing single-flight immediately. Connected/
+  disconnected signals request a follow-up without invalidating the in-flight REST
+  snapshot; actual table-change events still fence it. All UUID/friend cursors request
+  explicit ascending order.
+- Live cold Web reload on exact Staging produced HTTP 200 conversation/history reads;
+  detail rendered both owner-scoped raw bubbles (one outgoing, one incoming). No schema,
+  migration, remote data mutation, Production, Gemini, translation or Training change.
+- Targeted gateway/provider/coordinator suite: **54 pass**. New regressions cover
+  `id.asc.nullslast`, Web hidden lifecycle and Realtime connect during inventory.
+  Full suite: **495 pass + 1 existing opt-in skip, 0 failures**; analyzer clean.
+  Guarded exact-Staging Web build PASS in 130.5s after dry-run `upToDate=true`;
+  existing third-party Wasm/font warnings remain non-blocking.
+- C3 remains **PARTIAL** for airplane-mode pending + restart, reconnect/lost-ACK
+  no-duplicate, account-switch and Android cold-restart cases. C4/C5 are still pending.
+
+### 2026-09-16 — First two-client raw exchange persisted; Web receive render pending
+
+- User exercised the approved Staging pair: Web→Android displayed successfully;
+  Android→Web did not immediately appear in the Web detail.
+- Read-only linked DB table stats (no content/identity read) report estimates of 1
+  `chat_conversations`, 2 `chat_members`, 2 `chat_operational_messages`, 0
+  `chat_translations` and 0 `chat_corrections`. Together with both sender ACK/UI
+  observations this supports that both raw sends reached Staging; it does not prove
+  Web cache/render completion.
+- Android process logs contain no matching Chat/Realtime/WebSocket/PostgREST/Auth/
+  Flutter runtime error. The Web tab was observed `hidden`/online; C3 intentionally
+  pauses coordinator work outside foreground. Once visible/focused, the Web client
+  made repeated Chat REST refreshes including `chat_operational_messages` HTTP 200.
+- User must reopen the existing detail and confirm the second row renders. If it
+  remains absent, next diagnosis boundary is SQLite Web reconcile/stream emission;
+  if present, the issue is background pause/resume UX. No source/schema/migration,
+  Production, Gemini or Training change was made in this checkpoint.
+
+### 2026-09-16 — Web Staging environment mismatch fixed + login UI browser verified
+
+- Root cause confirmed: a raw Web launch omitted `SUPABASE_URL`/public key defines,
+  so runtime fell back to the Production `assets/config/client.config`; the later
+  `localhost:3000` instance was also no longer listening. No account defect was
+  inferred from that mismatched/stopped Web process.
+- Added `-Target web-device -WebPort 3000` to the existing exact-Staging runner.
+  It keeps migration operations dry-run only, resolves the public client key into a
+  temporary define file, enables Library sync and only enables Chat when explicitly
+  passed `-ChatRelayEnabled`. Cleanup remains in `finally`; no secret is committed.
+- Auth now shows `STAGING TEST · WEB` only for Web + exact Staging host + Chat flag;
+  Production/default/native builds stay unchanged. The banner has a deterministic
+  test override only; it does not grant access or replace server-side RLS.
+- Real Chrome at `localhost:3000` rendered the complete responsive login UI and the
+  environment banner. Final auth tests **14 pass**; full suite rerun **493 pass + 1
+  existing opt-in skip, 0 failure** after one transient failed run; targeted analyzer
+  clean. Final guarded Web build PASS in 99.6s. Existing `flutter_tts` Wasm dry-run
+  and Cupertino font warnings remain.
+- Exact Staging migration dry-run returned up-to-date/no apply. No schema, migration,
+  remote data, Storage, Production, Gemini or Training change. C3 remains PARTIAL
+  until demo Web login and a real two-client raw exchange/reconnect/offline restart.
+
+### 2026-09-16 — Approved C1 pair configured + direct conversation opened on Staging
+
+- User explicitly confirmed the mapping: current primary account native `vi`, learns
+  `en`; accepted test peer native `en`, learns `vi`. `beginner` was used because it is
+  the existing C1/domain default and no different proficiency was requested.
+- Exact linked `ACTIVE_HEALTHY` Staging guard passed. Account pair was derived from the
+  already verified one-peer device evidence + reciprocal accepted rows, without putting
+  email/password/user IDs in source, docs or command output. Existing rows were absent;
+  idempotent trusted maintenance upsert created exactly 2 C1 rows and read-back matched.
+  Friendship remained 2 directions. Production touched=false; Training writes=0.
+- Android Settings mounted the normal `languageProfileProvider`, loaded the primary
+  remote row into owner-keyed local cache, and displayed `Tiếng Việt → Tiếng Anh ·
+  Mới bắt đầu`; no unknown/load-error state. Chat inbox and picker then showed exactly
+  one accepted peer with no missing-profile/runtime/list error.
+- Selecting that peer called the real `open_direct_chat` RPC. Route reached the detail
+  only after SQLite cache commit; empty conversation/composer rendered. Backend audit:
+  exactly 1 direct conversation for the pair, 2 members/2 active, 0 operational messages,
+  0 Gemini calls and 0 Training writes. No synthetic text was sent.
+- Post-route device counters Failed host lookup/Socket/PostgREST/Auth/Flutter-unhandled/
+  overflow each 0. App remained focused; Library DB + chat DB and 3 app-private JPEG
+  remain. This proves one signed-in Android client and backend aggregate only, not the
+  second-account UI, bidirectional relay, reconnect/idempotency or offline restart exit.
+
+### 2026-09-16 — Approved Staging test pair accepted + actual Friends list UI
+
+- User explicitly asked the two test accounts to be accepted and shown in each
+  other's friend lists. Scope is exact linked healthy Staging only; no profile/
+  onboarding/consent/Library/Training/Production changes authorized or performed.
+- Auth inventory completed, exactly two requested accounts + both public.users
+  records resolved; no identity/credential stored in documentation. Upsert ONLY
+  `(A,B)` and `(B,A)` friend rows to `accepted`, conflict key `(user_id,friend_id)`;
+  no global fake acceptance, new permissions, trigger/RLS bypass in client or migration.
+  Trusted service operation follows C2 maintenance authority for approved test setup.
+- Owner password login + REST/RLS reads verified each direction exactly once:
+  **accepted directions=2, verified owner views=2**. Existing passwords/profiles
+  unchanged. Accounts remain for user testing; no chat raw message created/exported.
+- Previously Friends tab was a placeholder even though accepted-friend picker existed.
+  Now opt-in exact-Staging owner renders actual accepted list using the existing
+  ID-only paginated provider; source profile is not required to list a friend.
+  Default/Production placeholder preserved. Cards use peer ID/suffix, not invented
+  display names or hardcoded demo emails; no extra user-profile query.
+- Network fetch only on explicit Friends tab/picker navigation, not cached chat-history
+  or Library navigation. Loading/error/empty/retry states, owner-keyed widget/provider,
+  old-account data excluded. Friends are network-backed, not an offline-cache feature.
+  Existing header chat CTA opens inbox/picker; does not bypass profile/open-direct RPC.
+- `flutter test --no-pub test/features/chat/operational_chat_screen_test.dart --reporter
+  expanded`: **14 pass**, including 3 new accepted-list tests (unknown profile,
+  reciprocal A/B visibility with account isolation, offline 0HTTP/no fabricated rows).
+  Existing chat/navigation/offline tests retained. Formatter 3files/0changes,
+  diff-check exit0. Full `flutter test --no-pub --reporter json`: 492 pass/1 existing
+  opt-in skip/0 failure, exit0/done.success=true/parseErrors=0 (89 combined chat).
+  `flutter analyze --no-pub`: clean, exit0 (123.1s).
+- First device view correctly exposed a real integration defect: Dart called
+  `com.capyvocab.app/network_status`, but current Android `MainActivity` no longer
+  contained the handler documented by the 2026-09-11 checkpoint, so
+  both Chat and Library network gates failed closed with `MissingPluginException`.
+  Restored the Android `ConnectivityManager` handler plus `ACCESS_NETWORK_STATE`;
+  it returns true only for an active network with INTERNET + VALIDATED capabilities.
+- Post-fix targeted Chat/Friends tests: 21 pass. Full suite rerun: **492 pass,
+  1 existing opt-in skip, 0 failure**, exit0. Targeted analyzer clean. Exact Staging
+  Android build PASS/exit0, assembleDebug 92.6s; migration dry-run upToDate=true,
+  no apply/deploy/Production write and temporary define files remaining=0.
+- `adb install -r` succeeded without uninstall/clear-data. Cold launch Status ok,
+  TotalTime 9281ms/WaitTime 9314ms. On CPH2375, Friends tab shows heading + exactly
+  one accepted card and accepted icon; error/empty states absent. This verifies the
+  current signed-in account UI only; reciprocal backend visibility is proven by the
+  two owner JWT/RLS reads, not a second physical-device UI run.
+- Post-navigation sanitized counters: Failed host lookup/Socket/PostgREST/Auth/
+  Flutter-unhandled/overflow/missing-network-plugin all 0. Library DB + chat DB and
+  3 app-private JPEG remain. USB connected, process alive and app focused.
+- USB reauthorized at start of this increment (`adb devices -l`: device).
+  Both C1 profiles still require explicit setup before chat send; no inferred native
+  language or synthetic training labels. C3 overall PARTIAL until actual live exit.
+
+
+### 2026-09-16 — C3C Android update/startup partial smoke + approved second test Auth account
+
+- User báo đã kết nối và yêu cầu kiểm tra. ADB ban đầu CPH2375 `665fdb60`
+  state=device; package installed, Library DB present; correct media directory
+  `app_flutter/capy_scans` held 3 JPEG. No chat DB before update. Initial files/
+  capy_scans probe was not the actual Flutter directory; do not use that 0 count.
+- `tool/run_staging_device_smoke.ps1 -FlutterCommand ... -Target android-build
+  -ChatRelayEnabled`: PASS/exit0, assembleDebug 143.2s. Exact healthy linked Staging
+  guard and dry-run upToDate=true; no migration apply, no Production. Chat + Library
+  flags ON via temporary defines; runner cleanup, no credentials logged/committed.
+- `adb -s 665fdb60 install -r build/app/outputs/flutter-apk/app-debug.apk`: Success.
+  No uninstall/clear-data. `am start -W .../.MainActivity`: Status ok, COLD,
+  TotalTime 9727ms/WaitTime 9761ms (Android activity metric, not benchmark against
+  earlier Flutter UI timings). Startup screenshot inspected: Home rendered.
+- Native chat DB `capy_chat_operational.db` + Library `capy_vocab.db` exist after
+  update; 3 media JPEG remain. New app PID log counters fatal exception/Flutter
+  unhandled or EXCEPTION CAUGHT/Failed host lookup/RenderFlex overflow each 0.
+  This is startup only, not 5-lesson detail/media/offline chat persistence evidence.
+- User approved check/create a second named Staging test account if absent.
+  Exact-project Auth inventory completed; account absent → created confirmed/test-only
+  account without sending an email, password login verified. No credential/UID/session
+  recorded here. Existing account password unchanged. Account persists for user's tests,
+  not temporary fixture cleanup; no email/password committed to source.
+- Read-only prerequisite checks at this earlier checkpoint: primary account exists;
+  primary + second account each have 0 C1 profiles; accepted relation had 0 directions. No profile,
+  onboarding or friend write made yet. Asked user to approve test VI→EN / EN→VI and
+  two-way accepted relation; pending response. No Training/consent/Library mutation.
+- Attempt to navigate Home→Friends failed because USB disconnected; next `adb
+  devices -l` showed same device **unauthorized**. User must unlock/allow debugging.
+  Do not infer Friends/inbox/detail or two-device chat works from startup success.
+- **C3 PARTIAL**: next resume USB authorization → gated CTA/inbox/picker/profile UI;
+  approved test setup if user agrees → real two-client send/receive/lost ACK/reconnect/
+  airplane-mode cold restart/account isolation + Library regression. C4–C6/T0–T5 OFF.
+  No app source changes, new dependencies, commit/push or Production writes this increment.
+
+
+### 2026-09-15 — C3C raw chat UI implemented, local verified; live exit pending
+
+- Theo yêu cầu tiếp tục: thêm UI operational chat riêng, giữ nguyên legacy
+  `chatbot` datasource/API và Library/Training schema. `/chat` và detail UUID
+  route dùng shared graph-paper frame, tokens; thêm CTA vào Bạn bè nhưng không
+  triển khai lại leaderboard/invite/accept UI đang scaffold.
+- Inbox/detail đọc owner-keyed SQLite stream, không đọc remote language profile.
+  Compose/draft widget key gồm project+user+conversation; invalid/uncached/inactive
+  conversation không có compose. Unknown source cache chặn gửi; profile cache
+  notification tự cập nhật, không thêm request.
+- Raw text chỉ clear sau durable enqueue thành công, giữ nguyên whitespace/emoji.
+  UI phân biệt pending/sent/blocked; blocked giữ bản local, không tự đổi ID/retry
+  permanent failure. Không có delivered/read-receipt, edit/delete, translation,
+  TTS, correction/tagging hoặc Training/export mới.
+- Accepted-friend picker chỉ tải sau explicit tap, query ID tối thiểu scoped owner,
+  keyset pages tới empty (không coi page ngắn là hoàn tất), bounded network gate/
+  timeout, post-response token/account/disposal guards. `open_direct_chat` RPC
+  vẫn kiểm tra mutual accepted + profiles; client không tự tạo membership.
+- Verification: `flutter test --no-pub test/features/chat/operational_chat_screen_test.dart
+  --reporter expanded` 11 pass; `flutter analyze --no-pub` clean. Cases: zero-HTTP
+  offline inbox/detail/enqueue, sent/blocked, unknown/cache update, A/B draft/history
+  isolation, invalid/uncached deep links, offline picker, scoped paged friend read,
+  canonical open/SQLite commit, 320px/1440px + keyboard/Unicode cap, disabled no SDK/DB,
+  friends CTA opt-in/hidden with zero SDK resolution. Placeholder scroll avoids
+  7px small-window overflow exposed by the added CTA.
+- Initial fixture compile/timing/unique-peer/imperative-URL assertions corrected;
+  no test skipped/weakened, no DB constraint changed. Windows orphan tester held
+  sqlite3.dll after interrupted fake-clock run; stopped only verified orphan test
+  process, rerun passed. Concurrent build/full-suite exposed a fixed-delay test
+  race (composer inspected before SQLite completion, followed by disposed-container
+  callback after failed assertion); fixture now awaits expected state with a 30s
+  deadline and always unmounts before resource teardown. No app invariant weakened.
+  Happy-path open test also awaits canonical detail/dialog disposal, not a fixed
+  delay after SQL commit. Final `-Target web-build -ChatRelayEnabled` PASS/exit0,
+  compile 92.8s, `build/web`; dry-run upToDate=true, temporary defines cleaned by
+  runner. Existing flutter_tts Wasm/Cupertino font warnings remain; JavaScript
+  artifact, not browser/device/PWA smoke.
+- Final full regression: `flutter test --no-pub --reporter json` **489 pass /
+  1 existing opt-in skip / 0 failures**, exit0/done.success=true. Collector giữ
+  JSON line fragments qua output chunks; parseErrors=0/truncated=false. Combined
+  chat now **86** (75 C3A/B + 11 C3C); `flutter analyze --no-pub` clean,
+  `dart format --output=none --set-exit-if-changed` 6files/0changes;
+  `git diff --check` exit0, existing LF→CRLF warnings only.
+- `adb devices` trả empty 2026-09-15. C3 overall **PARTIAL**: live two-client raw
+  send/receive + lost ACK/reconnect + offline cold restart/multi-account vẫn pending.
+  C0 policy/Production gate giữ nguyên. No remote writes/apply/commit/push this increment.
+
+
+### 2026-09-15 — C3B.2 opt-in Staging auth/lifecycle/SQLite refresh/scheduler verified locally
+
+- Theo yêu cầu tiếp tục: triển khai **C3B.2 IMPLEMENTED/LOCAL VERIFIED**,
+  **C3 overall PARTIAL**. Không suy ra device/live chat từ cache/adapter tests.
+- `OperationalChatCoordinator`: single-flight, local-only enqueue/source profile,
+  gate timeout 3s, drain raw trước history, lazy Realtime, event coalescing 150ms,
+  30s periodic repair, fresh socket restart, network 2–300s backoff, durable
+  eligible-source deadline + 100-row batches/yield >=10ms. Missing/native-changed
+  profile giữ pending, không consume attempts hoặc tự rewrite raw.
+- Store thêm revision/current-session guarded transactions: inventory + per-ID
+  RLS visibility chỉ deactivate captured absent conversations; history merge only
+  verified-visible và prune captured SENT IDs. Local ACK/open/auth/event changes
+  reject/rollback. Guard trong enqueue/ACK/fail transaction còn kiểm tra session
+  sau khi đợi SQL lock, không chỉ trước HTTP. Không đổi chat DB v1/schema/Library.
+- Owner-keyed local inbox/detail providers dùng SDK currentSession authoritative,
+  không dùng previous AsyncValue account, không tạo language-profile API/notifier.
+  Token/account/foreground changes dispose old coordinator/gateway; same-owner
+  cache giữ nguyên. Expired JWT gate offline, vẫn đọc/compose local được.
+- Android dùng channel network đã có; missing plugin fail closed. Web navigator
+  onLine dùng package web hiện có. Other native dựa safe network failure/backoff.
+- `OperationalChatRuntime` đã mount trong app, requires CHAT_RELAY_ENABLED=true,
+  exact Staging host/session/foreground. Default flag OFF, Production rejected
+  kể cả bật flag. Chưa đổi UI/API legacy chat hoặc bật translation/Training.
+- `flutter test --no-pub test/features/chat`: **75/75 pass** (23 C3A, 26 gateway,
+  19 coordinator/SQLite, 7 SDK-auth/provider/network). Covers SQL-lock logout,
+  mid-transaction rollback, newer ACK/open/event while fetch, visibility failure,
+  no offline HTTP/profile requests, multi-account/unknown/source change, token
+  refresh/pause/resume, durable retry and automatic 101-message batches.
+- Gateway SDK WebSocket localhost test verify fresh socket restart with captured
+  JWT, guarded events, detach/re-listen. Unsubscribe settles locally in SDK's
+  leaving state; fixture verifies leave frames and does not reply into closing
+  sockets (không claim client đợi server leave ACK).
+- Initial combined fixture expected first offline tick but received idle because
+  runtime already entered backoff; assert zero attempts/HTTP instead of racing
+  background timing. Full suite then reproduced 101-row fixture's arbitrary 5s
+  polling timeout under concurrent compile; changed to explicit completion barrier
+  with bounded timeout. Still asserts 101 unique rows/no duplicate/empty outbox.
+  No test skip/suppress hoặc weakening application invariants.
+- Final `flutter test --no-pub --reporter json`: **478 pass, 1 opt-in skip,
+  0 failure, exit 0/done.success=true**. `flutter analyze --no-pub` clean.
+  Format 15 files 0 changes; diff check exit 0 (CRLF warnings only).
+- Staging runner thêm optional -ChatRelayEnabled/defaultfalse và web-build,
+  exact-ref guard; parser pass. Final command
+  `./tool/run_staging_device_smoke.ps1 -FlutterCommand 'C:\fulter\flutter\bin\flutter.bat' -Target web-build -ChatRelayEnabled`:
+  **PASS/exit0**, source cuối compile 93.8s, build/web; CHAT_RELAY_ENABLED +
+  LIBRARY_SYNC_ENABLED=true và Staging URL/key. Temporary defines cleanup trong
+  finally, không in/commit key. No browser/app launch/deploy trong target này.
+  Còn existing flutter_tts Wasm incompatibility và Cupertino font warnings;
+  JavaScript Web build thành công, không claim Wasm/PWA/device smoke.
+- No dependency install/update, migration/apply/deploy/Production/Training/Gemini/
+  commit/push. Staging dry-run upToDate=true; C3C UI/live two-client/offline cold
+  restart/multi-account smoke pending. Initial periodic pull is not a production-
+  scale incremental history cursor; Web app-shell offline startup remains pending.
+
+### 2026-09-15 — C3B.1 Staging-only chat Supabase adapter local verified
+
+- C3B chia increment: **C3B.1 IMPLEMENTED/LOCAL VERIFIED**, **C3B.2 PENDING**
+  auth/network/lifecycle/concurrency-safe SQLite apply/refresh/reconnect repair/
+  durable deadline scheduler. **C3 overall PARTIAL**, C3C UI/device/Web pending.
+- Thêm private `OperationalChatSupabaseGateway`, chỉ nhận exact Staging ref +
+  matched owner Session. Captured JWT, current-session pre/post-request guards,
+  safe denied/retryable categories và bounded HTTP timeout. Không tự activate,
+  không dùng mutable auth headers của global SDK/client kế tiếp.
+- C2 inserts giữ raw/client identity, duplicate 23505 -> sender/client-key read/
+  validate canonical ACK, không UPSERT. Open-direct dùng server RPC/peer validate.
+- Pull keyset theo UUID đến empty kể cả server page cap; reject non-advancing/
+  failed/malformed pages. Paged history merge-only, không atomic snapshot.
+  Cached sent-ID visibility checks chunk/paginate giúp C3B.2 prune đúng snapshot;
+  chưa thêm SQLite prune/membership concurrency fence trong increment này.
+- Lazy broadcast Realtime chỉ invalidations, 1 channel/3 operational tables,
+  generation/session guards và explicit channel removal trước SDK disposal.
+  Regression localhost tái hiện SDK 2.13.0 custom-token force-rejoin empty-ref;
+  fixed headers + bỏ resolver chỉ trên private instance. Global SDK/package/
+  dependency/Library/scan/AI schema không đổi. Socket-loss runtime recovery pending.
+- `flutter test --no-pub test/features/chat/operational_chat_supabase_gateway_test.dart`:
+  **24 pass** (MockClient + WebSocket localhost, không cloud).
+  `flutter test --no-pub test/features/chat`: **47 pass**, exit 0.
+- Fixture đầu thiếu HTTP Response.request; sửa đúng SDK parser contract. Full
+  suite đầu 449 pass/1 skip/1 teardown failure (pending leave/socket closed);
+  fixed disposal + synchronize cả hai fixture leave. Final full
+  `flutter test --no-pub --reporter json`: **exit 0, done.success=true**.
+  `flutter analyze --no-pub`: sạch. Format check 2 files 0 changes.
+- Contract `docs/data/c3b_operational_chat_supabase_contract.md`, plan/chat/DB
+  instructions cập nhật cùng increment. Không build/live adapter/device/browser
+  smoke; không migration/remote call/Production/Gemini/Training/commit/push.
+
+### 2026-09-15 — C3A separate local Chat DB/outbox/relay foundation verified
+
+- Theo yêu cầu tiếp tục: chia C3 thành C3A local foundation, C3B Supabase/auth/
+  Realtime runtime, C3C UI + final Staging client/offline smoke. **C3 PARTIAL**.
+- Thêm `lib/features/chat/`: domain raw/types/validated remote decoder/restricted
+  insert payload; `OperationalChatDatabase` file riêng `capy_chat_operational.db`
+  v1, 2 tables, project+owner composite keys/FK/indexes. Dùng UUID helper và
+  native/Web SQLite factories đã có; không mở/upgrade Library/AI database.
+- `OperationalChatStore`: atomic message-as-outbox, local streams, ACK/echo
+  merge/immutable content/server clock/canonical ID, deterministic ordering;
+  complete-only membership/history reconcile để hide inactive/held/deleted cache
+  và giữ unsent text. Không được truyền partial pages; C3B phải implement complete
+  pagination và reconcile concurrent Realtime snapshots.
+- `OperationalChatRelay`: enqueue/read không await network; explicit single-flight
+  drain, owner/dispose guards trước/sau awaits, durable exponential backoff và
+  8-attempt cap; denied/invalid/exhausted -> blocked, không xóa raw. Transport
+  hiện là injectable contract + fake test; chưa Supabase/runtime/scheduler/UI.
+- `flutter test --no-pub test/features/chat/operational_chat_relay_test.dart`:
+  **23/23 pass**, real disposable SQLite FFI + fake transport: offline reopen,
+  owner/project, lost ACK/server commit one-row retry, single-flight/cap/denied,
+  stale auth result, ordering/immutable echo/canonical ID/timezone, visibility
+  reconciliation rollback và local watcher disposal. Không phải C3 live E2E.
+- Analyzer đầu 6 lint infos mới; sửa braces/import không suppress. Rerun
+  `flutter analyze --no-pub` sạch. `flutter test --no-pub` full suite:
+  **426 pass + 1 opt-in skip**, exit 0. Format 5 files sạch.
+- Final diff/format check exit 0 (chỉ CRLF warnings); dependency lock không có
+  content diff. Không build/smoke Web/Android trong increment foundation này.
+- Contract `docs/data/c3a_operational_chat_local_contract.md`; cập nhật chat
+  plan/status. Không sửa UI/API legacy chat, startup/Library/AI schema hoặc
+  migration. Không remote calls/Production/Gemini/Training/commit/push. C0
+  privacy/retention pending; C3B/C3C/device/browser smoke còn phải thực hiện.
+
+### 2026-09-15 — C2 approved Staging backup/apply/REST + Realtime verified
+
+- User duyệt gate C2 Staging riêng sau báo cáo local; không suy ra approval
+  Production/C3/Training. Xác minh healthy linked Staging và giữ nguyên demo.
+- Chạy lại `tool/test_chat_operational_schema.ps1`: 47/47 native SQL checks pass,
+  exit 0, disposable cluster cleanup. Backup mới qua
+  `pwsh -NoProfile -File .\tool\backup_staging_database.ps1`: archive 146,004
+  byte, DPAPI decrypt/SHA-256/persisted hashes và pg_restore list verified tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20260915T113034Z-c9e9c096`.
+  Public/private + encrypted migration history; Auth/Storage/object bytes excluded,
+  không bị migration C2 thay đổi. Restore cần cùng Windows profile.
+- Exact dry-run chỉ C2; chạy
+  `npx supabase db push --project-ref nxteaznowkfennxpqjmt --yes`: apply duy nhất
+  `20260915120000_add_operational_chat_security.sql`, exit 0. Post-apply migration
+  list 23/23; dry-run `upToDate=true`, migrations=[]; không repair/relink.
+- Thêm/chạy `pwsh -NoProfile -File .\tool\run_staging_operational_chat_smoke.ps1`:
+  3 synthetic accounts, REST/RLS + native ClientWebSocket protocol 1.0.0,
+  five-table subscription ready ở cả 3 sessions. **10 nhóm checks pass**, exit 0.
+  Friend pending/forged accept denied, valid recipient/mirror UPSERT preserved;
+  canonical atomic RPC, raw exact Unicode/server time/duplicate/spoof/edit/delete,
+  service-only translation/shared relay/unique/immutable, human correction và
+  sender decision invariant, held/inactive/no-reactivation pass.
+- A/B nhận raw qua WebSocket trước khi tạo translation; cả hai nhận shared
+  translation/correction. Outsider REST cả 5 bảng empty, anonymous denied;
+  outsider nhận 0 event trong cửa sổ smoke (không tuyên bố proof mọi lifecycle).
+  Bản dịch/correction là synthetic, Gemini calls=0, Training writes=0.
+- Final smoke chạy lại pass 10 nhóm, exit 0; assert nội dung translation giống
+  nhau ở A/B và cả hai nhận correction `accepted`, cleanup 0. PowerShell parser
+  runner sạch, whitespace các file mới sạch; `git diff --check` exit 0, chỉ
+  CRLF warnings. Không sửa migration đã apply để lấy kết quả xanh.
+- Cleanup dùng Auth metadata exact scope/run và verified IDs; đóng sockets,
+  xóa đúng 3 fixture accounts, cascade conversation/derived/friends/profiles.
+  Baseline counts giữ nguyên, Auth fixture remaining=0. Không xóa dữ liệu demo.
+- Regression `tool/run_staging_language_profile_smoke.ps1`: 7 nhóm C1 pass,
+  fixture cleanup 0. Post-apply Library audit Staging: 5 Photo Note/10 normalized
+  private object, 0 legacy/missing/mismatch/unreferenced, complete inventory;
+  legacy audit 0 messages/0 friends.
+- Cập nhật contract/chat plan/runbook và partial schema snapshot pointer. Không
+  sửa Flutter/SQLite/runtime hoặc chạy lại Flutter checks; UI/reconnect/offline
+  chat còn C3+. C0 retention/account deletion policy vẫn pending trước rollout;
+  Production không được gọi/ghi, không commit/push/deploy Gemini/Training.
+
+### 2026-09-15 — C2 Operational Chat local SQL verified; Staging apply pending
+
+- Theo yêu cầu thực hiện C2: thêm additive migration
+  `20260915120000_add_operational_chat_security.sql` với `chat_conversations`,
+  `chat_members`, `chat_operational_messages`, `chat_translations`,
+  `chat_corrections`; active membership RLS, column-restricted client INSERT,
+  service-only translation writes, canonical/atomic direct-chat RPC,
+  idempotency, server clock, immutable content, indexes và explicit publication.
+- Friendship trigger chặn sender tự giả accepted, giữ recipient acceptance và
+  mirror INSERT/UPSERT của datasource cũ. Legacy `chat_messages` không backfill
+  hoặc ép read-only vì client chatbot đang dùng API ghi cũ.
+- Thêm bootstrap/test SQL và `tool/test_chat_operational_schema.ps1`; chạy
+  `pwsh -NoProfile -File .\tool\test_chat_operational_schema.ps1`: **47 checks
+  pass**, exit 0. Native PostgreSQL 18 cluster riêng loopback, synthetic fixtures,
+  transaction rollback; remote_writes=0. Không Docker/dependency mới.
+- Runner startup Windows chờ pg_ctl parent riêng, không chờ process tree của
+  server; stop/cleanup exact temp directory validated. Cluster lần thử lỗi cũng
+  đã dừng và dọn sạch, không đụng PostgreSQL service hiện có.
+- Chạy `pwsh -NoProfile -File .\tool\audit_staging_chat_legacy.ps1`: legacy
+  columns verified, 0 messages, 0 friends; chỉ audit read-only/counts, không lấy
+  nội dung chat hoặc in key. Không fixture writes trên remote phiên C2.
+- Final runner recheck: 47/47 pass, exit 0; audit exact `Content-Range` chống
+  server pagination/truncation pass. PowerShell parser hai runner sạch,
+  whitespace bảy file C2 mới sạch, `git diff --check` exit 0 (chỉ CRLF warnings).
+- Chạy `npx supabase db push --project-ref nxteaznowkfennxpqjmt --dry-run`:
+  chỉ đề xuất C2, exit 0; remote vẫn 22 migrations/local 23. **Chưa apply**:
+  cần approval riêng, backup mới và post-apply REST/Realtime/Library smoke.
+  Production không được gọi/relink/ghi.
+- Contract mới `docs/data/c2_operational_chat_contract.md`; cập nhật `chat_DB.md`
+  và runbook. C0 retention/edit/delete/account cascade policy vẫn pending trước
+  product rollout. Realtime chỉ verified catalog, chưa live WebSocket. Không
+  chạy lại Flutter suite/analyzer/build vì không đổi Dart/runtime trong C2;
+  không kế thừa C1 evidence thành C2 UI evidence. Không Gemini/Training pipeline.
+
+### 2026-09-15 — C1 Staging backup/apply/two-account backend verified
+
+- Theo yêu cầu tiếp tục, hoàn tất gate Staging cho C1; không gọi/ghi/relink
+  Production, không sửa demo user, không triển khai C2 hoặc Training.
+- Thêm runner `tool/backup_staging_database.ps1`: native PostgreSQL 18 dump
+  `public` + `private`; migration history lấy read-only qua CLI riêng. Connection
+  tạm giữ trong memory, parser không evaluate shell, môi trường PostgreSQL được
+  restore; DPAPI CurrentUser encrypt ngoài repo. Backup path:
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20260915T105000Z-805486b7`.
+- Archive 133,403 byte; decrypt SHA-256 round-trip/persisted hashes và
+  `pg_restore --list` pass. Plaintext temp đã xóa; bản mã hóa được giữ lại và cần
+  cùng Windows profile để restore. Auth/Storage/object bytes nằm ngoài dump và
+  không bị C1 thay đổi.
+- Backup ban đầu fail-closed do thiếu role selection trong native invocation.
+  Runner dùng `--role=postgres` đã có trong script CLI chuẩn; không tạo role hoặc
+  sửa grants. Parser/self-test quoting, duplicate/missing/shell expansion pass.
+- Local C1 test `8/8` pass; exact dry-run chỉ đề xuất C1. Apply đúng
+  `20260914120000_add_chat_language_profiles.sql` lên explicit Staging ref.
+  Post-apply list 22/22 và dry-run `upToDate=true`.
+- Thêm/chạy `tool/run_staging_language_profile_smoke.ps1`: hai account unknown
+  ban đầu; atomic onboarding/profile, owner read, cross-read empty/cross-write
+  403/anon denied, invalid RPC rollback/table constraint, server timestamp và
+  legacy 8-arg RPC preservation pass. 7 nhóm kiểm tra, fixture Auth/profile còn
+  0; baseline profile IDs giữ nguyên.
+- Post-apply Library audit Staging: 5 bài/10 object chuẩn hóa, private bucket;
+  0 missing/mismatch/legacy/unreferenced, complete inventory. Android/Web UI
+  smoke C1 chưa chạy; full suite/analyzer/Web build giữ evidence local 2026-09-14,
+  không tuyên bố chạy lại trong increment scripts/remote này.
+- `flutter devices` chỉ thấy Windows/Chrome/Edge, không Android. Thử widget
+  tests C1 onboarding/settings với `--platform chrome --timeout 30s`: runner
+  vẫn treo `loading`, 0 assertion chạy; dừng Ctrl+C, không có test pass. UI live
+  và account-switch trên Android/Web còn pending.
+
+### 2026-09-14 — C1 Language Profile implemented and locally verified
+
+- Khóa phạm vi C1: MVP `vi`/`en`, người dùng tự khai báo, hai ngôn ngữ phải khác
+  nhau; không suy đoán/backfill account cũ và không bật chat/Training.
+- Thêm `LanguageProfile`, owner-scoped SharedPreferences cache, Supabase
+  repository/notifier background refresh; cache hydrate trước `runApp` và tách
+  dữ liệu theo user ID để logout/login không trộn account.
+- Thêm bước onboarding cùng Settings dialog cho native/learning/proficiency;
+  completion RPC mới ghi profile và onboarding trong một transaction, đồng thời
+  giữ overload cũ để tương thích client đã phát hành.
+- Tạo additive migration
+  `20260914120000_add_chat_language_profiles.sql`, RLS owner-only và grants tối
+  thiểu. Snapshot schema được cập nhật; không thêm dependency.
+- Targeted language/onboarding/settings: `43` pass; Language Profile sau
+  hardening server timestamp: `8/8` pass. Full suite:
+  `403` pass + `1` opt-in skip, `0` failure. `flutter analyze --no-pub` sạch.
+  `flutter build web --no-pub` pass; warning Wasm `flutter_tts` và Cupertino font
+  còn tồn tại nhưng không chặn JavaScript build.
+- Staging dry-run chỉ liệt kê đúng migration C1. Chưa push/apply migration, chưa
+  deploy function, chưa ghi dữ liệu Staging và không thao tác Production. Rollout
+  bắt buộc migration-first trước khi chạy client C1 trên từng môi trường.
+
+### 2026-09-14 — Chat DB và human-labelled Training plan
+
+- Thêm `chat_DB.md` tổng hợp mục tiêu, hiện trạng legacy `chat_messages`, ba
+  luồng AI Scan/Operational Chat/Training và thứ tự milestone C0–C6, T0–T5.
+- Khóa hướng sản phẩm theo yêu cầu: chat người-với-người; raw text relay trước;
+  mỗi translation key chỉ gọi Gemini một lần trên server; hai client dùng chung
+  kết quả; Scan/Gemini output không đi vào dataset Training.
+- Thiết kế UX tagging tùy chọn sau correction: người dùng nguồn tự xác nhận span
+  và dạng chuẩn, người dùng đích tự viết `gold_target`, người gửi accept và cả
+  hai cấp consent theo mẫu trước promotion.
+- Ghi schema/RLS/trust-boundary mục tiêu và test gates dưới trạng thái `PLAN
+  ONLY`; tên/cột cuối, retention, tuổi/khu vực, revoke sau training và rollout
+  vẫn chờ C0/T0 phê duyệt.
+- Không sửa code/schema/migration, không thêm dependency, không gọi Gemini,
+  không deploy và không đọc/ghi Staging hoặc Production. Verification tài liệu:
+  kiểm tra diff/format/link nội bộ; không chạy Flutter test vì không đổi runtime.
+
+### 2026-09-12 — D4 Web persistence + Supabase handoff audit
+
+- Theo yêu cầu khắc phục Web, nối scan Web từ memory sang SQLite
+  WASM/IndexedDB: JPEG nằm trong media blob DB riêng; JSON/normalized Library
+  aggregate đi qua `ScanResultLocalDataSource` như native.
+- Thêm loader/purger Web cho Library/Trash/detail và khóa Cloud Backup trên Web
+  cho tới khi có sync gateway; không tự tải ảnh cloud và không bật Production
+  rollout flag.
+- Thêm responsive content frame dùng chung, giới hạn navigation/sheet/Library
+  trên viewport rộng nhưng giữ nguyên layout/golden mobile.
+- Sửa `tool/audit_supabase_library_rollout.ps1` ưu tiên Supabase secret key mới,
+  dùng `--reveal` trong bộ nhớ, User-Agent máy chủ và fallback legacy
+  `service_role`; contract test được cập nhật.
+- Audit read-only pass trên cả hai project bằng
+  `access_mode=secret_read_only`: Production có M3A, bucket private, inventory
+  complete, 0 Photo Note/0 object; Staging có 5 Photo Note/10 object chuẩn hóa,
+  không legacy/missing/mismatch/unreferenced. Không có migration, ghi dữ liệu,
+  deploy function hay thay secret.
+- Verification: targeted analyzer sạch; media/responsive 12/12, Settings 11/11,
+  Library 9/9, scan provider 4/4 và cloud migration contract 8/8 pass; Web
+  debug build pass. Full suite lần đầu chỉ lỗi contract cũ
+  `service_role_read_only`; sau khi cập nhật contract, full suite pass và full
+  analyzer sạch. Chrome runner vẫn treo ở `loading` hơn 2 phút nên IndexedDB
+  browser reopen/cold-restart còn là runtime checkpoint, không được tuyên bố
+  hoàn tất.
+- Build artifact có `sqlite3.wasm`/`sqflite_sw.js`, nhưng
+  `flutter_service_worker.js` hiện tự unregister. D4 increment này chỉ chốt
+  local data durability; PWA app-shell cache/hosting offline là phần còn thiếu.
+- D4 được ghi APPROVED ngày 2026-09-12 cho local Web Library persistence;
+  không bao gồm cloud sync/restore Web hoặc on-device training Web.
 
 ### 2026-09-11 — GitHub UI sync tới `cbd7318`, offline contract preserved
 

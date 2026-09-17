@@ -2,9 +2,12 @@ param(
     [string]$ExpectedProjectName = "emtonny's Project",
     [string]$FlutterCommand = "flutter",
     [int]$StartupSeconds = 10,
-    [ValidateSet('windows', 'android-build', 'android-device')]
+    [ValidateSet('windows', 'android-build', 'android-device', 'web-build', 'web-device')]
     [string]$Target = 'windows',
-    [string]$DeviceId = ''
+    [string]$DeviceId = '',
+    [ValidateRange(1024, 65535)]
+    [int]$WebPort = 3000,
+    [switch]$ChatRelayEnabled
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +33,9 @@ try {
     }
     if ($linked[0].name -ne $ExpectedProjectName) {
         throw 'Refusing device smoke: linked project is not expected Staging.'
+    }
+    if ($linked[0].ref -ne 'nxteaznowkfennxpqjmt') {
+        throw 'Refusing device smoke: linked project ref is not exact Staging.'
     }
     if ($linked[0].status -ne 'ACTIVE_HEALTHY') {
         throw 'Refusing device smoke: Staging is not ACTIVE_HEALTHY.'
@@ -76,12 +82,36 @@ try {
         SUPABASE_URL = "https://$($linked[0].ref).supabase.co"
         SUPABASE_ANON_KEY = $anonValue
         LIBRARY_SYNC_ENABLED = $true
+        CHAT_RELAY_ENABLED = [bool]$ChatRelayEnabled
     } | ConvertTo-Json
     [IO.File]::WriteAllText(
         $defineFile,
         $defines,
         (New-Object Text.UTF8Encoding($false))
     )
+
+    if ($Target -eq 'web-build') {
+        Write-Host 'Building Web Staging with explicit chat rollout flag...'
+        & $FlutterCommand build web --no-pub "--dart-define-from-file=$defineFile"
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Web Staging build verification failed.'
+        }
+        Write-Host 'PASS: Web Staging compiled; this is not a browser/device smoke.'
+        return
+    }
+
+    if ($Target -eq 'web-device') {
+        Write-Host "Running Web Staging on Chrome at http://localhost:$WebPort..."
+        & $FlutterCommand run --debug --no-pub `
+            -d chrome `
+            "--web-port=$WebPort" `
+            "--dart-define-from-file=$defineFile"
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Web Staging device session failed.'
+        }
+        Write-Host 'PASS: Flutter Web Staging session ended cleanly.'
+        return
+    }
 
     if ($Target -eq 'android-build') {
         Write-Host 'Building Android Staging APK with Library sync enabled...'

@@ -62,6 +62,9 @@ void main() {
         age: 20,
         phone: ' 0987654321 ',
         accountRole: 'personal',
+        nativeLanguageCode: 'vi',
+        learningLanguageCode: 'en',
+        proficiencyLevel: 'intermediate',
         reminderTime: '20:00',
         studyEndTime: '21:00',
         dailyTargetWords: 10,
@@ -74,6 +77,9 @@ void main() {
     expect(request.uri.path, '/rest/v1/rpc/complete_onboarding');
     expect(body['p_reminder_time'], '20:00');
     expect(body['p_study_end_time'], '21:00');
+    expect(body['p_native_language_code'], 'vi');
+    expect(body['p_learning_language_code'], 'en');
+    expect(body['p_proficiency_level'], 'intermediate');
 
     request.response
       ..statusCode = HttpStatus.ok
@@ -116,6 +122,8 @@ void main() {
           age: 20,
           phone: '0987654321',
           accountRole: 'personal',
+          nativeLanguageCode: 'vi',
+          learningLanguageCode: 'en',
           reminderTime: '20:00',
           studyEndTime: '21:00',
           dailyTargetWords: 10,

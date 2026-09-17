@@ -256,31 +256,46 @@ if ($project[0].status -ne 'ACTIVE_HEALTHY') {
 }
 
 $keysJson = (& npx.cmd supabase projects api-keys `
-    --project-ref $ProjectRef --output json | Out-String)
+    --project-ref $ProjectRef --reveal --output json | Out-String)
 if ($LASTEXITCODE -ne 0) {
     throw 'Unable to obtain temporary project API credentials.'
 }
 $keys = @(ConvertFrom-Json -InputObject $keysJson)
-$service = @($keys | Where-Object {
-    $_.name -eq 'service_role' -or $_.id -eq 'service_role'
+$secret = @($keys | Where-Object {
+    $_.type -eq 'secret'
 } | Select-Object -First 1)
-if ($service.Count -ne 1) {
-    throw 'Supabase CLI did not return exactly one service_role key.'
-}
-$serviceKey = if ($service[0].api_key) {
-    $service[0].api_key
+$credential = if ($secret.Count -eq 1) {
+    $secret
 }
 else {
-    $service[0].key
+    @($keys | Where-Object {
+        $_.name -eq 'service_role' -or $_.id -eq 'service_role'
+    } | Select-Object -First 1)
+}
+if ($credential.Count -ne 1) {
+    throw 'Supabase CLI did not return a secret or service_role API key.'
+}
+$serviceKey = if ($credential[0].api_key) {
+    $credential[0].api_key
+}
+else {
+    $credential[0].key
 }
 if (-not $serviceKey) {
-    throw 'Supabase CLI returned an unsupported service_role key shape.'
+    throw 'Supabase CLI returned an unsupported privileged API key shape.'
+}
+$credentialType = if ($credential[0].type) {
+    $credential[0].type
+}
+else {
+    'legacy_service_role'
 }
 
 $baseUrl = "https://$ProjectRef.supabase.co"
 $headers = @{
     apikey = $serviceKey
     Authorization = "Bearer $serviceKey"
+    'User-Agent' = 'capy-vocab-rollout-audit/1.0'
 }
 
 try {
@@ -401,7 +416,7 @@ try {
     $result = [ordered]@{
         audit_version = 2
         audited_at_utc = [DateTime]::UtcNow.ToString('o')
-        access_mode = 'service_role_read_only'
+        access_mode = "${credentialType}_read_only"
         project = [ordered]@{
             name = $ProjectName
             ref = $ProjectRef
@@ -454,4 +469,8 @@ try {
 finally {
     $serviceKey = $null
     $headers = $null
+    $credential = $null
+    $secret = $null
+    $keys = $null
+    $keysJson = $null
 }

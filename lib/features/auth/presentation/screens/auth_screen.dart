@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,9 +16,16 @@ import '../widgets/capy_video_header.dart';
 import '../widgets/social_auth_button.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
-  const AuthScreen({super.key, this.initialMessage});
+  const AuthScreen({
+    super.key,
+    this.initialMessage,
+    this.stagingTestMode,
+  });
 
   final String? initialMessage;
+
+  /// Null uses the actual Web Supabase host; tests may override deterministically.
+  final bool? stagingTestMode;
 
   @override
   ConsumerState<AuthScreen> createState() => _AuthScreenState();
@@ -25,6 +33,11 @@ class AuthScreen extends ConsumerStatefulWidget {
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
   static const _wideLayoutMinWidth = 760.0;
+  static const _stagingSupabaseHost = 'nxteaznowkfennxpqjmt.supabase.co';
+  static const _chatRelayEnabled = bool.fromEnvironment(
+    'CHAT_RELAY_ENABLED',
+    defaultValue: false,
+  );
 
   final _formKey = GlobalKey<FormState>();
   final _displayNameController = TextEditingController();
@@ -37,6 +50,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   String? _topMessage;
   bool _topMessageIsError = false;
   Timer? _topMessageTimer;
+
+  bool get _showStagingTestBanner {
+    if (widget.stagingTestMode != null) return widget.stagingTestMode!;
+    if (!kIsWeb || !_chatRelayEnabled) return false;
+    final url = Uri.tryParse(Supabase.instance.client.rest.url);
+    return url?.scheme == 'https' && url?.host == _stagingSupabaseHost;
+  }
 
   @override
   void initState() {
@@ -271,6 +291,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_showStagingTestBanner) ...[
+                _buildStagingTestBanner(),
+                const SizedBox(height: 14),
+              ],
               const CapyVideoHeader(),
               const SizedBox(height: 14),
               _buildTabSwitcher(isLoading),
@@ -298,6 +322,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_showStagingTestBanner) ...[
+                _buildStagingTestBanner(),
+                const SizedBox(height: 14),
+              ],
               // Top Prominent Banner Header for Web/PC & Tablet
               Container(
                 key: const Key('auth-wide-header-box'),
@@ -584,6 +612,63 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               _buildSubmitButton(isLoading),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStagingTestBanner() {
+    return Semantics(
+      label:
+          'Môi trường Staging Test. Dữ liệu thử nghiệm tách biệt Production.',
+      child: Container(
+        key: const Key('staging-test-banner'),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.yellow,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.ink, width: 2.5),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.ink,
+              offset: Offset(4, 4),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.science_rounded, color: AppColors.ink, size: 28),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'STAGING TEST · WEB',
+                    style: TextStyle(
+                      fontFamily: 'Fredoka',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Dữ liệu thử nghiệm tách biệt Production · Chat đang bật',
+                    style: TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

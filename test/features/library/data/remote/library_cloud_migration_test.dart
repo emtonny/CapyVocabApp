@@ -36,7 +36,11 @@ void main() {
       productionAuditHarness,
       contains('/storage/v1/object/list/\$bucketName'),
     );
-    expect(productionAuditHarness, contains('service_role_read_only'));
+    expect(productionAuditHarness, contains("\$_.type -eq 'secret'"));
+    expect(productionAuditHarness, contains("\$_.name -eq 'service_role'"));
+    expect(productionAuditHarness, contains('--reveal --output json'));
+    expect(productionAuditHarness, contains('capy-vocab-rollout-audit/1.0'));
+    expect(productionAuditHarness, contains('credentialType}_read_only'));
     expect(
       productionAuditHarness,
       isNot(matches(

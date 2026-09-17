@@ -8,10 +8,12 @@ class GraphPaperScaffold extends StatelessWidget {
     super.key,
     required this.body,
     this.bottomNavigationBar,
+    this.maxContentWidth = AdaptiveContentFrame.defaultMaxWidth,
   });
 
   final Widget body;
   final Widget? bottomNavigationBar;
+  final double maxContentWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -19,9 +21,49 @@ class GraphPaperScaffold extends StatelessWidget {
       extendBody: bottomNavigationBar != null,
       backgroundColor: _graphPaperBaseColor,
       body: SizedBox.expand(
-        child: GraphPaperBackground(child: body),
+        child: GraphPaperBackground(
+          child: AdaptiveContentFrame(
+            maxWidth: maxContentWidth,
+            child: body,
+          ),
+        ),
       ),
       bottomNavigationBar: bottomNavigationBar,
+    );
+  }
+}
+
+/// Keeps phone layouts unchanged while preventing pages from stretching
+/// edge-to-edge in resizable browser and desktop windows.
+class AdaptiveContentFrame extends StatelessWidget {
+  const AdaptiveContentFrame({
+    super.key,
+    required this.child,
+    this.maxWidth = defaultMaxWidth,
+    this.contentKey,
+  });
+
+  static const double defaultMaxWidth = 1120;
+
+  final Widget child;
+  final double maxWidth;
+  final Key? contentKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.clamp(0, maxWidth).toDouble();
+        return Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            key: contentKey,
+            width: width,
+            height: constraints.hasBoundedHeight ? constraints.maxHeight : null,
+            child: child,
+          ),
+        );
+      },
     );
   }
 }

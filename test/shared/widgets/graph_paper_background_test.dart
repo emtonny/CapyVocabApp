@@ -48,6 +48,40 @@ void main() {
       expect(find.byType(CustomPaint), findsWidgets);
     });
 
+    testWidgets('constrains wide content and preserves narrow width',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      Future<void> pumpAt(Size size) async {
+        tester.view.physicalSize = size;
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: AdaptiveContentFrame(
+                maxWidth: 1120,
+                contentKey: Key('adaptive-content'),
+                child: SizedBox.expand(),
+              ),
+            ),
+          ),
+        );
+      }
+
+      await pumpAt(const Size(1440, 900));
+      expect(
+        tester.getSize(find.byKey(const Key('adaptive-content'))).width,
+        1120,
+      );
+
+      await pumpAt(const Size(390, 844));
+      expect(
+        tester.getSize(find.byKey(const Key('adaptive-content'))).width,
+        390,
+      );
+    });
+
     test('GraphPaperPainter defaults match user specifications', () {
       const painter = GraphPaperPainter();
 
