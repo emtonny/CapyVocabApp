@@ -168,6 +168,20 @@ void main() {
     expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
     expect(
       tester
+          .getSize(find.byKey(const Key('library-view-selected-vocabulary')))
+          .height,
+      52,
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(const Key('library-add-selected-photos-to-album')),
+          )
+          .height,
+      52,
+    );
+    expect(
+      tester
           .getRect(find.byKey(const Key('library-view-selected-vocabulary')))
           .bottom,
       lessThanOrEqualTo(

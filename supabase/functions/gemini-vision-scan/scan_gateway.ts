@@ -100,3 +100,24 @@ export function readScanGatewayResponse(value: unknown) {
       : undefined),
   };
 }
+
+export async function isUsableScanGatewayResponse(
+  response: Response,
+): Promise<boolean> {
+  try {
+    const { rawText } = readScanGatewayResponse(await response.json());
+    if (!rawText) return false;
+
+    const parsed = JSON.parse(rawText);
+    return !(
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Array.isArray((parsed as Record<string, unknown>).words) &&
+      ((parsed as Record<string, unknown>).words as unknown[]).length === 0
+    );
+  } catch {
+    // Let the handler return its existing precise malformed/truncated response.
+    return true;
+  }
+}

@@ -38,6 +38,7 @@ import {
 } from "./detection_ranking.ts";
 import {
   buildOpenAiRequestBody,
+  isUsableScanGatewayResponse,
   readScanGatewayResponse,
   resolveScanGateway,
   resolveScanModelPolicy,
@@ -427,6 +428,7 @@ Deno.serve(async (req) => {
       scheduleBackgroundTask: (task) => EdgeRuntime.waitUntil(task),
       apiBaseUrl: SCAN_GATEWAY.openAi ? undefined : SCAN_GATEWAY.baseUrl,
       openAiBaseUrl: SCAN_GATEWAY.openAi ? SCAN_GATEWAY.baseUrl : undefined,
+      validateSuccessfulResponse: isUsableScanGatewayResponse,
     });
     const {
       response: geminiRes,
@@ -652,6 +654,24 @@ Deno.serve(async (req) => {
     };
 
     const words = Array.isArray(parsed.words) ? parsed.words : [];
+    if (words.length === 0) {
+      console.warn(
+        "Gemini returned no detections after retry",
+        JSON.stringify({ scanId, model, upstreamAttempts }),
+      );
+      await completeFailure("empty_response");
+      return new Response(
+        JSON.stringify({
+          error: "empty_response",
+          message: "Khong nhan dien duoc tu vung nao",
+          request_id: payload.clientRequestId,
+        }),
+        {
+          status: 422,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
     logSuspiciousBoxes(words, scanId);
     console.log(
       "Gemini scan success",

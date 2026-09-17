@@ -5,6 +5,18 @@ import 'package:capy_vocab/features/ai_scan/data/services/scan_image_compressor.
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('reuses an already bounded JPEG instead of encoding it again', () {
+    final jpeg = Uint8List.fromList([0xff, 0xd8, 0x01, 0x02, 0xff, 0xd9]);
+
+    expect(canReuseScanJpeg(jpeg, (1024, 768)), isTrue);
+    expect(canReuseScanJpeg(jpeg, (1025, 768)), isFalse);
+    expect(canReuseScanJpeg(jpeg, (1023, 767)), isFalse);
+    expect(
+      canReuseScanJpeg(Uint8List.fromList([0x89, 0x50, 0x4e, 0x47]), (1, 1)),
+      isFalse,
+    );
+  });
+
   test('portrait target avoids an odd JPEG edge in a single encode', () {
     const sourceSize = (3020, 4032);
 

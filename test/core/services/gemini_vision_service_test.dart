@@ -22,7 +22,7 @@ void main() {
     final service = GeminiVisionService(
       httpClient: MockClient((request) async {
         capturedUrl = request.url;
-        return http.Response(jsonEncode({'words': []}), 200);
+        return http.Response(jsonEncode(_validScanResponse()), 200);
       }),
       accessTokenProvider: () => 'valid-user-jwt',
       supabaseRestUrlProvider: () =>
@@ -115,7 +115,7 @@ void main() {
     final service = GeminiVisionService(
       httpClient: MockClient((request) async {
         capturedRequest = request;
-        return http.Response(jsonEncode({'words': []}), 200);
+        return http.Response(jsonEncode(_validScanResponse()), 200);
       }),
       accessTokenProvider: () => 'valid-user-jwt',
       endpoint: _testEndpoint,
@@ -442,6 +442,27 @@ void main() {
     );
   });
 
+  test('response 200 words rỗng được ánh xạ thành lỗi nhận diện', () async {
+    final service = GeminiVisionService(
+      httpClient: MockClient(
+        (request) async => http.Response(jsonEncode({'words': []}), 200),
+      ),
+      accessTokenProvider: () => 'valid-user-jwt',
+      endpoint: _testEndpoint,
+    );
+
+    await expectLater(
+      service.analyzeBase64Image('image'),
+      throwsA(
+        isA<GeminiRecognitionException>().having(
+          (error) => error.errorCode,
+          'errorCode',
+          'empty_response',
+        ),
+      ),
+    );
+  });
+
   test('bounding box chạm biên phải và dưới vẫn hợp lệ', () {
     final result = GeminiVisionResult.fromJson({
       'words': [
@@ -487,3 +508,15 @@ void main() {
     });
   }
 }
+
+Map<String, dynamic> _validScanResponse() => {
+      'words': [
+        {
+          'number': 1,
+          'word': 'cup',
+          'phonetic': '/cup/',
+          'meaning_vi': 'cup',
+          'box': {'x': 100, 'y': 100, 'w': 200, 'h': 200},
+        },
+      ],
+    };

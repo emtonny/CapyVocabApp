@@ -29,7 +29,7 @@ class PetShopScreen extends StatelessWidget {
                   Text(
                     'Cửa hàng',
                     style: TextStyle(
-                      fontFamily: 'Fredoka',
+                      fontFamily: 'Nunito',
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF3C2A21),
@@ -81,7 +81,7 @@ class PetShopScreen extends StatelessWidget {
                     const Text(
                       'Cửa hàng',
                       style: TextStyle(
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF3C2A21),
@@ -109,7 +109,7 @@ class PetShopScreen extends StatelessWidget {
                       child: const Text(
                         '🚧  Đang phát triển...',
                         style: TextStyle(
-                          fontFamily: 'Fredoka',
+                          fontFamily: 'Nunito',
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFFE65100),
@@ -144,7 +144,7 @@ class _ShopTabChip extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(
-          fontFamily: 'Fredoka',
+          fontFamily: 'Nunito',
           fontSize: 12,
           fontWeight: FontWeight.w600,
           color: Color(0xFF5D4037),

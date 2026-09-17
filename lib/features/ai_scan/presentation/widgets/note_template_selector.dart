@@ -105,7 +105,7 @@ class _NoteTemplateSelectorState extends State<NoteTemplateSelector> {
                 child: Text(
                   'CHỌN MẪU NOTE GHIM',
                   style: TextStyle(
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     fontSize: 12.5,
                     fontWeight: FontWeight.w900,
                     color: AppColors.ink,
@@ -601,7 +601,7 @@ class _TemplateCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.left,
               style: TextStyle(
-                fontFamily: 'Fredoka',
+                fontFamily: 'Nunito',
                 fontSize: isCompact ? 12.0 : 13.0,
                 fontWeight: FontWeight.w900,
                 color: AppColors.ink,

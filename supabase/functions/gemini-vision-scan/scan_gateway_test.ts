@@ -4,6 +4,7 @@ import {
   buildOpenAiRequestBody,
   DEFAULT_VILAO_BASE_URL,
   DEFAULT_VILAO_MODEL,
+  isUsableScanGatewayResponse,
   readScanGatewayResponse,
   resolveOpenAiEndpoint,
   resolveScanGateway,
@@ -183,6 +184,25 @@ test("native Gemini response and malformed envelopes remain handled", () => {
   ) {
     assert.equal(readScanGatewayResponse(input).rawText, "");
   }
+});
+
+test("empty detection JSON is retryable but malformed JSON keeps its precise error", async () => {
+  const response = (content: string) =>
+    Response.json({ choices: [{ message: { content } }] });
+
+  assert.equal(
+    await isUsableScanGatewayResponse(
+      response('{"schema_version":2,"words":[]}'),
+    ),
+    false,
+  );
+  assert.equal(
+    await isUsableScanGatewayResponse(
+      response('{"schema_version":2,"words":[{"word":"cup"}]}'),
+    ),
+    true,
+  );
+  assert.equal(await isUsableScanGatewayResponse(response("{invalid")), true);
 });
 
 test("Vilao aliases normalize without changing canonical fields or hierarchy", () => {

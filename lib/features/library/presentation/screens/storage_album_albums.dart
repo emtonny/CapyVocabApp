@@ -83,7 +83,8 @@ class _AlbumsView extends ConsumerWidget {
                             ),
                             crossAxisSpacing: 4,
                             mainAxisSpacing: 10,
-                            mainAxisExtent: largeText ? 162 : 138,
+                            mainAxisExtent:
+                                (largeText ? 162 : 138) + (selecting ? 8 : 0),
                           ),
                           delegate: SliverChildBuilderDelegate(
                             (context, index) {
@@ -471,7 +472,7 @@ class _AlbumSelectionAction extends StatelessWidget {
                   : const Icon(Icons.menu_book_rounded, size: 16),
               text: 'Xem từ vựng ($selectedCount Album)',
               fontSize: 12,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
               expand: true,
             ),
           ),
@@ -492,7 +493,7 @@ class _AlbumSelectionAction extends StatelessWidget {
               ),
               text: 'Xóa Album',
               fontSize: 13,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
               expand: true,
             ),
           ),
@@ -952,7 +953,7 @@ class _CreateAlbumDialogState extends State<_CreateAlbumDialog> {
                 Text(
                   'Tạo Album mới',
                   style: TextStyle(
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: AppColors.ink,

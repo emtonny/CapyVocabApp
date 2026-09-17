@@ -11,7 +11,16 @@ class LibraryPhotoNoteDetailScreen extends ConsumerWidget {
       libraryPhotoNoteSnapshotProvider(photoNoteId),
     );
     return GraphPaperScaffold(
-      appBar: AppBar(title: const Text('Bài đã lưu')),
+      appBar: AppBar(
+        title: const Text(
+          'Bài đã lưu',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: AppColors.ink),
+      ),
       body: SafeArea(
         child: snapshot.when(
           loading: () => const Center(
@@ -153,8 +162,24 @@ class _SelectedPhotoVocabularyCardState
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.softWhite,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.ink, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AppColors.ink,
+                            offset: Offset(0, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
                       child: Row(
                         children: [
                           Expanded(
@@ -163,6 +188,7 @@ class _SelectedPhotoVocabularyCardState
                               style: const TextStyle(
                                 color: AppColors.ink,
                                 fontWeight: FontWeight.w900,
+                                fontSize: 14,
                               ),
                             ),
                           ),
@@ -171,7 +197,7 @@ class _SelectedPhotoVocabularyCardState
                                 ? Icons.keyboard_arrow_up_rounded
                                 : Icons.keyboard_arrow_down_rounded,
                             color: AppColors.ink,
-                            size: 28,
+                            size: 24,
                           ),
                         ],
                       ),
@@ -350,7 +376,7 @@ class _SelectedPhotoVocabularyCardState
                   label,
                   maxLines: 1,
                   style: TextStyle(
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                     color: isActive ? AppColors.ink : const Color(0xFF64748B),

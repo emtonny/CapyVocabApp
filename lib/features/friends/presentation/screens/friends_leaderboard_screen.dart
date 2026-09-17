@@ -29,7 +29,7 @@ class FriendsLeaderboardScreen extends StatelessWidget {
                   Text(
                     'Bạn bè & Xếp hạng',
                     style: TextStyle(
-                      fontFamily: 'Fredoka',
+                      fontFamily: 'Nunito',
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF3C2A21),
@@ -63,7 +63,7 @@ class FriendsLeaderboardScreen extends StatelessWidget {
                         Text(
                           'Bảng xếp hạng tuần',
                           style: TextStyle(
-                            fontFamily: 'Fredoka',
+                            fontFamily: 'Nunito',
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF3C2A21),
@@ -109,7 +109,7 @@ class FriendsLeaderboardScreen extends StatelessWidget {
                     const Text(
                       'Cộng đồng',
                       style: TextStyle(
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF3C2A21),
@@ -137,7 +137,7 @@ class FriendsLeaderboardScreen extends StatelessWidget {
                       child: const Text(
                         '🚧  Đang phát triển...',
                         style: TextStyle(
-                          fontFamily: 'Fredoka',
+                          fontFamily: 'Nunito',
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFFE65100),

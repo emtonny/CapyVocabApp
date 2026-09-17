@@ -25,9 +25,10 @@ void main() {
     expect(painter.outlineColor, const Color(0xFF3A2E2B));
 
     final label = tester.widget<Text>(find.text('Chọn tất cả'));
-    expect(label.style?.fontFamily, contains('Fredoka'));
+    expect(label.style?.fontFamily, contains('Nunito'));
     expect(label.style?.fontSize, 12);
     expect(label.style?.fontWeight, FontWeight.w700);
+    expect(label.style?.decoration, TextDecoration.none);
     expect(find.byIcon(Icons.check_box_outline_blank), findsOneWidget);
 
     final semanticsHandle = tester.ensureSemantics();

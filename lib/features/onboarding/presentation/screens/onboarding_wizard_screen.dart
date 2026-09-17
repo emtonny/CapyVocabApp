@@ -183,7 +183,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                           color: AppColors.ink,
-                          fontFamily: 'Fredoka',
+                          fontFamily: 'Nunito',
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -237,7 +237,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
                                           style: const TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w900,
-                                            fontFamily: 'Fredoka',
+                                            fontFamily: 'Nunito',
                                             color: AppColors.ink,
                                           ),
                                         ),
@@ -249,7 +249,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
                                   _stepTitles[index],
                                   style: TextStyle(
                                     fontSize: 13.5,
-                                    fontFamily: isActive ? 'Fredoka' : 'Nunito',
+                                    fontFamily: 'Nunito',
                                     fontWeight: isActive
                                         ? FontWeight.w900
                                         : FontWeight.w700,
@@ -463,7 +463,7 @@ class _NavigationBar extends StatelessWidget {
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                         color: AppColors.ink,
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                       ),
                     ),
                   ),
@@ -519,7 +519,7 @@ class _NavigationBar extends StatelessWidget {
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
                                 color: AppColors.ink,
-                                fontFamily: 'Fredoka',
+                                fontFamily: 'Nunito',
                               ),
                             ),
                           ],
@@ -530,7 +530,7 @@ class _NavigationBar extends StatelessWidget {
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
                             color: AppColors.ink,
-                            fontFamily: 'Fredoka',
+                            fontFamily: 'Nunito',
                             letterSpacing: 0.2,
                           ),
                         ),

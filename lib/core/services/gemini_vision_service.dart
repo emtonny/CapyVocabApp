@@ -104,8 +104,9 @@ class GeminiVisionService implements VisionScanClient {
     final decodedBody = _decodeResponseBody(response);
 
     if (response.statusCode == 200) {
+      late final GeminiVisionResult result;
       try {
-        return GeminiVisionResult.fromJson(decodedBody);
+        result = GeminiVisionResult.fromJson(decodedBody);
       } on Object catch (error) {
         throw GeminiInvalidResponseException(
           'Không nhận diện được, thử ảnh khác',
@@ -113,6 +114,13 @@ class GeminiVisionService implements VisionScanClient {
           error,
         );
       }
+      if (result.words.isEmpty) {
+        throw const GeminiRecognitionException(
+          'Không nhận diện được, thử ảnh khác',
+          errorCode: 'empty_response',
+        );
+      }
+      return result;
     }
 
     final errorCode = _readErrorCode(decodedBody);

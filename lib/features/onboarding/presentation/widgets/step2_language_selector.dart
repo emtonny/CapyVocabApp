@@ -24,7 +24,7 @@ class Step2LanguageSelector extends ConsumerWidget {
             fontSize: 18,
             fontWeight: FontWeight.w900,
             color: AppColors.ink,
-            fontFamily: 'Fredoka',
+            fontFamily: 'Nunito',
           ),
         ),
         const SizedBox(height: 6),
@@ -97,7 +97,7 @@ class _LanguageSelectorCard extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            fontFamily: 'Fredoka',
+            fontFamily: 'Nunito',
             fontSize: 14,
             fontWeight: FontWeight.w900,
             color: AppColors.ink,
@@ -163,7 +163,7 @@ class _LanguageSelectorCard extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontFamily: 'Fredoka',
+                                  fontFamily: 'Nunito',
                                   fontSize: 15,
                                   fontWeight: FontWeight.w900,
                                   color: AppColors.ink,
@@ -319,7 +319,7 @@ class _LanguageCountryPickerDialogState
                     child: Text(
                       widget.title,
                       style: const TextStyle(
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                         color: AppColors.ink,
@@ -467,7 +467,7 @@ class _CountryLanguageTile extends StatelessWidget {
                         Text(
                           option.countryName,
                           style: const TextStyle(
-                            fontFamily: 'Fredoka',
+                            fontFamily: 'Nunito',
                             fontWeight: FontWeight.w900,
                             color: AppColors.ink,
                           ),

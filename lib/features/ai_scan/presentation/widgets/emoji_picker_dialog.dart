@@ -165,7 +165,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                 Text(
                   widget.title,
                   style: const TextStyle(
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: _ink,

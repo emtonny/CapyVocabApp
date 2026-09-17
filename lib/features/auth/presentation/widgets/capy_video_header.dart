@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/constants/app_colors.dart';
@@ -75,10 +74,11 @@ class _CapyVideoHeaderState extends State<CapyVideoHeader> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.showText) ...[
-          Text(
+          const Text(
             'Deery Vocab',
             textAlign: TextAlign.center,
-            style: GoogleFonts.robotoCondensed(
+            style: TextStyle(
+              fontFamily: 'Nunito',
               fontSize: 42,
               fontWeight: FontWeight.w900,
               color: AppColors.ink,

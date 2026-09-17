@@ -190,7 +190,7 @@ void main() {
     final mobileBrandTitle = tester.widget<Text>(find.text('Deery Vocab'));
     expect(mobileBrandTitle.style?.fontSize, 42);
     expect(mobileBrandTitle.style?.fontWeight, FontWeight.w900);
-    expect(mobileBrandTitle.style?.fontFamily, contains('RobotoCondensed'));
+    expect(mobileBrandTitle.style?.fontFamily, contains('Nunito'));
     expect(
       tester.getTopLeft(find.text('Deery Vocab')).dy,
       lessThan(tester.getTopLeft(find.text('🦌')).dy),
@@ -202,7 +202,7 @@ void main() {
     final wideBrandTitle = tester.widget<Text>(find.text('Deery Vocab'));
     expect(wideBrandTitle.style?.fontSize, 42);
     expect(wideBrandTitle.style?.fontWeight, FontWeight.w900);
-    expect(wideBrandTitle.style?.fontFamily, contains('RobotoCondensed'));
+    expect(wideBrandTitle.style?.fontFamily, contains('Nunito'));
     final videoCardSize = tester.getSize(find.byType(CapyVideoHeader));
     expect(videoCardSize.width, 315);
     expect(videoCardSize.height, greaterThan(500));

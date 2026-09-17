@@ -2,12 +2,23 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-16 — Onboarding language preferences; LOCAL VERIFIED / MIGRATION PENDING**
+> Cập nhật gần nhất: **2026-09-17 — AI scan empty-result retry và tối ưu ảnh; SOURCE/TEST VERIFIED**
 >
-> Increment hiện tại chèn bước ngôn ngữ ở vị trí 2/6 của onboarding, lưu
+> Increment hiện tại xác nhận độ trễ mở preview camera trên BlueStacks Android 9
+> nằm trong app camera/HAL bên ngoài Flutter (hai lần đo khoảng 11,8 giây và
+> 11,3 giây). Pipeline Flutter đã giảm phần chờ sau khi chụp bằng cách yêu cầu
+> ảnh 1024px/quality 85 từ picker, tái sử dụng JPEG đã đạt giới hạn và bỏ một
+> lần decode preview thừa. Edge Function nay thử lại đúng một lần khi upstream
+> trả HTTP 200 với `words: []`, không ghi ledger success rỗng, và trả 422 nếu
+> lần thứ hai vẫn rỗng. Source đã qua targeted Flutter/Edge tests và analyzer;
+> Edge Function **chưa deploy**, không có migration hoặc cloud-data write.
+>
+> Snapshot trước đó (2026-09-16):
+> Increment chèn bước ngôn ngữ ở vị trí 2/6 của onboarding, lưu
 > `interface_locale` và `learning_locale` vào `user_settings` qua RPC
-> `complete_onboarding`. Migration nguồn đã được tạo nhưng **chưa apply lên
-> Supabase**, chưa deploy và chưa ghi dữ liệu cloud. Targeted onboarding tests
+> `complete_onboarding`. Migration đã được apply lên Production project
+> `vmxonxqxrlkssdzsucrg`; chỉ thay đổi schema/RPC, không ghi dữ liệu cloud.
+> Targeted onboarding tests
 > đạt 26/26 và analyzer riêng cho onboarding sạch. Full-project analyzer đang
 > bị chặn bởi các file tách Library chưa hoàn chỉnh có sẵn trong working tree.
 >
@@ -1085,6 +1096,32 @@ Sau Production Gate 3:
 
 ## Change log
 
+### 2026-09-17 — Camera latency diagnosis and first empty-scan recovery
+
+- ADB timeline trên BlueStacks Android 9 xác nhận `IMAGE_CAPTURE` mở activity
+  camera trong khoảng 250 ms nhưng camera HAL mất khoảng 11,8 giây ở lần đo
+  đầu và 11,3 giây ở lần đo tiếp theo mới phát preview frame đầu. Đây là độ trễ
+  của camera emulator bên ngoài process Flutter; source app không thể loại bỏ
+  đoạn chờ này. Phần chuẩn bị ảnh sau capture được giảm bằng output 1024px,
+  quality 85, fast-path cho JPEG đã <= 300 KiB và loại bỏ một decode thừa.
+- Root cause của lần quét đầu lỗi là gateway trả JSON hợp lệ nhưng rỗng
+  `{"words":[]}` qua HTTP 200. Logic cũ chỉ bắt body text rỗng nên đã đánh dấu
+  ledger `succeeded`; Flutter sau đó báo lỗi nhận diện. Model chain nay kiểm tra
+  semantic result, retry/fallback trong tổng giới hạn 2 upstream attempts, chỉ
+  ghi success khi có detection; sau hai kết quả rỗng handler hoàn tất ledger
+  failure `empty_response` và trả HTTP 422. Flutter cũng fail-closed với server
+  cũ trả HTTP 200 rỗng.
+- Verification: targeted Flutter suite 45/45 pass; targeted Edge suite 34/34
+  pass, gồm empty-first -> retry success và empty-twice -> 422/failed ledger;
+  targeted Flutter analyzer sạch; `deno check --config
+  supabase/functions/gemini-vision-scan/deno.json .../index.ts` pass; `git diff
+  --check` không có whitespace error; `flutter build apk --debug --no-pub`
+  tạo APK thành công.
+- Status: **IMPLEMENTED/SOURCE + TEST VERIFIED, RUNTIME PARTIAL**. Không đổi
+  schema/migration, SQLite transaction, media retention, consent hoặc sync
+  contract. Edge Function chưa deploy; độ trễ preview riêng của BlueStacks HAL
+  vẫn cần cấu hình camera emulator hoặc kiểm tra trên thiết bị thật.
+
 ### 2026-09-16 — Onboarding interface and learning languages
 
 - Chèn bước chọn ngôn ngữ ở bước 2/6, ngay sau danh tính và trước dữ liệu
@@ -1094,13 +1131,21 @@ Sau Production Gate 3:
   lazy bằng `ListView.builder`.
 - Bổ sung hai cột bắt buộc `interface_locale`, `learning_locale` cùng validation
   vào migration `20260916120000_add_onboarding_language_preferences.sql`, đồng
-  thời mở rộng RPC onboarding từ 8 lên 10 tham số. Migration mới chỉ ở source:
-  **PENDING**, chưa apply/deploy lên Supabase và chưa ghi dữ liệu cloud.
+  thời mở rộng RPC onboarding từ 8 lên 10 tham số. Migration đã được apply và
+  history Production khớp timestamp `20260916120000`; không đọc/ghi dữ liệu
+  người dùng trong lần triển khai.
+- Giữ thêm RPC `complete_onboarding` 8 tham số cho các bản app đã cài; wrapper
+  dùng locale mặc định `vi-VN`/`en-US` và gọi cùng luồng validate nội bộ. Cả hai
+  signature chỉ cấp `EXECUTE` cho `authenticated`; `anon` và `PUBLIC` bị revoke.
 - Verification: `flutter test --no-pub test/features/onboarding` — 26/26 pass,
   gồm tìm kiếm không dấu, chọn locale, lưu RPC và viewport 320px/text scale
   1.3; `flutter analyze --no-pub lib/features/onboarding
   test/features/onboarding` — sạch; `git diff --check` — không có whitespace
-  error. `flutter analyze --no-pub` toàn dự án chưa pass vì các file Library
+  error. Production verification xác nhận đủ hai cột locale, hai RPC 8/10 tham
+  số, quyền gọi của `authenticated` và chặn `anon`; migration history hiện khớp
+  `20260916120000`. Security Advisor không phát hiện cảnh báo mới từ migration;
+  các cảnh báo còn lại thuộc `ai_scan_requests`, Library event trigger và Auth
+  password policy đã tồn tại. `flutter analyze --no-pub` toàn dự án chưa pass vì các file Library
   đang tách dở (`storage_album_albums.dart`, `storage_album_trash.dart` và
   `SelectedPhotoVocabularyScreen`) tạo lỗi ngoài phạm vi increment. Supabase
   CLI không có trong môi trường nên migration chưa được chạy local.

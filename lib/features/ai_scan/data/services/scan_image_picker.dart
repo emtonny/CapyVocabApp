@@ -28,6 +28,9 @@ class DeviceScanImagePicker implements ScanImagePicker {
         source: source == ScanImageSource.camera
             ? ImageSource.camera
             : ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
         requestFullMetadata: false,
       );
       if (image == null) return null;

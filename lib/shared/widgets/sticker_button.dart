@@ -207,16 +207,16 @@ class _StickerButtonState extends State<StickerButton>
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontFamily: 'Fredoka',
+                                    fontFamily: 'Nunito',
                                     fontSize: widget.fontSize,
                                     fontWeight: FontWeight.w700,
                                     color: effectiveTextColor,
                                     height: 1,
+                                    decoration: TextDecoration.none,
                                   ).copyWith(
                                     fontFamilyFallback: const [
-                                      'Nunito',
                                       'Roboto',
-                                      'Arial',
+                                      'Arial'
                                     ],
                                   ),
                                 ),

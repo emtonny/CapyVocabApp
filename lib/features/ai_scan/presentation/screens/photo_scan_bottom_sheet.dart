@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -81,17 +82,25 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
               : LabelVisualStyle.standard,
       };
 
-  void _updateImageDimensions(Uint8List bytes) {
-    ui.instantiateImageCodec(bytes).then((codec) {
-      return codec.getNextFrame();
-    }).then((frame) {
-      final image = frame.image;
+  Future<void> _updateImageDimensions(Uint8List bytes) async {
+    ui.Codec? codec;
+    ui.Image? image;
+    try {
+      codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      image = frame.image;
       if (image.width > 0 && image.height > 0 && mounted) {
+        final aspectRatio = image.width / image.height;
         setState(() {
-          _imageAspectRatio = image.width / image.height;
+          _imageAspectRatio = aspectRatio;
         });
       }
-    }).catchError((_) {});
+    } on Object {
+      // The preview can still use Image.memory when metadata decoding fails.
+    } finally {
+      image?.dispose();
+      codec?.dispose();
+    }
   }
 
   Future<void> _pickAndScan(
@@ -131,8 +140,6 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
     if (pickedImage == null || !mounted) return;
     final selectedImage = pickedImage;
 
-    _updateImageDimensions(selectedImage.bytes);
-
     setState(() {
       _previewBytes = selectedImage.bytes;
       _isProcessing = true;
@@ -156,7 +163,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
       }
       if (!mounted) return;
 
-      _updateImageDimensions(compressedBytes);
+      unawaited(_updateImageDimensions(compressedBytes));
 
       setState(() {
         _previewBytes = compressedBytes;
@@ -622,7 +629,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                 label,
                 maxLines: 1,
                 style: TextStyle(
-                  fontFamily: 'Fredoka',
+                  fontFamily: 'Nunito',
                   fontSize: 12.0,
                   fontWeight: FontWeight.w900,
                   color: isActive ? AppColors.ink : const Color(0xFF64748B),
@@ -769,7 +776,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
                                         'Quét từ vựng qua ảnh',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
-                                          fontFamily: 'Fredoka',
+                                          fontFamily: 'Nunito',
                                           fontSize: 22,
                                           fontWeight: FontWeight.w900,
                                           color: AppColors.ink,
@@ -901,7 +908,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
               label,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontFamily: 'Fredoka',
+                fontFamily: 'Nunito',
                 fontSize: 13.5,
                 fontWeight: FontWeight.w900,
                 color: AppColors.ink,

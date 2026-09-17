@@ -386,7 +386,7 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
                 child: Text(
                   'Lưu mẫu thiết kế',
                   style: TextStyle(
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     color: AppColors.ink,
@@ -642,7 +642,7 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
                                 ? 'Tên mẫu của bạn'
                                 : enteredName.trim(),
                             style: TextStyle(
-                              fontFamily: 'Fredoka',
+                              fontFamily: 'Nunito',
                               fontSize: 12,
                               fontWeight: FontWeight.w900,
                               color: enteredName.trim().isEmpty
@@ -710,7 +710,7 @@ class _CustomLabelStyleEditorState extends State<CustomLabelStyleEditor> {
                           label: const Text(
                             'Lưu & áp dụng',
                             style: TextStyle(
-                              fontFamily: 'Fredoka',
+                              fontFamily: 'Nunito',
                               fontSize: 12.5,
                               fontWeight: FontWeight.w900,
                               color: AppColors.ink,
@@ -811,7 +811,7 @@ class _SaveTemplateButton extends StatelessWidget {
                     child: Text(
                       isSaving ? 'Đang cất mẫu...' : 'Lưu mẫu của tôi',
                       style: const TextStyle(
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                         color: AppColors.ink,
@@ -872,7 +872,7 @@ class _EditorHeader extends StatelessWidget {
                 Text(
                   'Thiết kế theo sở thích',
                   style: TextStyle(
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     color: AppColors.ink,
@@ -965,7 +965,7 @@ class _EditorSection extends StatelessWidget {
                 title,
                 textAlign: TextAlign.left,
                 style: const TextStyle(
-                  fontFamily: 'Fredoka',
+                  fontFamily: 'Nunito',
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
                   color: AppColors.ink,
@@ -1315,7 +1315,7 @@ class _OpacityControl extends StatelessWidget {
               '${(value * 100).round()}%',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontFamily: 'Fredoka',
+                fontFamily: 'Nunito',
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
                 color: AppColors.ink,
@@ -1662,7 +1662,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
             child: Text(
               'Tự chọn ${widget.title}',
               style: const TextStyle(
-                fontFamily: 'Fredoka',
+                fontFamily: 'Nunito',
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
                 color: AppColors.ink,
@@ -1699,7 +1699,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
                 child: Text(
                   hexString,
                   style: TextStyle(
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.2,
@@ -1915,7 +1915,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
           label: const Text(
             'Chọn màu này',
             style: TextStyle(
-              fontFamily: 'Fredoka',
+              fontFamily: 'Nunito',
               fontWeight: FontWeight.w900,
               color: AppColors.ink,
             ),
@@ -1956,7 +1956,7 @@ class _CustomColorPickerDialogState extends State<_CustomColorPickerDialog> {
               child: Text(
                 valueText,
                 style: const TextStyle(
-                  fontFamily: 'Fredoka',
+                  fontFamily: 'Nunito',
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
                   color: AppColors.ink,
@@ -2074,7 +2074,7 @@ class _PreviewPanel extends StatelessWidget {
                     title,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontFamily: 'Fredoka',
+                      fontFamily: 'Nunito',
                       fontSize: 11,
                       fontWeight: FontWeight.w900,
                       color: isActive ? AppColors.ink : const Color(0xFF6B6B6B),

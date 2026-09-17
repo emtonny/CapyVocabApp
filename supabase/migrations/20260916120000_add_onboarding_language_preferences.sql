@@ -133,6 +133,9 @@ $function$;
 REVOKE ALL ON FUNCTION private.complete_onboarding_for_current_user(
   text, text, integer, text, text, text, text, text, text, integer
 ) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.complete_onboarding_for_current_user(
+  text, text, integer, text, text, text, text, text, text, integer
+) TO authenticated;
 
 CREATE FUNCTION public.complete_onboarding(
   p_display_name text,
@@ -148,6 +151,7 @@ CREATE FUNCTION public.complete_onboarding(
 )
 RETURNS boolean
 LANGUAGE sql
+SECURITY INVOKER
 SET search_path TO ''
 AS $function$
     SELECT private.complete_onboarding_for_current_user(
@@ -160,4 +164,35 @@ REVOKE ALL ON FUNCTION public.complete_onboarding(
 ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.complete_onboarding(
   text, text, integer, text, text, text, text, text, text, integer
+) TO authenticated;
+
+-- Keep already-installed app versions working while they move to the
+-- locale-aware RPC. Their onboarding flow used the original eight arguments.
+CREATE FUNCTION public.complete_onboarding(
+  p_display_name text,
+  p_username text,
+  p_age integer,
+  p_phone text,
+  p_account_role text,
+  p_reminder_time text,
+  p_study_end_time text,
+  p_daily_target_words integer
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+    SELECT private.complete_onboarding_for_current_user(
+        $1, $2, $3, $4, $5,
+        'vi-VN', 'en-US',
+        $6, $7, $8
+    );
+$function$;
+
+REVOKE ALL ON FUNCTION public.complete_onboarding(
+  text, text, integer, text, text, text, text, integer
+) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.complete_onboarding(
+  text, text, integer, text, text, text, text, integer
 ) TO authenticated;

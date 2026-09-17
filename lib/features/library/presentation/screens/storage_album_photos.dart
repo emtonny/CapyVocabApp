@@ -355,7 +355,7 @@ class _PhotoSelectionAction extends StatelessWidget {
       children: [
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+            padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
             child: StickerButton(
               key: const Key('library-view-selected-vocabulary'),
               onPressed: busy ? null : onViewVocabulary,
@@ -372,14 +372,14 @@ class _PhotoSelectionAction extends StatelessWidget {
                   : const Icon(Icons.menu_book_rounded, size: 16),
               text: 'Xem từ vựng ($selectedCount)',
               fontSize: 13,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
               expand: true,
             ),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
+            padding: const EdgeInsets.fromLTRB(4, 8, 12, 0),
             child: StickerButton(
               key: const Key('library-add-selected-photos-to-album'),
               onPressed: busy ? null : onAddToAlbum,
@@ -396,7 +396,7 @@ class _PhotoSelectionAction extends StatelessWidget {
                   : const Icon(Icons.folder_rounded, size: 16),
               text: 'Thêm vào Album',
               fontSize: 13,
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
               expand: true,
             ),
           ),
@@ -558,7 +558,7 @@ class _AlbumPickerSheet extends StatelessWidget {
                           Text(
                             'Thêm ảnh vào Album',
                             style: TextStyle(
-                              fontFamily: 'Fredoka',
+                              fontFamily: 'Nunito',
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                               color: AppColors.ink,
@@ -631,7 +631,7 @@ class _AlbumPickerSheet extends StatelessWidget {
                   title: const Text(
                     'Tạo Album mới',
                     style: TextStyle(
-                      fontFamily: 'Fredoka',
+                      fontFamily: 'Nunito',
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                       color: AppColors.ink,
@@ -693,7 +693,7 @@ class _AlbumPickerSheet extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontFamily: 'Fredoka',
+                              fontFamily: 'Nunito',
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
                               color: AppColors.ink,
@@ -926,7 +926,7 @@ class _SubviewButton extends StatelessWidget {
                           fontWeight:
                               selected ? FontWeight.w900 : FontWeight.w700,
                           fontSize: 12,
-                          fontFamily: 'Fredoka',
+                          fontFamily: 'Nunito',
                         ),
                       ),
                     ),

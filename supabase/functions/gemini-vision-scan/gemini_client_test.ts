@@ -57,6 +57,26 @@ test("P6 can redirect Gemini traffic to an explicit stub base URL", async () => 
   ]);
 });
 
+test("a successful but unusable scan response is retried once", async () => {
+  let calls = 0;
+  const result = await fetchGeminiModelChain({
+    apiKey: "test-key",
+    scanId: "empty-first-result",
+    modelPolicy: FREE_POLICY,
+    createRequestBody: (model) => ({ model }),
+    fetcher: () => {
+      calls++;
+      return Promise.resolve(successfulResponse());
+    },
+    validateSuccessfulResponse: () => Promise.resolve(calls > 1),
+    logger: silentLogger,
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(result.upstreamAttempts, 2);
+  assert.equal(result.response.status, 200);
+});
+
 class InMemoryHealthStore implements GeminiHealthStore {
   readonly state = new Map<
     string,

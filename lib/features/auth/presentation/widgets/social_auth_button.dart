@@ -73,7 +73,7 @@ class SocialAuthButton extends StatelessWidget {
                     color: textColor,
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
-                    fontFamily: 'Fredoka',
+                    fontFamily: 'Nunito',
                     letterSpacing: 0.1,
                   ),
                 ),

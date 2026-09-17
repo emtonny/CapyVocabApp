@@ -33,9 +33,6 @@ dependencies:
   # Routing (tương đương activateView)
   go_router: ^14.2.0
 
-  # UI / Fonts (Fredoka, Nunito)
-  google_fonts: ^6.2.1
-
   # Local persistence (theme, session tạm)
   shared_preferences: ^2.2.3
 
@@ -70,9 +67,6 @@ flutter:
     - web/sqlite3.wasm
 
   fonts:
-    - family: Fredoka
-      fonts:
-        - asset: assets/fonts/Fredoka-Variable.ttf
     - family: Nunito
       fonts:
         - asset: assets/fonts/Nunito-Variable.ttf

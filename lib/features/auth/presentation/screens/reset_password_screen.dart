@@ -135,7 +135,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             'Đặt mật khẩu mới',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontFamily: 'Fredoka',
+              fontFamily: 'Nunito',
               fontSize: 24,
               fontWeight: FontWeight.w900,
               color: AppColors.ink,
@@ -238,7 +238,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   : const Text(
                       'Đổi mật khẩu',
                       style: TextStyle(
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -258,7 +258,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           'Liên kết không còn hiệu lực',
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontFamily: 'Fredoka',
+            fontFamily: 'Nunito',
             fontSize: 22,
             fontWeight: FontWeight.w900,
             color: AppColors.ink,

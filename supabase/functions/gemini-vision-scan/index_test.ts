@@ -29,6 +29,7 @@ test("scan handler preserves Vilao, auth, ledger replay and token accounting", a
   let handler: ((request: Request) => Promise<Response>) | undefined;
   let tier: "free" | "pro" = "free";
   let cachedResult: unknown = null;
+  const queuedGatewayContents: string[] = [];
   const completions: Record<string, unknown>[] = [];
   const previousServe = Object.getOwnPropertyDescriptor(Deno, "serve");
   Object.defineProperty(Deno, "serve", {
@@ -52,23 +53,24 @@ test("scan handler preserves Vilao, auth, ledger replay and token accounting", a
         const body = JSON.parse(String(init?.body));
         assert.equal(body.model, "gemini-3.8-flash");
         assert.match(body.messages[0].content[0].text, /schema_version/);
+        const content = queuedGatewayContents.shift() ?? JSON.stringify({
+          schema_version: 2,
+          words: [{
+            number: 1,
+            id: "d1",
+            kind: "object",
+            parent_id: null,
+            english: "cup",
+            ipa: "/kʌp/",
+            vietnamese: "cái cốc",
+            box_2d: [100, 100, 700, 700],
+          }],
+        });
         return Promise.resolve(Response.json({
           choices: [{
             finish_reason: "stop",
             message: {
-              content: "```json\n" + JSON.stringify({
-                schema_version: 2,
-                words: [{
-                  number: 1,
-                  id: "d1",
-                  kind: "object",
-                  parent_id: null,
-                  english: "cup",
-                  ipa: "/kʌp/",
-                  vietnamese: "cái cốc",
-                  box_2d: [100, 100, 700, 700],
-                }],
-              }) + "\n```",
+              content: "```json\n" + content + "\n```",
             },
           }],
           usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
@@ -177,6 +179,28 @@ test("scan handler preserves Vilao, auth, ledger replay and token accounting", a
       );
       cachedResult = null;
     }
+    tier = "free";
+    const emptyContent = JSON.stringify({ schema_version: 2, words: [] });
+    queuedGatewayContents.push(emptyContent);
+    const beforeRetry = calls.filter((url) =>
+      url.startsWith("api.vilao.ai")
+    ).length;
+    const recovered = await handler(request(crypto.randomUUID()));
+    assert.equal(recovered.status, 200);
+    assert.equal((await recovered.json()).words[0].word, "cup");
+    assert.equal(
+      calls.filter((url) => url.startsWith("api.vilao.ai")).length -
+        beforeRetry,
+      2,
+    );
+
+    queuedGatewayContents.push(emptyContent, emptyContent);
+    const emptyResult = await handler(request(crypto.randomUUID()));
+    assert.equal(emptyResult.status, 422);
+    assert.equal((await emptyResult.json()).error, "empty_response");
+    assert.equal(completions.at(-1)?.status, "failed");
+    assert.equal(completions.at(-1)?.error_code, "empty_response");
+
     const beforeUnauthorized = calls.length;
     const unauthorized = await handler(
       new Request("https://scan-test.invalid/", { method: "POST" }),

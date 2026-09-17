@@ -103,6 +103,9 @@ void main() {
       imagePicker.sources,
       [ImageSource.gallery, ImageSource.camera],
     );
+    expect(imagePicker.maxWidths, [1024, 1024]);
+    expect(imagePicker.maxHeights, [1024, 1024]);
+    expect(imagePicker.imageQualities, [85, 85]);
     expect(imagePicker.requestFullMetadataValues, [false, false]);
   });
 
@@ -1014,6 +1017,9 @@ class _FakeDeviceImagePicker extends ImagePicker {
 
   final Object? error;
   final List<ImageSource> sources = [];
+  final List<double?> maxWidths = [];
+  final List<double?> maxHeights = [];
+  final List<int?> imageQualities = [];
   final List<bool> requestFullMetadataValues = [];
 
   @override
@@ -1026,6 +1032,9 @@ class _FakeDeviceImagePicker extends ImagePicker {
     bool requestFullMetadata = true,
   }) async {
     sources.add(source);
+    maxWidths.add(maxWidth);
+    maxHeights.add(maxHeight);
+    imageQualities.add(imageQuality);
     requestFullMetadataValues.add(requestFullMetadata);
     if (error != null) throw error!;
     return null;

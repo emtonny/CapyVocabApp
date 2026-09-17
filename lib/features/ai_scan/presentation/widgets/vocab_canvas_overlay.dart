@@ -23,7 +23,6 @@ const _fixedBadgeCardOverlap = 8.0;
 const _fixedLabelLineSpacing = 0.0;
 const _fixedLabelTextHeight = 1.0;
 const _fontFamilyFallback = [
-  'Nunito',
   'Roboto',
   'Noto Sans',
   'Segoe UI',

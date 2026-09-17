@@ -164,7 +164,7 @@ class _SelectedPhotoVocabularyHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.ink,
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                         fontSize: 21,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.2,
@@ -863,8 +863,7 @@ class _StorageAlbumScreenState extends ConsumerState<StorageAlbumScreen> {
 
       final selection = await showModalBottomSheet<Object>(
         context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
+        showDragHandle: true,
         builder: (sheetContext) => _AlbumPickerSheet(albums: albums),
       );
       if (!mounted || selection == null) return;

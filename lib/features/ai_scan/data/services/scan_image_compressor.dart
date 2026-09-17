@@ -20,6 +20,9 @@ class FlutterScanImageCompressor implements ScanImageCompressor {
     }
 
     final sourceSize = await _readImageSize(sourceBytes);
+    if (canReuseScanJpeg(sourceBytes, sourceSize)) {
+      return sourceBytes;
+    }
     Uint8List? smallest;
     for (final dimension in _dimensions) {
       final targetSize = calculateChromaSafeTargetSize(
@@ -67,6 +70,21 @@ class FlutterScanImageCompressor implements ScanImageCompressor {
       throw const ScanImagePreparationException('Ảnh đã chọn không hợp lệ.');
     }
   }
+}
+
+@visibleForTesting
+bool canReuseScanJpeg(Uint8List bytes, (int, int) size) {
+  final isJpeg = bytes.length >= 4 &&
+      bytes[0] == 0xff &&
+      bytes[1] == 0xd8 &&
+      bytes[bytes.length - 2] == 0xff &&
+      bytes[bytes.length - 1] == 0xd9;
+  return isJpeg &&
+      bytes.lengthInBytes <= FlutterScanImageCompressor.maxBytes &&
+      size.$1 <= 1024 &&
+      size.$2 <= 1024 &&
+      size.$1.isEven &&
+      size.$2.isEven;
 }
 
 /// Chooses bounds that make the plugin's aspect-preserving JPEG output even

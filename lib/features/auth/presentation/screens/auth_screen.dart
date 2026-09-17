@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/local_storage_service.dart';
@@ -320,12 +319,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     ),
                   ],
                 ),
-                child: Column(
+                child: const Column(
                   children: [
                     Text(
                       'Deery Vocab',
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.robotoCondensed(
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
                         fontSize: 42,
                         fontWeight: FontWeight.w900,
                         color: AppColors.ink,
@@ -333,8 +333,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         height: 1,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
+                    SizedBox(height: 4),
+                    Text(
                       'Học tiếng cùng Deery, đi khắp thế giới',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -521,7 +521,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppColors.ink,
-                    fontFamily: _obscurePassword ? null : 'Nunito',
+                    fontFamily: 'Nunito',
                     letterSpacing: _obscurePassword ? 1.5 : 0.0,
                   ),
                   decoration: _inputDecoration(
@@ -614,7 +614,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   fontWeight: FontWeight.w900,
                   color: AppColors.ink,
                   letterSpacing: 0.8,
-                  fontFamily: 'Fredoka',
+                  fontFamily: 'Nunito',
                 ),
               ),
             ),
@@ -693,7 +693,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
                 color: AppColors.ink,
-                fontFamily: 'Fredoka',
+                fontFamily: 'Nunito',
                 letterSpacing: 0.1,
               ),
             ),
@@ -960,7 +960,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     child: Text(
                       'Khôi phục mật khẩu',
                       style: TextStyle(
-                        fontFamily: 'Fredoka',
+                        fontFamily: 'Nunito',
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                         color: AppColors.ink,
@@ -1128,7 +1128,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         : const Text(
                             'Gửi liên kết',
                             style: TextStyle(
-                              fontFamily: 'Fredoka',
+                              fontFamily: 'Nunito',
                               fontWeight: FontWeight.w900,
                               fontSize: 14,
                               color: AppColors.ink,
@@ -1200,7 +1200,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
-                fontFamily: 'Fredoka',
+                fontFamily: 'Nunito',
                 color: AppColors.ink,
                 letterSpacing: 0.2,
               ),
@@ -1256,7 +1256,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       fontSize: 16.5,
                       fontWeight: FontWeight.w900,
                       color: AppColors.ink,
-                      fontFamily: 'Fredoka',
+                      fontFamily: 'Nunito',
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -1328,7 +1328,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       fontSize: 15,
                       fontWeight: FontWeight.w900,
                       color: AppColors.ink,
-                      fontFamily: 'Fredoka',
+                      fontFamily: 'Nunito',
                       height: 1.1,
                     ),
                   ),

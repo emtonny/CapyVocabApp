@@ -129,6 +129,7 @@ interface GeminiChainOptions {
   scheduleBackgroundTask?: (task: Promise<void>) => void;
   apiBaseUrl?: string;
   openAiBaseUrl?: string;
+  validateSuccessfulResponse?: (response: Response) => Promise<boolean>;
 }
 
 interface GeminiAttemptOptions {
@@ -431,7 +432,11 @@ export async function fetchGeminiModelChain(
         const quotaKind = response.status === 429
           ? await classifyGeminiQuotaError(response)
           : null;
-        if (response.ok) {
+        const isUsableSuccess = response.ok &&
+          (options.validateSuccessfulResponse
+            ? await options.validateSuccessfulResponse(response.clone())
+            : true);
+        if (isUsableSuccess) {
           await dispatchAttemptHealth(
             options.healthStore,
             logger,
@@ -465,6 +470,36 @@ export async function fetchGeminiModelChain(
             quotaKind,
             options.scheduleBackgroundTask,
           );
+        }
+
+        if (!isUsableSuccess && response.ok) {
+          if (upstreamAttempts < MAX_UPSTREAM_ATTEMPTS) {
+            await response.body?.cancel();
+            logger.warn(
+              isLastModel
+                ? "Gemini empty result retry"
+                : "Gemini empty result fallback",
+              JSON.stringify({
+                scanId: options.scanId,
+                model,
+                failedAttempt: attemptsForModel,
+                nextModel: isLastModel
+                  ? model
+                  : orderedModelChain[modelIndex + 1],
+              }),
+            );
+            if (!isLastModel) break;
+            continue;
+          }
+
+          return {
+            response,
+            model,
+            modelsTried,
+            attemptsForModel,
+            upstreamAttempts,
+            quotaKind,
+          };
         }
 
         const responseFailure = { status: response.status };

@@ -1,11 +1,11 @@
-// Font hệ: Fredoka (tiêu đề) + Nunito (nội dung)
+// Font dùng chung toàn ứng dụng: Nunito.
 import 'package:flutter/material.dart';
 
 class AppTextStyles {
   AppTextStyles._();
 
   static const TextStyle heading = TextStyle(
-    fontFamily: 'Fredoka',
+    fontFamily: 'Nunito',
     fontWeight: FontWeight.w600,
     fontSize: 20,
   );
