@@ -28,14 +28,61 @@ final class ChatOwner {
 
 final class ChatConversation {
   ChatConversation(
-      {required this.id, required this.peerId, this.lastMessageAt}) {
+      {required this.id,
+      required this.peerId,
+      this.lastMessageAt,
+      this.lastMessageText,
+      this.unreadCount = 0}) {
     validateChatUuid(id);
     validateChatUuid(peerId);
+    if (unreadCount < 0) {
+      throw const FormatException('Invalid unread count.');
+    }
   }
 
   final String id;
   final String peerId;
   final DateTime? lastMessageAt;
+  final String? lastMessageText;
+  final int unreadCount;
+}
+
+final class ChatPeerProfile {
+  ChatPeerProfile({
+    required this.id,
+    required this.displayName,
+    required this.username,
+    required this.avatarUrl,
+  }) {
+    validateChatUuid(id);
+  }
+
+  final String id;
+  final String displayName;
+  final String username;
+  final String avatarUrl;
+
+  String get label {
+    final name = displayName.trim();
+    if (name.isNotEmpty) return name;
+    final handle = username.trim();
+    if (handle.isNotEmpty) return handle;
+    return 'Bạn · ${id.substring(id.length - 8)}';
+  }
+
+  factory ChatPeerProfile.fromRemote(Map<String, dynamic> row) {
+    final id = row['id'];
+    if (id is! String) {
+      throw const FormatException('Invalid public chat profile.');
+    }
+    String field(String key) => row[key] is String ? row[key] as String : '';
+    return ChatPeerProfile(
+      id: id,
+      displayName: field('display_name'),
+      username: field('username'),
+      avatarUrl: field('avatar_url'),
+    );
+  }
 }
 
 final class OperationalChatMessage {

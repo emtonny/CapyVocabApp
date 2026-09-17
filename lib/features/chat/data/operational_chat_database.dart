@@ -13,7 +13,7 @@ final class OperationalChatDatabase {
 
   Future<Database> open() => _opening ??= factory.openDatabase(path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, _) async {
           await db.execute('''CREATE TABLE chat_conversations (
@@ -39,8 +39,26 @@ final class OperationalChatDatabase {
               'CREATE INDEX chat_order ON chat_messages(owner_scope,conversation_id,sent_at,client_created_at,id)');
           await db.execute(
               "CREATE INDEX chat_outbox ON chat_messages(owner_scope,next_attempt_at) WHERE send_status='pending'");
+          await _createVersion2(db);
+        },
+        onUpgrade: (db, oldVersion, _) async {
+          if (oldVersion < 2) await _createVersion2(db);
         },
       ));
+
+  static Future<void> _createVersion2(DatabaseExecutor db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(chat_conversations)');
+    if (!columns.any((row) => row['name'] == 'last_read_at')) {
+      await db.execute(
+          'ALTER TABLE chat_conversations ADD COLUMN last_read_at INTEGER');
+    }
+    await db.execute('''CREATE TABLE IF NOT EXISTS chat_peer_profiles (
+      owner_scope TEXT NOT NULL, peer_id TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '',
+      avatar_url TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL,
+      PRIMARY KEY(owner_scope,peer_id)
+    )''');
+  }
 
   Future<void> close() async {
     final db = await _opening;

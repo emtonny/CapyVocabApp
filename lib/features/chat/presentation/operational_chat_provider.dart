@@ -180,6 +180,77 @@ final operationalChatMessagesProvider = StreamProvider.autoDispose
   yield* store.watchMessages(key.$2);
 });
 
+final operationalChatPeerProfilesProvider = StreamProvider.autoDispose
+    .family<List<ChatPeerProfile>, ChatOwner>((ref, owner) async* {
+  final store = await ref.watch(operationalChatStoreProvider(owner).future);
+  if (store == null) {
+    yield [];
+    return;
+  }
+  yield* store.watchProfiles();
+});
+
+/// Refreshes the approved public projection in one bounded request. The UI
+/// always reads the local cache, so a network failure never blanks known names.
+final operationalChatProfileRefreshProvider =
+    FutureProvider.autoDispose.family<void, ChatOwner>((ref, owner) async {
+  if (!ref.watch(operationalChatEnabledProvider) ||
+      ref.watch(operationalChatOwnerProvider) != owner) {
+    return;
+  }
+  final storeFuture = ref.watch(operationalChatStoreProvider(owner).future);
+  final friendsFuture = ref.watch(operationalChatFriendsProvider(owner).future);
+  final store = await storeFuture;
+  if (store == null) return;
+  final conversations = await store.conversations();
+  List<String> friends;
+  try {
+    friends = await friendsFuture;
+  } catch (_) {
+    friends = const [];
+  }
+  final ids = <String>{
+    ...friends,
+    ...conversations.map((conversation) => conversation.peerId),
+  }.toList()
+    ..sort();
+  if (ids.isEmpty ||
+      !await ref
+          .read(operationalChatNetworkProvider)()
+          .timeout(const Duration(seconds: 3))) {
+    return;
+  }
+  final client = ref.watch(operationalChatClientProvider);
+  final session = client.auth.currentSession;
+  if (session == null || session.isExpired || session.user.id != owner.userId) {
+    return;
+  }
+  try {
+    final response = await client.rpc('get_public_profiles',
+        params: {'profile_ids': ids}).timeout(const Duration(seconds: 12));
+    if (ref.read(operationalChatOwnerProvider) != owner || response is! List) {
+      return;
+    }
+    final allowed = ids.toSet();
+    final profiles = <ChatPeerProfile>[];
+    final seen = <String>{};
+    for (final value in response) {
+      if (value is! Map) throw const FormatException('Invalid profile list.');
+      final profile =
+          ChatPeerProfile.fromRemote(Map<String, dynamic>.from(value));
+      if (!allowed.contains(profile.id) || !seen.add(profile.id)) {
+        throw const FormatException('Invalid profile identity.');
+      }
+      profiles.add(profile);
+    }
+    if (ref.read(operationalChatOwnerProvider) == owner) {
+      await store.cacheProfiles(profiles);
+    }
+  } catch (_) {
+    // Cached labels remain usable; profile decoration is not chat-critical.
+  }
+});
+
 /// Cache notifications only: opening a page must not fetch a profile.
 final operationalChatSourceProvider =
     StreamProvider.autoDispose.family<String?, ChatOwner>((ref, owner) {

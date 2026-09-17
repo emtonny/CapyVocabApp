@@ -103,12 +103,13 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  test('separate DB v1 contains operational tables only', () async {
+  test('separate DB v2 contains operational chat and peer cache only',
+      () async {
     final rows = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
     expect(rows.map((row) => row['name']).toSet(),
-        {'chat_conversations', 'chat_messages'});
-    expect(await db.getVersion(), 1);
+        {'chat_conversations', 'chat_messages', 'chat_peer_profiles'});
+    expect(await db.getVersion(), 2);
     expect((await db.rawQuery('PRAGMA foreign_keys')).single.values.single, 1);
   });
   test('raw validation preserves Unicode and counts code points not UTF16', () {
@@ -427,6 +428,38 @@ void main() {
         peerId: b,
         lastMessageAt: instant.subtract(const Duration(hours: 1))));
     expect((await store.conversations()).single.lastMessageAt, instant);
+  });
+  test('inbound unread count and preview clear only when conversation opens',
+      () async {
+    await store
+        .mergeRemote(message(1, sender: b, text: 'Tin mới', sentAt: instant));
+    var row = (await store.conversations()).single;
+    expect(row.lastMessageText, 'Tin mới');
+    expect(row.unreadCount, 1);
+    await store.markConversationRead(conversation);
+    row = (await store.conversations()).single;
+    expect(row.unreadCount, 0);
+    await store.mergeRemote(message(2,
+        sender: b,
+        text: 'Tin mới hơn',
+        sentAt: instant.add(const Duration(minutes: 1))));
+    row = (await store.conversations()).single;
+    expect(row.lastMessageText, 'Tin mới hơn');
+    expect(row.unreadCount, 1);
+  });
+  test('public peer profiles are isolated by owner and survive store reads',
+      () async {
+    final profile = ChatPeerProfile(
+        id: b,
+        displayName: 'Capy Mây',
+        username: 'capy_may',
+        avatarUrl: 'https://example.com/capy.png');
+    await store.cacheProfiles([profile]);
+    expect((await store.profiles()).single.label, 'Capy Mây');
+    final other = OperationalChatStore(
+        database: db, owner: ChatOwner(projectRef: project, userId: outsider));
+    expect(await other.profiles(), isEmpty);
+    await other.dispose();
   });
   test('timezone-less remote timestamps fail instead of using device timezone',
       () {

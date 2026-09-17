@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../chat/domain/operational_chat.dart';
@@ -19,7 +18,6 @@ class FriendsLeaderboardScreen extends ConsumerWidget {
     final chatOwner = ref.watch(operationalChatEnabledProvider)
         ? ref.watch(operationalChatOwnerProvider)
         : null;
-    final chatAvailable = chatOwner != null;
     return GraphPaperScaffold(
       body: SafeArea(
         child: Column(
@@ -48,16 +46,6 @@ class FriendsLeaderboardScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 16),
-            if (chatAvailable)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: OutlinedButton.icon(
-                  onPressed: () => context.push('/chat'),
-                  icon: const Icon(Icons.chat_bubble_outline),
-                  label: const Text('Trò chuyện · Staging'),
-                ),
-              ),
-
             // Weekly leaderboard hint cards
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),

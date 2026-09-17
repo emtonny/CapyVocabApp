@@ -1,6 +1,7 @@
 param(
     [int]$Port,
-    [switch]$Release
+    [switch]$Release,
+    [switch]$Staging
 )
 
 $ErrorActionPreference = 'Stop'
@@ -77,10 +78,38 @@ if (-not $device) {
 Write-Host "Connected: $device" -ForegroundColor Green
 flutter pub get
 
-$runArguments = @('run', '-d', $device, '--no-dds')
-if ($Release) {
-    $runArguments += '--release'
-}
+$defineFile = $null
+try {
+    $runArguments = @('run', '-d', $device, '--no-dds')
+    if ($Release) {
+        $runArguments += '--release'
+    }
+    if ($Staging) {
+        Write-Host 'Fetching Staging configuration from Supabase CLI...' -ForegroundColor Cyan
+        $stagingRef = 'nxteaznowkfennxpqjmt'
+        $keysJson = (& npx.cmd supabase projects api-keys --project-ref $stagingRef --reveal --output json | Out-String)
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to obtain Staging API credentials.'
+        }
+        $keys = ConvertFrom-Json -InputObject $keysJson
+        $anon = @($keys | Where-Object { $_.name -eq 'anon' -or $_.id -eq 'anon' } | Select-Object -First 1)
+        $anonValue = if ($anon[0].api_key) { $anon[0].api_key } else { $anon[0].key }
+        $defineFile = Join-Path ([IO.Path]::GetTempPath()) ('capy_staging_bluestacks_{0}.json' -f [Guid]::NewGuid().ToString('N'))
+        $defines = [ordered]@{
+            SUPABASE_URL = "https://$stagingRef.supabase.co"
+            SUPABASE_ANON_KEY = $anonValue
+            LIBRARY_SYNC_ENABLED = $true
+            CHAT_RELAY_ENABLED = $true
+        } | ConvertTo-Json
+        [IO.File]::WriteAllText($defineFile, $defines, (New-Object Text.UTF8Encoding($false)))
+        $runArguments += "--dart-define-from-file=$defineFile"
+    }
 
-Write-Host 'Building and running Capy Vocab...' -ForegroundColor Cyan
-flutter @runArguments
+    Write-Host 'Building and running Capy Vocab...' -ForegroundColor Cyan
+    flutter @runArguments
+}
+finally {
+    if ($defineFile -and (Test-Path -LiteralPath $defineFile)) {
+        Remove-Item -LiteralPath $defineFile -Force
+    }
+}

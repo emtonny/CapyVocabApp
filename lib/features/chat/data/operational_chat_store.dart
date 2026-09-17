@@ -155,17 +155,81 @@ final class OperationalChatStore {
   }
 
   Future<List<ChatConversation>> conversations() async {
-    final rows = await database.query('chat_conversations',
-        where: 'owner_scope=? AND active=1',
-        whereArgs: [owner.scope],
-        orderBy: 'last_message_at DESC,id');
+    final rows = await database.rawQuery('''SELECT c.*,
+      (SELECT m.raw_text FROM chat_messages m
+       WHERE m.owner_scope=c.owner_scope AND m.conversation_id=c.id
+       ORDER BY coalesce(m.sent_at,m.client_created_at) DESC,m.id DESC LIMIT 1)
+       AS last_message_text,
+      (SELECT count(*) FROM chat_messages m
+       WHERE m.owner_scope=c.owner_scope AND m.conversation_id=c.id
+       AND m.sender_id<>? AND m.send_status='sent'
+       AND (c.last_read_at IS NULL OR coalesce(m.sent_at,m.client_created_at)>c.last_read_at))
+       AS unread_count
+      FROM chat_conversations c
+      WHERE c.owner_scope=? AND c.active=1
+      ORDER BY unread_count DESC,c.last_message_at DESC,c.id''',
+        [owner.userId, owner.scope]);
     return rows
         .map((row) => ChatConversation(
             id: row['id'] as String,
             peerId: row['peer_id'] as String,
-            lastMessageAt: _time(row['last_message_at'])))
+            lastMessageAt: _time(row['last_message_at']),
+            lastMessageText: row['last_message_text'] as String?,
+            unreadCount: row['unread_count'] as int))
         .toList();
   }
+
+  Future<void> markConversationRead(String conversationId) async {
+    validateChatUuid(conversationId);
+    await database.rawUpdate('''UPDATE chat_conversations SET last_read_at=(
+      SELECT max(coalesce(sent_at,client_created_at)) FROM chat_messages
+      WHERE owner_scope=? AND conversation_id=? AND sender_id<>?
+      AND send_status='sent')
+      WHERE owner_scope=? AND id=? AND active=1''', [
+      owner.scope,
+      conversationId,
+      owner.userId,
+      owner.scope,
+      conversationId,
+    ]);
+    _notify();
+  }
+
+  Future<List<ChatPeerProfile>> profiles() async {
+    final rows = await database.query('chat_peer_profiles',
+        where: 'owner_scope=?', whereArgs: [owner.scope]);
+    return rows
+        .map((row) => ChatPeerProfile(
+              id: row['peer_id'] as String,
+              displayName: row['display_name'] as String,
+              username: row['username'] as String,
+              avatarUrl: row['avatar_url'] as String,
+            ))
+        .toList();
+  }
+
+  Future<void> cacheProfiles(List<ChatPeerProfile> profiles) async {
+    await database.transaction((tx) async {
+      final now = DateTime.now().toUtc().microsecondsSinceEpoch;
+      for (final profile in profiles) {
+        if (profile.id == owner.userId) continue;
+        await tx.insert(
+            'chat_peer_profiles',
+            {
+              'owner_scope': owner.scope,
+              'peer_id': profile.id,
+              'display_name': profile.displayName,
+              'username': profile.username,
+              'avatar_url': profile.avatarUrl,
+              'updated_at': now,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+    _notify();
+  }
+
+  Stream<List<ChatPeerProfile>> watchProfiles() => _watch(profiles);
 
   Future<void> _member(
       DatabaseExecutor tx, OperationalChatMessage message) async {

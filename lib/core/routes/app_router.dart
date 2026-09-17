@@ -11,6 +11,7 @@ import '../../features/ai_scan/presentation/screens/scan_result_overlay_screen.d
 import '../../features/auth/presentation/screens/auth_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/chat/presentation/operational_chat_screen.dart';
+import '../../features/chat/presentation/operational_chat_overlay.dart';
 import '../../features/friends/presentation/screens/friends_leaderboard_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/library/presentation/screens/storage_album_screen.dart';
@@ -87,151 +88,158 @@ List<RouteBase> _buildAppRoutes(
   _RouterRefreshListenable refreshListenable,
 ) {
   return [
-    GoRoute(
-      path: '/auth',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: AuthScreen(
-          initialMessage:
-              state.uri.queryParameters['passwordReset'] == 'success'
-                  ? 'Đổi mật khẩu thành công. Hãy đăng nhập lại.'
-                  : null,
-        ),
+    ShellRoute(
+      builder: (context, state, child) => OperationalChatOverlay(
+        child: child,
       ),
-    ),
-    GoRoute(
-      path: '/reset-password',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: ResetPasswordScreen(
-          canResetPassword: refreshListenable.isPasswordRecovery,
-        ),
-      ),
-    ),
-    GoRoute(
-      path: '/onboarding',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const OnboardingWizardScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/home',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const HomeScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/storage',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const StorageAlbumScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/storage/vocabulary',
-      pageBuilder: (context, state) {
-        final notes = state.extra;
-        return _softPage(
-          state,
-          child: notes is List<PhotoNote>
-              ? SelectedPhotoVocabularyScreen(notes: notes)
-              : const GraphPaperScaffold(
-                  body: Center(
-                    child: Text('Không tìm thấy ảnh đã chọn.'),
-                  ),
-                ),
-        );
-      },
-    ),
-    GoRoute(
-      path: '/storage/trash',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const LibraryTrashScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/storage/:photoNoteId',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: LibraryPhotoNoteDetailScreen(
-          photoNoteId: state.pathParameters['photoNoteId']!,
-        ),
-      ),
-    ),
-    GoRoute(
-      path: '/scan',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        opaque: false,
-        barrierColor: const Color(0x66000000), // ~40% dark dimming backdrop
-        barrierDismissible: true,
-        child: const PhotoScanBottomSheet(),
-      ),
-    ),
-    GoRoute(
-      path: '/scan-overlay',
-      pageBuilder: (context, state) {
-        final record = state.extra;
-        if (record is! ScanResultRecord) {
-          return _softPage(
+      routes: [
+        GoRoute(
+          path: '/auth',
+          pageBuilder: (context, state) => _softPage(
             state,
-            child: const GraphPaperScaffold(
-              body: Center(child: Text('Không tìm thấy kết quả quét.')),
+            child: AuthScreen(
+              initialMessage:
+                  state.uri.queryParameters['passwordReset'] == 'success'
+                      ? 'Đổi mật khẩu thành công. Hãy đăng nhập lại.'
+                      : null,
             ),
-          );
-        }
-        return _softPage(
-          state,
-          child: ScanResultOverlayScreen(record: record),
-        );
-      },
-    ),
-    GoRoute(
-      path: '/solo-arena',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const SoloLobbyScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/pet-shop',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const PetShopScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/friends',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const FriendsLeaderboardScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/settings',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const SettingsScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/chat',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: const OperationalChatScreen(),
-      ),
-    ),
-    GoRoute(
-      path: '/chat/:conversationId',
-      pageBuilder: (context, state) => _softPage(
-        state,
-        child: OperationalChatScreen(
-          conversationId: state.pathParameters['conversationId'],
+          ),
         ),
-      ),
+        GoRoute(
+          path: '/reset-password',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: ResetPasswordScreen(
+              canResetPassword: refreshListenable.isPasswordRecovery,
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/onboarding',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const OnboardingWizardScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/home',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const HomeScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/storage',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const StorageAlbumScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/storage/vocabulary',
+          pageBuilder: (context, state) {
+            final notes = state.extra;
+            return _softPage(
+              state,
+              child: notes is List<PhotoNote>
+                  ? SelectedPhotoVocabularyScreen(notes: notes)
+                  : const GraphPaperScaffold(
+                      body: Center(
+                        child: Text('Không tìm thấy ảnh đã chọn.'),
+                      ),
+                    ),
+            );
+          },
+        ),
+        GoRoute(
+          path: '/storage/trash',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const LibraryTrashScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/storage/:photoNoteId',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: LibraryPhotoNoteDetailScreen(
+              photoNoteId: state.pathParameters['photoNoteId']!,
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/scan',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            opaque: false,
+            barrierColor: const Color(0x66000000), // ~40% dark dimming backdrop
+            barrierDismissible: true,
+            child: const PhotoScanBottomSheet(),
+          ),
+        ),
+        GoRoute(
+          path: '/scan-overlay',
+          pageBuilder: (context, state) {
+            final record = state.extra;
+            if (record is! ScanResultRecord) {
+              return _softPage(
+                state,
+                child: const GraphPaperScaffold(
+                  body: Center(child: Text('Không tìm thấy kết quả quét.')),
+                ),
+              );
+            }
+            return _softPage(
+              state,
+              child: ScanResultOverlayScreen(record: record),
+            );
+          },
+        ),
+        GoRoute(
+          path: '/solo-arena',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const SoloLobbyScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/pet-shop',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const PetShopScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/friends',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const FriendsLeaderboardScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/settings',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const SettingsScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/chat',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const OperationalChatScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/chat/:conversationId',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: OperationalChatScreen(
+              conversationId: state.pathParameters['conversationId'],
+            ),
+          ),
+        ),
+      ],
     ),
   ];
 }

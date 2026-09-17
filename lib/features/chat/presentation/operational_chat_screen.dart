@@ -114,6 +114,7 @@ class _Detail extends ConsumerStatefulWidget {
 class _DetailState extends ConsumerState<_Detail> {
   final _text = TextEditingController();
   bool _saving = false;
+  bool _markingRead = false;
   @override
   void dispose() {
     _text.dispose();
@@ -148,6 +149,21 @@ class _DetailState extends ConsumerState<_Detail> {
     }
   }
 
+  Future<void> _markRead() async {
+    if (_markingRead ||
+        ref.read(operationalChatOwnerProvider) != widget.owner) {
+      return;
+    }
+    _markingRead = true;
+    try {
+      final store =
+          await ref.read(operationalChatStoreProvider(widget.owner).future);
+      await store?.markConversationRead(widget.conversationId);
+    } finally {
+      _markingRead = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final inbox = ref.watch(operationalChatInboxProvider(widget.owner));
@@ -163,6 +179,9 @@ class _DetailState extends ConsumerState<_Detail> {
     if (conversation == null) {
       return const _Notice(
           'Cuộc trò chuyện chưa có trên máy hoặc bạn không còn quyền truy cập.');
+    }
+    if (conversation.unreadCount > 0 && !_markingRead) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
     }
     final source =
         ref.watch(operationalChatSourceProvider(widget.owner)).asData?.value;

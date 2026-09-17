@@ -2,7 +2,22 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-17 — đồng bộ AI scan và C3 operational chat; SOURCE/TEST VERIFIED**
+> Cập nhật gần nhất: **2026-09-17 — Global chat mailbox overlay; ANDROID 9 + TEST VERIFIED**
+>
+> Chat nay có bubble toàn cục 64dp kiểu AssistiveTouch, kéo/bám mép và tự lùi
+> vào mép sau 5 giây; panel neo-brutalist có tìm kiếm, thông báo AI chưa mở,
+> profile bạn bè thật, preview, sắp xếp/badge chưa đọc. Local operational Chat
+> DB nâng additive từ v1 lên v2: thêm `last_read_at` và bảng cache owner-scoped
+> `chat_peer_profiles`; không đổi Supabase schema. Analyzer sạch, 95/95 Chat và
+> full suite 541 pass + 1 opt-in skip. APK exact Staging cài đè/giữ data và panel
+> render đúng trên BlueStacks Android 9, không có Overlay/overflow/SQLite runtime
+> error. Hai migration onboarding vẫn chỉ dry-run/pending; không có remote write.
+>
+> Theo yêu cầu chuyển môi trường, repo đã relink từ Production sang exact Staging
+> `nxteaznowkfennxpqjmt` (`ACTIVE_HEALTHY`). APK debug được build bằng runner có
+> `CHAT_RELAY_ENABLED=true`, cài đè giữ dữ liệu và launch thành công trên BlueStacks
+> Android 9. Migration chỉ dry-run; hai migration onboarding còn pending và không
+> được apply. Production không bị ghi hoặc thay đổi.
 >
 > AI-scan increment: **empty-result retry và tối ưu ảnh; SOURCE/TEST VERIFIED**
 >
@@ -176,10 +191,10 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Chat language profile (C1) | IMPLEMENTED/LOCAL + STAGING BACKEND VERIFIED, UI SMOKE PENDING | `vi`/`en` self-declared; onboarding + Settings + owner-scoped cache/repository đã nối. Staging migration/RLS/atomic RPC/legacy compatibility/server timestamp và two-account fixture cleanup pass. Account cũ không tự backfill; Production chưa apply C1; chat/Training vẫn OFF |
 | Operational Chat (C2) | IMPLEMENTED / LOCAL + STAGING REST/REALTIME VERIFIED | 47 SQL checks + 10 nhóm smoke ba account/real WebSockets pass; A/B raw trước translation, shared derived relay, outsider REST empty/0 events trong cửa sổ test; RLS/service-only/immutable/idempotent/inactive pass. Exact C2 applied, history 23/23; cleanup baseline preserved. C3 client complete trên Staging; Training chưa nối |
 | Training dataset | PARTIAL/FAIL-CLOSED VERIFIED | Có schema lineage/consent; AI prediction không tự thành nhãn. Missing media quarantine example liên quan. Permanent purge xóa source example + manifest/run links và invalidates model đã dùng source; historical non-content audit có thể còn. Builder/D6 vẫn chưa triển khai |
-| Operational Chat local (C3A) | IMPLEMENTED/VERIFIED; C3 COMPLETE | Separate SQLite chat v1 (2 tables), project+owner scope, atomic raw/outbox, single-flight/durable backoff/cap, immutable ACK/ordering, complete inventory/history reconcile/local streams. Durable restart/lost-response and physical multi-owner restoration verified |
+| Operational Chat local (C3A) | IMPLEMENTED/VERIFIED; C3 COMPLETE | Separate SQLite chat v2 (3 tables), additive v1→v2 migration, project+owner scope, local read cursor/unread count and approved public peer-profile cache; atomic raw/outbox, single-flight/durable backoff/cap, immutable ACK/ordering, complete inventory/history reconcile/local streams. Durable restart/lost-response and physical multi-owner restoration verified |
 | Operational Chat adapter (C3B.1) | IMPLEMENTED/VERIFIED; C3 COMPLETE | Private SDK captured JWT, exact Staging only; insert/conflict/RPC, exhausted keyset pages, visibility checks and guarded Realtime lifecycle. Local HTTP/WebSocket tests plus live REST/Realtime smoke pass |
 | Operational Chat runtime (C3B.2) | IMPLEMENTED/STAGING VERIFIED; C3 COMPLETE | Single-flight/cache/runtime guards, foreground reconnect and explicit ascending UUID cursors verified. Default flag OFF; exact Staging only |
-| Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | `/chat` inbox/detail and friend picker; bidirectional raw relay, cold Web restore, offline Android cache/outbox/restart/reconnect, no duplicate, A→B→A isolation and inactive-membership fail-closed verified. Sent means server accepted, not delivery/read receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
+| Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | Global 64dp draggable mailbox bubble with 5-second edge retreat, responsive panel, search, real cached profile, unread-first ordering/badges and disabled AI notice; `/chat` detail remains the conversation route and marks cached inbound rows read when opened. Bidirectional raw relay/offline behavior remains verified. Sent still means server accepted, not delivery receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
 | Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
@@ -1152,6 +1167,77 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-18 — Chat box refinements, album photo picker, draggable dialog & zero-latency bubble (TEST & RUNTIME VERIFIED)
+
+- Bổ sung nền giấy hữu cơ mộc từ AI Scan (`ScanPaperBackground` + `AppColors.cream`) cho toàn bộ box chat và thanh nhập tin nhắn.
+- Thêm nút chọn ảnh từ album hình vuông góc trái ô nhập liệu (`chat-pick-image`), hỗ trợ preview thumbnail trước khi gửi và hiển thị ảnh đính kèm trong bong bóng tin nhắn.
+- Tinh chỉnh vị trí thời gian gửi tin nhắn: đặt phía dưới bong bóng chat, bỏ text "Server đã nhận" để giao diện gọn gàng.
+- Bổ sung tính năng kéo di chuyển toàn bộ box chat qua thanh header (`_MailboxHeader` & `_ConversationHeader`), có visual drag handle indicator và safe area clamping.
+- Tối ưu chuyển động bong bóng chat (`_ChatBubble`): chuyển `AnimatedPositioned` sang `Duration.zero` khi đang giữ và kéo (`_isDraggingBubble`), loại bỏ hoàn toàn độ trễ 240ms; thêm hiệu ứng phóng to xúc giác `1.08` và bóng đổ sâu hơn khi kéo.
+- Khôi phục kích thước ban đầu (410x620) rộng rãi, thoáng đãng cho box chat.
+- Verification: `flutter analyze` 0 lỗi; `flutter test test/features/chat/` pass toàn bộ **98/98** tests; kiểm tra tương tác kéo thả mượt mà trên BlueStacks emulator.
+
+### 2026-09-17 — In-box conversation embedded in mailbox overlay (SOURCE/TEST VERIFIED)
+
+- Tái thiết kế tương tác Chat: chuyển hội thoại từ route toàn màn hình (`/chat/:id`)
+  vào nằm trực tiếp bên trong popup box chat (`OperationalChatOverlay` / `_ChatMailbox`).
+- Khi bấm vào bạn bè/hội thoại, panel không đóng và không navigate; panel hiển thị
+  `_MailboxConversationView` với header back `←`, avatar, tên bạn bè, trạng thái text gốc,
+  nút đóng `✕`, danh sách bubble tin nhắn và thanh soạn thảo tin nhắn có nút gửi.
+- Hỗ trợ bàn phím: bọc panel với `AnimatedPadding(viewInsets.bottom)` và tính toán
+  `maxAvailableHeight` để popup tự động co giãn và nâng lên trên bàn phím ảo, không bị che
+  hoặc gây lỗi `RenderFlex` overflow.
+- `tool/run_bluestacks.ps1` được bổ sung switch `-Staging` để tự động lấy Staging credentials
+  và inject `--dart-define-from-file`, giúp chạy kiểm thử trực tiếp trên BlueStacks dễ dàng.
+- Verification: `flutter analyze` sạch; `flutter test test/features/chat/` pass **96/96**;
+  widget test bao gồm in-box conversation view, message bubbles, text input và back button.
+
+### 2026-09-17 — Global chat mailbox overlay (ANDROID 9 + TEST VERIFIED)
+
+- Thay CTA Chat riêng ở màn Bạn bè bằng `OperationalChatOverlay` gắn trong
+  `ShellRoute`, hiển thị trên toàn bộ giao diện khi exact-Staging Chat owner tồn
+  tại. Bubble mascot 64dp hỗ trợ TalkBack, haptic, kéo/bám mép và tự lùi vào mép
+  sau 5 giây không tương tác; mở panel không rời màn hiện tại.
+- Panel bám thiết kế neo-brutalist tham chiếu: header/unread tổng, tìm kiếm bạn,
+  AI card trả thông báo “chưa mở”, danh sách bạn/hội thoại thật, preview/thời gian,
+  unread-first và badge. Public profile được lấy gộp qua RPC đã có
+  `get_public_profiles` rồi cache owner-scoped; không tạo profile giả hoặc query
+  từng row.
+- Operational Chat SQLite nâng additive v1→v2, thêm `last_read_at` vào
+  `chat_conversations` và bảng `chat_peer_profiles`; unread chỉ clear khi mở
+  detail. Không thay đổi Library DB hoặc Supabase schema/migration.
+- Verification: `flutter analyze` sạch; `flutter test test/features/chat` pass
+  **95/95**; full `flutter test` pass **541**, 1 opt-in skip, 0 failure. Widget
+  coverage gồm search, AI notice, unread/preview/read cursor, owner isolation,
+  auto-retreat và drag/dock hai mép.
+- Mobile audit bắt 6 false-positive vì regex coi `SizedBox` spacing và progress
+  indicator 24px là touch control; control tương tác thật dùng bubble 64dp,
+  `IconButton`, `ListTile` và semantics. APK exact Staging build/cài đè giữ data
+  trên BlueStacks Android 9; bubble tự lùi, panel/profile/AI notice render đúng;
+  log hiện tại có 0 match `FlutterError|No Overlay|RenderFlex|overflowed|SQLiteException|FATAL EXCEPTION`.
+- Staging preflight chỉ dry-run và vẫn báo hai migration onboarding pending;
+  không apply migration, không deploy, không ghi remote row/object, không đụng
+  Production. Bốn font untracked có sẵn được giữ nguyên.
+
+### 2026-09-17 — BlueStacks switched to exact Staging with Chat enabled (RUNTIME VERIFIED)
+
+- Guard ban đầu dừng đúng trước build vì repo đang link Production
+  `vmxonxqxrlkssdzsucrg`; không có APK, migration hoặc cloud write ở lần dừng này.
+- Chạy `supabase link --project-ref nxteaznowkfennxpqjmt --yes`, sau đó xác minh
+  đúng một linked project: `emtonny's Project`, exact Staging ref và
+  `ACTIVE_HEALTHY`; organization có hai project active.
+- Runner `-Target android-build -ChatRelayEnabled` pass. Migration preflight là
+  dry-run và báo hai migration pending:
+  `20260916120000_add_onboarding_language_preferences.sql` và
+  `20260917120000_merge_onboarding_language_contracts.sql`; không migration nào
+  được apply.
+- APK debug 200,791,280 byte build pass, `adb install -r` lên BlueStacks
+  `emulator-5554` pass và giữ app data; `MainActivity` launch `Status: ok` trong
+  2,806 ms. Process foreground tồn tại, bộ lọc 500 dòng log hiện tại có 0 match
+  fatal/Flutter/Supabase/network startup và file dart-define tạm đã cleanup về 0.
+- Production không relink lại, không deploy, không đổi secret, không ghi row/object
+  hoặc thay đổi schema. Bốn font untracked có sẵn được giữ nguyên.
 
 ### 2026-09-17 — AI-scan/chat branch reconciliation (SOURCE/TEST VERIFIED)
 

@@ -403,14 +403,11 @@ void main() {
   });
 
   testWidgets(
-      'friends entry is Staging opt-in and hidden without resolving SDK when disabled',
+      'friends screen has no duplicate chat entry and disabled mode avoids SDK',
       (tester) async {
     router.go('/friends');
     await mount(tester);
-    expect(find.text('Trò chuyện · Staging'), findsOneWidget);
-    await tester.tap(find.text('Trò chuyện · Staging'));
-    await flush(tester);
-    expect(find.byKey(const Key('chat-new')), findsOneWidget);
+    expect(find.text('Trò chuyện · Staging'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     container = ProviderContainer(overrides: [
