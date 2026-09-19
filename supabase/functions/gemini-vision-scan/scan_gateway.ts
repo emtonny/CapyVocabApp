@@ -3,37 +3,33 @@ import { type GeminiModelPolicy, resolveModelPolicy } from "./model_policy.ts";
 
 export const DEFAULT_VILAO_BASE_URL = "https://api.vilao.ai/v1";
 export const DEFAULT_VILAO_MODEL = "gemini-3.8-flash";
-export const DEFAULT_NATIVE_GEMINI_BASE_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models";
 
 type EnvironmentReader = (name: string) => string | undefined;
 
-export function isOpenAiCompatible(baseUrl: string): boolean {
-  return new URL(baseUrl).hostname !== "generativelanguage.googleapis.com";
+export function isOpenAiCompatible(_baseUrl: string): boolean {
+  return true;
 }
 
 export function resolveScanGateway(readEnv: EnvironmentReader) {
-  const baseUrl = readEnv("GEMINI_BASE_URL")?.trim();
-  const apiBaseUrl = readEnv("GEMINI_API_BASE_URL")?.trim();
-  const resolvedUrl = baseUrl || apiBaseUrl || DEFAULT_NATIVE_GEMINI_BASE_URL;
+  const baseUrl = readEnv("GEMINI_BASE_URL")?.trim() || DEFAULT_VILAO_BASE_URL;
+  const model = readEnv("GEMINI_MODEL")?.trim() || DEFAULT_VILAO_MODEL;
   return {
-    baseUrl: resolvedUrl,
-    // OpenAI-compatible gateways are opt-in. Without an explicit gateway,
-    // retain the native Gemini path that the deployed secret supports.
-    openAi: baseUrl ? isOpenAiCompatible(baseUrl) : false,
-    model: readEnv("GEMINI_MODEL")?.trim() || DEFAULT_VILAO_MODEL,
+    baseUrl,
+    openAi: true,
+    model,
   };
 }
 
 export function resolveScanModelPolicy(
   tier: EntitlementTier,
   gateway: ReturnType<typeof resolveScanGateway>,
-  readEnv: EnvironmentReader,
+  _readEnv?: EnvironmentReader,
 ): GeminiModelPolicy {
-  // Both tiers use the user's Vilao model. Never send its key to Google as fallback.
-  return gateway.openAi
-    ? { tier, primaryModel: gateway.model, fallbackModel: null }
-    : resolveModelPolicy(tier, readEnv);
+  return {
+    tier,
+    primaryModel: gateway.model || DEFAULT_VILAO_MODEL,
+    fallbackModel: null,
+  };
 }
 
 export function resolveOpenAiEndpoint(baseUrl: string, apiKey: string) {

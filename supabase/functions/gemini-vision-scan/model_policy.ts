@@ -1,9 +1,9 @@
 import type { EntitlementTier } from "../_shared/entitlements.ts";
 
 export const DEFAULT_GEMINI_MODELS = {
-  free: "gemini-3.5-flash-lite",
-  pro: "gemini-3.7-flash",
-  proFallback: "gemini-3.6-flash",
+  free: "gemini-3.8-flash",
+  pro: "gemini-3.8-flash",
+  proFallback: null,
 } as const;
 
 export interface GeminiModelPolicy {
@@ -18,8 +18,6 @@ export type GeminiModelFailure =
 
 type EnvironmentReader = (name: string) => string | undefined;
 
-const PRO_FALLBACK_STATUSES = new Set([500, 502, 503, 504]);
-
 function readModel(
   readEnv: EnvironmentReader,
   name: string,
@@ -32,32 +30,18 @@ export function resolveModelPolicy(
   tier: EntitlementTier,
   readEnv: EnvironmentReader = (name) => Deno.env.get(name),
 ): GeminiModelPolicy {
-  if (tier === "free") {
-    return {
-      tier,
-      primaryModel: readModel(
-        readEnv,
-        "GEMINI_FREE_MODEL",
-        DEFAULT_GEMINI_MODELS.free,
-      ),
-      fallbackModel: null,
-    };
-  }
-
   return {
     tier,
     primaryModel: readModel(
       readEnv,
-      "GEMINI_PRO_MODEL",
-      DEFAULT_GEMINI_MODELS.pro,
+      "GEMINI_MODEL",
+      DEFAULT_GEMINI_MODELS.free,
     ),
-    fallbackModel: readModel(
-      readEnv,
-      "GEMINI_PRO_FALLBACK_MODEL",
-      DEFAULT_GEMINI_MODELS.proFallback,
-    ),
+    fallbackModel: null,
   };
 }
+
+const PRO_FALLBACK_STATUSES = new Set([500, 502, 503, 504]);
 
 export function shouldFallbackModelFailure(
   policy: GeminiModelPolicy,

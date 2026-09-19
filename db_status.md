@@ -2,16 +2,20 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-19 — Core features stabilized: AI Scan, UI recovery, Native Gemini default, Album & Chat verified live; SOURCE + TEST + LIVE VERIFIED**
+> Cập nhật gần nhất: **2026-09-19 — Exclusively Vilao gemini-3.8-flash configured; OLD MODELS RETIRED; LIVE VERIFIED**
 >
-> Sửa triệt để lỗi scan quay lâu và khóa UI:
-> 1. AI Scan UI: `PhotoScanBottomSheet` nay chạy cleanup ảnh lỗi qua `unawaited` trong nền, bảo đảm khối `finally` luôn giải phóng `isProcessing` và reset loading overlay ngay khi có lỗi/timeout. Thêm regression test `dọn ảnh bị treo không khóa màn hình scan` pass 100%.
-> 2. Edge Function `gemini-vision-scan`: `scan_gateway.ts` mặc định dùng native Gemini (`gemini-3.5-flash-lite`) với base URL chính thức của Google, chỉ dùng OpenAI-compatible gateway khi biến `GEMINI_BASE_URL` được cấu hình rõ ràng. Function version 6 đã deploy ACTIVE trên Staging `nxteaznowkfennxpqjmt`.
-> 3. Kiểm thử Live trên BlueStacks Android 9 (`127.0.0.1:5555`):
->    - AI Scan: nhận diện thành công sau 6.8s, render đầy đủ nhãn từ vựng (menu, download, image...), thanh công cụ nhãn hoạt động và nút mở lại bình thường.
->    - Thư viện & Album: lưu ảnh scan vào SQLite local, mở xem chi tiết từ vựng/phiên âm/nghĩa mượt mà; tạo mới Album "Daily Words", thêm ảnh vào Album và duyệt Album thành công.
->    - Chat: mở hộp thư, xem danh sách cuộc trò chuyện, gửi tin nhắn văn bản tức thì, mở bộ chọn ảnh từ album gửi bạn bè không lỗi.
->    - Full suites: Flutter tests 198/198 passed; Deno tests 84/84 passed; Deno check & Flutter analyze 0 errors.
+> Toàn bộ các model cũ (`gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-3.7-flash`) đã được loại bỏ khỏi cấu hình:
+> 1. Edge Function `gemini-vision-scan`:
+>    - `model_policy.ts`: Gói Free và Pro đều trỏ cố định vào `gemini-3.8-flash`, không fallback sang Google hay các model cũ.
+>    - `scan_gateway.ts`: Đặt mặc định duy nhất sang gateway Vilao (`https://api.vilao.ai/v1`) với model `gemini-3.8-flash`.
+>    - Function version 10 đã deploy ACTIVE trên Staging `nxteaznowkfennxpqjmt`. Deno test 80/80 pass, Deno check 0 error.
+> 2. Môi trường Staging & Local:
+>    - Đã lưu Secret trên Staging `nxteaznowkfennxpqjmt` và đồng bộ `.env`:
+>      `GEMINI_API_KEY`: Key Vilao chính thức (`sk-d340d...`)
+>      `GEMINI_BASE_URL`: `https://api.vilao.ai/v1`
+>      `GEMINI_MODEL`: `gemini-3.8-flash`
+> 3. Kiểm thử Live trên thiết bị:
+>    - Quét ảnh trực tiếp qua app trên BlueStacks Android 9: ghi nhận vào Ledger Staging thành công với `model_used: gemini-3.8-flash`, `status: succeeded`, `latency: 12.0s`.
 >
 >
 > Ba migration Chat Translation ngày 2026-09-18 từng chỉ có trên remote Staging

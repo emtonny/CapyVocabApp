@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildOpenAiRequestBody,
-  DEFAULT_NATIVE_GEMINI_BASE_URL,
   DEFAULT_VILAO_BASE_URL,
   DEFAULT_VILAO_MODEL,
   isUsableScanGatewayResponse,
@@ -21,26 +20,23 @@ const vilaoEnvironment = (name: string) =>
   name === "GEMINI_BASE_URL" ? DEFAULT_VILAO_BASE_URL : undefined;
 const logger = { warn() {}, error() {} };
 
-test("native Gemini remains the safe default for Free and Pro", () => {
+test("Vilao remains the default for Free and Pro, without provider fallback", () => {
   const gateway = resolveScanGateway(noSecrets);
-  assert.equal(gateway.baseUrl, DEFAULT_NATIVE_GEMINI_BASE_URL);
-  assert.equal(gateway.openAi, false);
-  assert.equal(
-    resolveScanModelPolicy("free", gateway, noSecrets).primaryModel,
-    "gemini-3.5-flash-lite",
-  );
-  assert.equal(
-    resolveScanModelPolicy("pro", gateway, noSecrets).primaryModel,
-    "gemini-3.7-flash",
-  );
+  assert.equal(gateway.baseUrl, DEFAULT_VILAO_BASE_URL);
+  assert.equal(gateway.openAi, true);
+  for (const tier of ["free", "pro"] as const) {
+    assert.deepEqual(resolveScanModelPolicy(tier, gateway, noSecrets), {
+      tier,
+      primaryModel: DEFAULT_VILAO_MODEL,
+      fallbackModel: null,
+    });
+  }
 });
 
-test("existing Vilao environment wins over native-Gemini configuration", () => {
+test("custom Vilao environment wins over default configuration", () => {
   const env = new Map([
     ["GEMINI_BASE_URL", " https://api.vilao.ai/v1/ "],
     ["GEMINI_MODEL", " custom-vilao-model "],
-    ["GEMINI_API_BASE_URL", "http://127.0.0.1:8787/v1beta/models"],
-    ["GEMINI_FREE_MODEL", "not-the-vilao-model"],
   ]);
   const read = (name: string) => env.get(name);
   const gateway = resolveScanGateway(read);
@@ -49,31 +45,6 @@ test("existing Vilao environment wins over native-Gemini configuration", () => {
     resolveScanModelPolicy("free", gateway, read).primaryModel,
     "custom-vilao-model",
   );
-});
-
-test("native Gemini and the P6 stub remain explicit opt-ins", () => {
-  for (
-    const baseUrl of [
-      "https://generativelanguage.googleapis.com/v1beta/models",
-      "http://127.0.0.1:8787/v1beta/models",
-    ]
-  ) {
-    const read = (name: string) =>
-      name === "GEMINI_API_BASE_URL" ? baseUrl : undefined;
-    const gateway = resolveScanGateway(read);
-    assert.equal(gateway.openAi, false);
-    assert.equal(gateway.baseUrl, baseUrl);
-    assert.equal(
-      resolveScanModelPolicy("free", gateway, read).primaryModel,
-      "gemini-3.5-flash-lite",
-    );
-  }
-  const gateway = resolveScanGateway((name) =>
-    name === "GEMINI_BASE_URL"
-      ? "https://generativelanguage.googleapis.com/v1beta/models"
-      : undefined
-  );
-  assert.equal(gateway.openAi, false);
 });
 
 test("blank settings retain native defaults and endpoints are not duplicated", () => {
