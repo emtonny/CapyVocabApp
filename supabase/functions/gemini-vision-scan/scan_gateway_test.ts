@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildOpenAiRequestBody,
+  DEFAULT_NATIVE_GEMINI_BASE_URL,
   DEFAULT_VILAO_BASE_URL,
   DEFAULT_VILAO_MODEL,
   isUsableScanGatewayResponse,
@@ -16,19 +17,22 @@ import {
 } from "./gemini_client.ts";
 
 const noSecrets = () => undefined;
+const vilaoEnvironment = (name: string) =>
+  name === "GEMINI_BASE_URL" ? DEFAULT_VILAO_BASE_URL : undefined;
 const logger = { warn() {}, error() {} };
 
-test("Vilao remains the default for Free and Pro, without provider fallback", () => {
+test("native Gemini remains the safe default for Free and Pro", () => {
   const gateway = resolveScanGateway(noSecrets);
-  assert.equal(gateway.baseUrl, DEFAULT_VILAO_BASE_URL);
-  assert.equal(gateway.openAi, true);
-  for (const tier of ["free", "pro"] as const) {
-    assert.deepEqual(resolveScanModelPolicy(tier, gateway, noSecrets), {
-      tier,
-      primaryModel: DEFAULT_VILAO_MODEL,
-      fallbackModel: null,
-    });
-  }
+  assert.equal(gateway.baseUrl, DEFAULT_NATIVE_GEMINI_BASE_URL);
+  assert.equal(gateway.openAi, false);
+  assert.equal(
+    resolveScanModelPolicy("free", gateway, noSecrets).primaryModel,
+    "gemini-3.5-flash-lite",
+  );
+  assert.equal(
+    resolveScanModelPolicy("pro", gateway, noSecrets).primaryModel,
+    "gemini-3.7-flash",
+  );
 });
 
 test("existing Vilao environment wins over native-Gemini configuration", () => {
@@ -72,7 +76,7 @@ test("native Gemini and the P6 stub remain explicit opt-ins", () => {
   assert.equal(gateway.openAi, false);
 });
 
-test("blank settings retain Vilao defaults and endpoints are not duplicated", () => {
+test("blank settings retain native defaults and endpoints are not duplicated", () => {
   assert.deepEqual(
     resolveScanGateway(() => "  "),
     resolveScanGateway(noSecrets),
@@ -89,12 +93,12 @@ test("blank settings retain Vilao defaults and endpoints are not duplicated", ()
 });
 
 test("Vilao request uses chat completions, an image data URL and the configured model", async () => {
-  const gateway = resolveScanGateway(noSecrets);
+  const gateway = resolveScanGateway(vilaoEnvironment);
   const result = await fetchGeminiModelChain({
     apiKey: "fixture-key",
     scanId: "vilao-request",
     openAiBaseUrl: gateway.baseUrl,
-    modelPolicy: resolveScanModelPolicy("free", gateway, noSecrets),
+    modelPolicy: resolveScanModelPolicy("free", gateway, vilaoEnvironment),
     createRequestBody: (model) =>
       buildOpenAiRequestBody(model, "scan prompt", "/9j/"),
     fetcher: (input, init) => {
@@ -122,13 +126,13 @@ test("Vilao request uses chat completions, an image data URL and the configured 
 });
 
 test("Vilao 503 retry stays on Vilao and retains the two-attempt limit", async () => {
-  const gateway = resolveScanGateway(noSecrets);
+  const gateway = resolveScanGateway(vilaoEnvironment);
   let calls = 0;
   const result = await fetchGeminiModelChain({
     apiKey: "fixture-key",
     scanId: "vilao-retry",
     openAiBaseUrl: gateway.baseUrl,
-    modelPolicy: resolveScanModelPolicy("pro", gateway, noSecrets),
+    modelPolicy: resolveScanModelPolicy("pro", gateway, vilaoEnvironment),
     createRequestBody: (model) =>
       buildOpenAiRequestBody(model, "prompt", "/9j/"),
     fetcher: (input) => {

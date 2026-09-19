@@ -203,17 +203,7 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         });
       } finally {
         if (!committed) {
-          try {
-            await storage.delete(localPath);
-          } catch (error, stackTrace) {
-            debugPrint(
-              'AI scan cleanup failed (${error.runtimeType}).',
-            );
-            debugPrintStack(
-              label: 'AI scan cleanup stack trace',
-              stackTrace: stackTrace,
-            );
-          }
+          _scheduleFailedScanCleanup(storage, localPath);
         }
       }
     } finally {
@@ -221,6 +211,25 @@ class _PhotoScanBottomSheetState extends ConsumerState<PhotoScanBottomSheet> {
         setState(() => _isProcessing = false);
       }
     }
+  }
+
+  void _scheduleFailedScanCleanup(
+    ScanImageStorage storage,
+    String localPath,
+  ) {
+    unawaited(() async {
+      try {
+        await storage.delete(localPath);
+      } catch (error, stackTrace) {
+        debugPrint(
+          'AI scan cleanup failed (${error.runtimeType}).',
+        );
+        debugPrintStack(
+          label: 'AI scan cleanup stack trace',
+          stackTrace: stackTrace,
+        );
+      }
+    }());
   }
 
   Future<void> _handlePreparationError({

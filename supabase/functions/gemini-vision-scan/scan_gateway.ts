@@ -3,6 +3,8 @@ import { type GeminiModelPolicy, resolveModelPolicy } from "./model_policy.ts";
 
 export const DEFAULT_VILAO_BASE_URL = "https://api.vilao.ai/v1";
 export const DEFAULT_VILAO_MODEL = "gemini-3.8-flash";
+export const DEFAULT_NATIVE_GEMINI_BASE_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models";
 
 type EnvironmentReader = (name: string) => string | undefined;
 
@@ -13,11 +15,12 @@ export function isOpenAiCompatible(baseUrl: string): boolean {
 export function resolveScanGateway(readEnv: EnvironmentReader) {
   const baseUrl = readEnv("GEMINI_BASE_URL")?.trim();
   const apiBaseUrl = readEnv("GEMINI_API_BASE_URL")?.trim();
-  const resolvedUrl = baseUrl || apiBaseUrl || DEFAULT_VILAO_BASE_URL;
+  const resolvedUrl = baseUrl || apiBaseUrl || DEFAULT_NATIVE_GEMINI_BASE_URL;
   return {
     baseUrl: resolvedUrl,
-    // GEMINI_API_BASE_URL retains the upstream native-Gemini/P6-stub contract.
-    openAi: baseUrl ? isOpenAiCompatible(baseUrl) : !apiBaseUrl,
+    // OpenAI-compatible gateways are opt-in. Without an explicit gateway,
+    // retain the native Gemini path that the deployed secret supports.
+    openAi: baseUrl ? isOpenAiCompatible(baseUrl) : false,
     model: readEnv("GEMINI_MODEL")?.trim() || DEFAULT_VILAO_MODEL,
   };
 }

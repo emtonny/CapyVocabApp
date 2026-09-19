@@ -8,7 +8,7 @@ test("scan handler preserves Vilao, auth, ledger replay and token accounting", a
     ["SUPABASE_PUBLISHABLE_KEY", "fixture-public-key"],
     ["SUPABASE_SERVICE_ROLE_KEY", "fixture-service-key"],
     ["GEMINI_API_KEY", "fixture-vilao-key"],
-    ["GEMINI_BASE_URL", ""],
+    ["GEMINI_BASE_URL", "https://api.vilao.ai/v1"],
     ["GEMINI_API_BASE_URL", ""],
     ["GEMINI_MODEL", ""],
     ["GEMINI_HIERARCHY_RANKING_ENABLED", "false"],

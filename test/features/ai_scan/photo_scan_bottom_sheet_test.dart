@@ -331,6 +331,49 @@ void main() {
     expect(find.byType(ScanLoadingOverlay), findsNothing);
   });
 
+  testWidgets('dọn ảnh bị treo không khóa màn hình scan', (tester) async {
+    final pendingCleanup = Completer<void>();
+    final storage = _FakeStorage(
+      onDelete: (_) => pendingCleanup.future,
+    );
+    await _pumpScreen(
+      tester,
+      picker: _FakePicker(
+        onPick: (_) async => PickedScanImage(
+          bytes: _testImageBytes(),
+          name: 'source.png',
+        ),
+      ),
+      compressor: _FakeCompressor(onCompress: (source) async => source),
+      storage: storage,
+      visionClient: _FakeVisionClient(
+        onAnalyze: (_, __) async => throw const GeminiTimeoutException(
+          'Quá thời gian chờ, thử lại',
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.byKey(const Key('pick-gallery-button')));
+    await tester.tap(find.byKey(const Key('pick-gallery-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Không thể quét ảnh'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Đóng'));
+    await tester.pumpAndSettle();
+
+    expect(storage.deletedPaths, ['memory://scan.jpg']);
+    expect(find.byType(ScanLoadingOverlay), findsNothing);
+    expect(
+      tester
+          .widget<StickerButton>(find.byKey(const Key('pick-gallery-button')))
+          .onPressed,
+      isNotNull,
+    );
+
+    pendingCleanup.complete();
+  });
+
   testWidgets('chọn ảnh lần hai xóa preview cũ trước khi picker hoàn tất',
       (tester) async {
     var pickCount = 0;
