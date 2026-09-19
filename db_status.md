@@ -2,7 +2,25 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-17 — Global chat mailbox overlay; ANDROID 9 + TEST VERIFIED**
+> Cập nhật gần nhất: **2026-09-19 — Interface/runtime source reconciled; SOURCE + TEST VERIFIED**
+>
+> Sau `git fetch --all --prune`, mọi head `chat`, `AI-scan`, `main`, model-chain
+> và `nam-30-7` đều là ancestor của `interface`; không có commit cần merge.
+> Audit read-only Staging phát hiện `chat-translation-worker` version 1 đang
+> ACTIVE nhưng source/config không tồn tại trong bất kỳ Git ref nào. Bảy file
+> runtime đã được phục hồi byte-for-byte từ deployed bundle, thêm đúng
+> `verify_jwt=false` và 12 regression tests. Analyzer sạch; Flutter suite pass
+> 544 + 1 opt-in skip; Edge suite pass 96/96. Không deploy, không đổi secret,
+> migration, remote data hoặc Production; chưa commit/push.
+>
+> Ba migration Chat Translation ngày 2026-09-18 từng chỉ có trên remote Staging
+> đã được phục hồi nguyên văn vào `supabase/migrations/` từ chính
+> `supabase_migrations.schema_migrations`. Nội dung canonical của cả ba file
+> khớp SHA-256 với remote; history local/remote hiện khớp 28/28 và linked dry-run
+> trả `upToDate=true`. Không chạy `migration repair`, `db pull`, `db push` ghi thật hoặc
+> thay đổi Production. APK exact Staging + Chat build pass, cài đè giữ dữ liệu và
+> launch thành công trên BlueStacks Android 9 tại `127.0.0.1:5555`; process còn
+> sống và log kiểm tra có 0 lỗi runtime được lọc.
 >
 > Chat nay có bubble toàn cục 64dp kiểu AssistiveTouch, kéo/bám mép và tự lùi
 > vào mép sau 5 giây; panel neo-brutalist có tìm kiếm, thông báo AI chưa mở,
@@ -1167,6 +1185,53 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-19 — Interface and deployed runtime source reconciled (SOURCE + TEST VERIFIED)
+
+- Fetch cả `origin` và `vocab1`, sau đó kiểm tra ancestry/count cho `chat`,
+  `AI-scan`, `main`, model-chain và `nam-30-7`: tất cả đều đã nằm trong
+  `interface`; không merge/cherry-pick commit nào.
+- So sánh local với linked Staging: `gemini-vision-scan` có 9 runtime file khớp
+  deployed version 2 và hai file local `gemini_client.ts`/`index.ts` đang đi
+  trước theo increment chưa deploy; giữ nguyên local source.
+- Phát hiện deployed `chat-translation-worker` version 1 ACTIVE nhưng local/Git
+  hoàn toàn thiếu source. Phục hồi byte-for-byte bảy file runtime từ Supabase
+  download API, thêm `[functions.chat-translation-worker] verify_jwt=false`
+  khớp metadata remote và bốn test file với 12 test.
+- Read-only audit chỉ in tên, xác nhận Edge secrets
+  `CHAT_GEMINI_API_KEY`/`CHAT_TRANSLATION_TRIGGER_SECRET` và Vault secrets
+  `chat_translation_worker_url`/`chat_translation_trigger_secret` đều hiện diện;
+  không đọc hoặc in giá trị.
+- `deno fmt --check` và `deno check` sạch; worker 12/12, full Edge suite 96/96.
+  `flutter analyze --no-pub` sạch; `flutter test --no-pub` pass 544 + 1 opt-in
+  skip. Migration list vẫn khớp 28/28 và linked dry-run vẫn `upToDate=true`.
+- Không deploy function, không repair/pull/push migration ghi thật, không đổi
+  secret/data/Production và không commit/push Git.
+
+### 2026-09-19 — Staging migration history restored and Android launched (HISTORY + RUNTIME VERIFIED)
+
+- Root cause của staging smoke là migration drift: remote có ba version
+  `20260918120000`, `20260918125000`, `20260918130000` nhưng repo không còn
+  file SQL tương ứng; Git branches, stash và unreachable blobs không chứa bản
+  nguồn có thể phục hồi.
+- Truy vấn read-only `supabase_migrations.schema_migrations` xác nhận ba migration
+  lần lượt là `add_chat_translation_queue_claim`,
+  `enable_chat_translation_wakeup_extensions` và
+  `add_chat_translation_worker_wakeup`; phục hồi nguyên văn 25/1/8 statements.
+- Canonical local/remote SHA-256 khớp lần lượt
+  `897aead229ca46eeba8e8af730cdab76e227db76cfa7141e3f66ab4d32d12854`,
+  `f13beea5834e22f23b13d2ec52c169fc45e08944fce7251edc83192fadc48c9b` và
+  `ee70cd8cb322b69bceeba594ab918f3f7544fb0bcdd984cb418caa7e459b3ca4`.
+- `npx supabase migration list --linked` khớp 28/28;
+  `npx supabase db push --linked --dry-run` trả `upToDate=true`. Read-only runtime
+  query xác nhận provider-state table, claim RPC, wake function/trigger,
+  `pg_net`, `pg_cron` và recovery cron job đều tồn tại.
+- `run_staging_device_smoke.ps1 -Target android-build -ChatRelayEnabled` build
+  APK pass. APK được `adb install -r` lên exact device `127.0.0.1:5555` và
+  `com.capyvocab.app/.MainActivity` launch `Status: ok` trong 2,915 ms; process
+  PID 5324 còn sống sau 8 giây, bộ lọc log trả 0 lỗi runtime.
+- Không chạy migration repair, db pull hoặc db push ghi thật; không đổi schema/history/data/secret
+  remote và không gọi hoặc thay đổi Production.
 
 ### 2026-09-18 — Chat box refinements, album photo picker, draggable dialog & zero-latency bubble (TEST & RUNTIME VERIFIED)
 

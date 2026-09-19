@@ -1,6 +1,15 @@
 # Hướng dẫn đồng bộ Supabase — Staging và Production
 
-> Cập nhật: **2026-09-16**
+> Cập nhật: **2026-09-19**
+> Interface/runtime reconciliation 2026-09-19: mọi nhánh Git liên quan đã nằm
+> trong `interface`; không cần merge. Source `chat-translation-worker` version 1
+> bị thiếu khỏi toàn bộ Git refs đã được phục hồi byte-for-byte từ deployed
+> Staging bundle, thêm config `verify_jwt=false` và 12 tests. Full Edge 96/96,
+> Flutter 544 pass + 1 skip, analyzer sạch. Không deploy hoặc đổi remote.
+> Migration reconciliation 2026-09-19: ba file Chat Translation ngày 2026-09-18
+> được phục hồi nguyên văn từ remote Staging history; local/remote khớp 28/28,
+> dry-run up to date và Android Staging build/install/launch pass. Không repair,
+> pull, push ghi thật hoặc thay đổi Production.
 > Earlier Device/Auth checkpoint 2026-09-16: Android Staging build/update/startup PASS,
 > second user-approved test Auth account created/login verified. Both accounts lack
 > C1 profiles/mutual accepted relation; setup approval pending. USB unauthorized,
@@ -50,8 +59,8 @@ branch hoặc URL đã nhớ.
 
 | Hạng mục | Staging | Production |
 | --- | --- | --- |
-| Migration remote | 23/23, post-C2 up to date verified 2026-09-15 | 21, evidence 2026-09-12; không re-audit phiên này |
-| Migration local | 23, không pending | 23, C1/C2 chưa apply |
+| Migration remote | 28/28, linked dry-run up to date verified 2026-09-19 | 21, evidence 2026-09-12; không re-audit phiên này |
+| Migration local | 28, không pending so với Staging | 28 file local; Production không re-audit/apply trong phiên này |
 | Chat Language Profile C1 | APPLIED/BACKEND VERIFIED; approved two-account pair configured, primary Settings/cache verified on Android. General onboarding + second-account UI smoke pending | PENDING APPLY, cần Production approval riêng |
 | Operational Chat C2 | APPLIED / REST + REALTIME VERIFIED; 47 local checks + 10 nhóm smoke, cleanup 0 | NOT APPLIED, cần Production gate riêng |
 | Chat C3A/C3B + C3C UI | 89 combined chat tests, final full suite 493 pass/1 existing skip/0 failure, analyzer clean. Guarded Web Staging build + real Chrome login UI pass; demo login pending. Accepted pair + two C1 rows verified; Android Settings/picker/detail pass and real RPC produced 1 conversation/2 active members/0 messages. CHAT_RELAY_ENABLED default OFF/exact Staging only; two-client relay/offline restart pending | Không migration/Production/translation/Training rollout |
@@ -59,6 +68,15 @@ branch hoặc URL đã nhớ.
 | Bucket `photo_notes` | Private | Private |
 | Client sync mặc định | OFF | OFF |
 | Dữ liệu Library | Demo/test | 0 row và 0 Storage object tại thời điểm audit |
+
+Ngày 2026-09-19, read-only history trên exact Staging phát hiện ba version
+remote-only `20260918120000`, `20260918125000`, `20260918130000`. Statements
+được đọc từ `supabase_migrations.schema_migrations` và phục hồi thành đúng ba
+file local; canonical SHA-256 của từng file khớp remote. Sau phục hồi,
+`migration list --linked` khớp 28/28 và `db push --linked --dry-run` trả
+`upToDate=true`. Không dùng `migration repair`, `db pull` hoặc `db push` ghi thật.
+Android APK exact Staging + Chat build pass, `adb install -r` và launch pass trên
+`127.0.0.1:5555`, không phát hiện lỗi runtime trong log lọc sau startup.
 
 Audit Production được chạy lại bằng
 `tool/audit_supabase_library_rollout.ps1` lúc 2026-09-12 và trả
