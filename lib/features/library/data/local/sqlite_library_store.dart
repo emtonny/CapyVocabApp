@@ -783,7 +783,7 @@ final class SqliteLibraryStore
         }
       }
     });
-    _notify({'photo:$userId', 'sync:$userId'});
+    _notify({'photo:$userId', 'album:$userId', 'sync:$userId'});
   }
 
   @override
@@ -1383,6 +1383,7 @@ final class SqliteLibraryStore
         JOIN photo_notes p ON p.id = apn.photo_note_id
         WHERE a.id = ? AND a.user_id = ? AND p.user_id = ?
           AND a.deleted_at IS NULL AND apn.removed_at IS NULL
+          AND p.deleted_at IS NULL
         ORDER BY apn.added_at DESC, apn.photo_note_id
       ''', [albumId, userId, userId]);
       return rows

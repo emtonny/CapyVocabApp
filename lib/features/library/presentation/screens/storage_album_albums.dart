@@ -785,7 +785,7 @@ class _AlbumAssignmentAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: StickerButton(
         key: const Key('library-album-assignment-confirm'),
         onPressed: busy ? null : onConfirm,
@@ -793,15 +793,17 @@ class _AlbumAssignmentAction extends StatelessWidget {
         textColor: AppColors.ink,
         icon: busy
             ? const SizedBox.square(
-                dimension: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
               )
-            : const Icon(Icons.drive_file_move_outline, size: 16),
+            : const Icon(Icons.drive_file_move_outline, size: 20),
         text: selectedCount == 0
             ? 'Chọn ít nhất 1 ảnh'
             : 'Thêm $selectedCount ảnh vào Album',
-        fontSize: 14,
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        fontSize: 16,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        minHeight: 56,
+        radius: 14,
         expand: true,
       ),
     );

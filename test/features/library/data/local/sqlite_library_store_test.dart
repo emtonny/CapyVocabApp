@@ -696,10 +696,32 @@ void main() {
     final savedAlbums = await store.watchAlbums(userId: userId).first;
     expect(savedAlbums.single.name, 'Updated kitchen words');
     expect(savedAlbums.single.isFavorite, isTrue);
+
+    await store.movePhotoNotesToTrash(
+      userId: userId,
+      photoNoteIds: [snapshot.photoNote.id],
+      deletedAt: _time.add(const Duration(minutes: 3)),
+    );
+    expect(
+      await store.watchMemberships(userId: userId, albumId: album.id).first,
+      isEmpty,
+      reason: 'trashed photo notes must not count as active album memberships',
+    );
+    await store.restorePhotoNotes(
+      userId: userId,
+      photoNoteIds: [snapshot.photoNote.id],
+      restoredAt: _time.add(const Duration(minutes: 4)),
+    );
+    expect(
+      await store.watchMemberships(userId: userId, albumId: album.id).first,
+      hasLength(1),
+      reason: 'restored photo notes count as active album memberships again',
+    );
+
     await store.deleteAlbums(
       userId: userId,
       albumIds: [album.id],
-      deletedAt: _time.add(const Duration(minutes: 1)),
+      deletedAt: _time.add(const Duration(minutes: 5)),
     );
     expect(await store.watchAlbums(userId: userId).first, isEmpty);
     expect(
