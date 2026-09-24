@@ -2,12 +2,14 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-24 — FRIENDS USERNAME-FIRST UI / BACKEND CONTRACT PRESERVED**
+> Cập nhật gần nhất: **2026-09-24 — ACCOUNT CONTACT VERIFICATION PLAN APPROVED / PENDING**
 > Friends F1–F6 backend vẫn EXACT-STAGING VERIFIED; public UI hiện chỉ cho exact
 > username discovery, request/accept/reject, owner-scoped cache, accepted list và
-> Chat handoff. Email/phone discovery và OTP không còn được render nhưng contract,
-> RLS và migration vẫn giữ để tương thích. Không có schema/remote write mới;
-> Production/default vẫn OFF và SMS/Twilio không còn chặn Friends MVP.
+> Chat handoff. Email/phone discovery và OTP không còn được render. Contract, RLS và
+> migration vẫn giữ nguyên. Quyết định sản phẩm mới đã duyệt xác nhận email và
+> SMS quốc tế trước khi dùng tài nguyên có chi phí, đổi liên hệ có xác nhận,
+> hiển thị liên hệ chỉ cho bạn bè đã chấp nhận và giữ gói hiện hành tới hết hạn.
+> Plan đang `PENDING IMPLEMENTATION`; chưa có schema/migration/remote write mới.
 >
 > Chat nay có bubble toàn cục 64dp kiểu AssistiveTouch, kéo/bám mép và tự lùi
 > vào mép sau 5 giây; panel neo-brutalist có tìm kiếm, thông báo AI chưa mở,
@@ -201,7 +203,8 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Operational Chat runtime (C3B.2) | IMPLEMENTED/STAGING VERIFIED; C3 COMPLETE | Single-flight/cache/runtime guards, foreground reconnect and explicit ascending UUID cursors verified. Default flag OFF; exact Staging only |
 | Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | Global 64dp draggable mailbox bubble with 5-second edge retreat, responsive panel, search, real cached profile, unread-first ordering/badges and disabled AI notice; `/chat` detail remains the conversation route and marks cached inbound rows read when opened. Bidirectional raw relay/offline behavior remains verified. Sent still means server accepted, not delivery receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
 | Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
-| Friend management (F1–F6) | USERNAME-FIRST UI / EXACT-STAGING BACKEND VERIFIED 2026-09-24 | Public UI exposes exact username only; atomic request/accept/reject, owner-scoped cache, public-only accepted list and canonical Chat handoff remain. Email/phone consent, verification and lookup contracts stay dormant for compatibility. Two additive migrations are applied only to Staging; Production/default remain OFF. SMS/Twilio is not an MVP blocker |
+| Friend management (F1–F6) | USERNAME-FIRST UI / EXACT-STAGING BACKEND VERIFIED 2026-09-24 | Public search exposes exact username only; atomic request/accept/reject, owner-scoped cache, public-only accepted list and canonical Chat handoff remain. Legacy email/phone lookup contracts stay dormant until removed by a later approved migration. Production/default remain OFF |
+| Account contact verification (A0–A6) | APPROVED / PENDING IMPLEMENTATION 2026-09-24 | Verified email plus international SMS are required before paid-cost resources; email/phone changes require re-verification; visibility defaults OFF and is limited to accepted friends; active subscriptions survive contact changes and renewal uses the new verified contacts. Requires international phone migration, private contact/promotion history, provider choice and separate Staging/Production approvals |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
 ## Luồng runtime native hiện tại
@@ -1174,13 +1177,29 @@ Sau Production Gate 3:
 
 ## Change log
 
+### 2026-09-24 — Account contact verification plan approved (PENDING)
+
+- Chốt email phải xác nhận; đổi email chỉ có hiệu lực sau xác nhận email mới và
+  thông báo email cũ. Chốt SMS thật cho số điện thoại quốc tế; đổi số chỉ có hiệu
+  lực sau mã đúng. Username vẫn là cách duy nhất để tìm bạn.
+- Hai công tắc hiển thị email/SĐT mặc định tắt. Khi bật, chỉ bạn bè đã chấp nhận
+  được đọc; người lạ/lời mời chờ không được đọc và liên hệ không vào cache Friends.
+- Gói đang còn hạn không đổi khi thay liên hệ; lần gia hạn dùng liên hệ mới đã
+  xác nhận. Đổi liên hệ không cấp lại ưu đãi; cần thêm lịch sử liên hệ/ưu đãi vì
+  bảng subscription hiện tại chưa giải quyết trường hợp này.
+- Kế hoạch A0–A6 nằm tại `docs/account_contact_verification_plan.md`. Trạng thái
+  chỉ là `APPROVED / PENDING IMPLEMENTATION`: chưa tạo migration, chưa bật SMS,
+  chưa ghi Staging/Production và chưa deploy.
+
 ### 2026-09-24 — Friends username-first product rollout (LOCAL VERIFIED)
 
 - Sheet Thêm bạn chỉ hiển thị exact username; đã gỡ method selector cho email và
   phone. Settings không còn render contact discovery hoặc phone OTP.
 - Giữ nguyên enum/repository/RPC/RLS/migration email/phone để tương thích với
   exact Staging và dữ liệu đã apply. Không có schema, migration, remote write,
-  Production hoặc Training change; Twilio không còn chặn Friends MVP.
+  Production hoặc Training change. Tại thời điểm increment này Twilio không chặn
+  Friends username-first; quyết định tài khoản mới phía trên đã thay thế kết luận
+  đó và yêu cầu SMS quốc tế trước rollout xác nhận tài khoản.
 - Widget regression trực tiếp pass **24/24**; toàn bộ Friends + Settings pass
   **69/69**; full Flutter pass **657 + 1 opt-in skip**; analyzer sạch và Web
   build với Friends + Chat bật pass. Mobile audit script báo false positive vì

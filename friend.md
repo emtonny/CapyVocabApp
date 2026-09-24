@@ -6,9 +6,11 @@
 > apply. Runner exact Staging bật rõ `FRIENDS_ENABLED=true`; mặc định vẫn tắt để
 > Production chưa có schema không vô tình kích hoạt. UI MVP hiện chỉ cho tìm bằng
 > username; email/phone discovery và OTP đã được gỡ khỏi luồng người dùng nhưng
-> contract backend/migration vẫn giữ để tương thích. Vì vậy SMS/Twilio không còn
-> là điều kiện chặn Friends MVP. Phone provider và test OTP đã được trả về trạng
-> thái tắt sau smoke lịch sử.
+> contract backend/migration vẫn giữ để tương thích. Quyết định sản phẩm mới ngày
+> 2026-09-24 yêu cầu email và SĐT quốc tế đều được xác nhận trước khi dùng tài
+> nguyên có chi phí; SMS thật vì vậy trở lại thành release gate cho tài khoản,
+> không phải phương thức tìm bạn. Kế hoạch chi tiết nằm tại
+> `docs/account_contact_verification_plan.md`.
 > Phạm vi: tìm kiếm người dùng, gửi lời mời, chấp nhận/từ chối và danh sách
 > bạn bè. Bảng xếp hạng tuần là milestone kế tiếp sau khi milestone này hoàn tất.
 
@@ -86,17 +88,13 @@ Milestone này phải tạo đầu vào ổn định cho bảng xếp hạng b�
 - MVP công khai chỉ hỗ trợ **username chính xác**. Sheet Thêm bạn không hiển thị
   bộ chọn email/số điện thoại và Settings không hiển thị contact discovery/OTP.
 - Backend vẫn chấp nhận exact email/phone theo contract F1 đã deploy trên
-  Staging, nhưng đây là capability dormant, không phải luồng sản phẩm hiện tại.
+  Staging, nhưng đây là capability dormant, không phải luồng sản phẩm hiện tại
+  và phải được loại khỏi contract tìm kiếm ở migration tài khoản kế tiếp.
 - Username chuẩn hóa bằng `lower(trim(query))` và giữ contract hiện tại:
   `^[a-z0-9_]{3,20}$`.
-- Email chuẩn hóa bằng `lower(trim(query))`, validate định dạng ở cả client và
-  server, và chỉ match email đã được Supabase Auth xác nhận.
-- Số điện thoại MVP hỗ trợ Việt Nam: nhận `0xxxxxxxxx` hoặc dạng `+84xxxxxxxxx`,
-  loại bỏ khoảng trắng/dấu phân cách rồi canonicalize về `0xxxxxxxxx` để khớp
-  dữ liệu hiện có. Số chưa xác minh OTP không được dùng cho discovery.
-- Username được tìm thấy theo contract hiện tại. Email và số điện thoại chỉ được
-  tìm thấy khi chủ tài khoản đã chủ động bật từng quyền discoverability tương
-  ứng; user cũ mặc định tắt cả hai quyền.
+- Contract backend dormant hiện vẫn chuẩn hóa email và số Việt Nam, chỉ match
+  liên hệ đã xác nhận/opt-in. Đây là bằng chứng tương thích lịch sử, không phải
+  UX mục tiêu. Plan A1 sẽ chuyển SĐT sang số quốc tế; tìm kiếm vẫn username-only.
 - Không dùng `get_public_profiles(NULL)` để tải toàn bộ người dùng.
 - RPC tìm kiếm chỉ trả tối đa một profile công khai và trạng thái quan hệ giữa
   người tìm với kết quả.
@@ -338,17 +336,15 @@ Merge snapshot theo transaction. Khi logout/account switch:
    - `rejected`: **Đã từ chối**, không có CTA gửi lại trong MVP.
 6. Sau send thành công, pull lại outgoing requests; retry không tạo row trùng.
 
-### 6.2 Cài đặt quyền được tìm thấy
+### 6.2 Cài đặt liên hệ — kế hoạch cũ đã được thay thế
 
-1. Settings có hai công tắc riêng: **Cho phép tìm bằng email** và **Cho phép
-   tìm bằng số điện thoại**; mặc định tắt.
-2. Email chưa xác nhận không thể bật công tắc email và dẫn tới luồng xác nhận
-   hiện có.
-3. Phone chưa xác minh không thể bật công tắc phone và dẫn tới luồng OTP.
-4. UI không hiển thị email/phone của người khác trong kết quả, lời mời hoặc danh
-   sách bạn bè.
-5. Tắt công tắc có hiệu lực cho lần tìm mới; quan hệ/lời mời đã tồn tại không bị
-   xóa.
+1. Không khôi phục công tắc tìm bạn bằng email hoặc số điện thoại.
+2. Kế hoạch mới có hai công tắc: **Cho phép bạn bè xem email** và **Cho phép bạn
+   bè xem số điện thoại**; mặc định tắt và chỉ bật sau xác nhận.
+3. Chỉ bạn bè đã chấp nhận được đọc liên hệ đã bật; người lạ/lời mời chờ không
+   được đọc. Tắt quyền hoặc hủy kết bạn có hiệu lực ngay cho lần đọc tiếp theo.
+4. Chi tiết đăng ký, đổi liên hệ, gói và ưu đãi nằm tại
+   `docs/account_contact_verification_plan.md`.
 
 ### 6.3 Nhận và phản hồi
 
@@ -550,8 +546,9 @@ Library đều `0 writes`.
 
 ### Hoàn thiện sau F6 — rollout UI username-first
 
-**Trạng thái 2026-09-24:** `USERNAME-FIRST SOURCE/LOCAL VERIFIED`; SMS thật và
-credential Twilio không còn là release blocker của Friends MVP.
+**Trạng thái 2026-09-24:** `USERNAME-FIRST SOURCE/LOCAL VERIFIED`; plan xác nhận
+tài khoản mới đã được duyệt nhưng `PENDING IMPLEMENTATION`. SMS quốc tế là release
+gate của đăng ký/xác nhận tài khoản; email/SĐT vẫn không dùng để tìm bạn.
 
 - Hai widget scaffold cũ `AddFriendModal` và `FriendListItem` đã có triển khai
   thật. Accepted list dùng thẻ public-profile chung; màn chính chỉ còn nhãn
@@ -570,8 +567,8 @@ credential Twilio không còn là release blocker của Friends MVP.
   `upToDate=true`; thay đổi này không tạo schema hoặc remote write mới. Warning
   Web còn lại thuộc `flutter_tts` Wasm interop/Cupertino font đã có sẵn.
 - Lần thử SMS lịch sử trả HTTP 500 vì cấu hình Twilio thiếu Account SID, Auth
-  Token và Message Service SID. Khoảng trống này được giữ làm bằng chứng kỹ
-  thuật, nhưng không còn nằm trên đường phát hành Friends username-first.
+  Token và Message Service SID. Theo plan mới, phải chọn/cấu hình nhà cung cấp
+  gửi SMS quốc tế và chạy live smoke trước rollout tài khoản đã xác nhận.
 - Smoke synthetic dùng test OTP chính thức của Supabase đã pass trọn luồng trên
   exact Staging: request 200, verify 200, có `phone_confirmed_at`, gọi
   `sync_my_verified_friend_phone()` và đọc lại `phone_verified=true`. Fixture Auth
@@ -643,8 +640,10 @@ Leaderboard tuần vẫn cần milestone dữ liệu riêng:
 
 ## 10. Ngoài phạm vi
 
-- Đồng bộ danh bạ, tìm gần đúng/prefix và tìm phone ngoài contract Việt Nam.
-- Hiển thị email/số điện thoại của người khác trong kết quả hoặc danh sách.
+- Đồng bộ danh bạ, tìm gần đúng/prefix và mọi hình thức tìm bạn bằng SĐT. Hỗ trợ
+  SĐT quốc tế ở plan mới chỉ phục vụ xác nhận/bảo vệ tài khoản.
+- Hiển thị email/số điện thoại trong kết quả tìm bạn hoặc danh sách tải hàng loạt.
+  Việc xem liên hệ đã bật chỉ diễn ra khi mở hồ sơ một người bạn đã chấp nhận.
 - Block/report/mute và gợi ý bạn bè.
 - Leaderboard, point ledger, streak reward và daily quest.
 - Solo Arena hoặc mời chơi game.
@@ -658,8 +657,8 @@ Leaderboard tuần vẫn cần milestone dữ liệu riêng:
 - SQL, Flutter, analyzer, format và full regression pass.
 - Exact-Staging search/send/respond/list/Chat handoff và cleanup pass.
 - Không lộ dữ liệu riêng tư hoặc cache chéo tài khoản.
-- Email/phone discovery có consent riêng, verification gate, generic not-found
-  và rate limit phía server.
+- Tìm bạn trên UI chỉ dùng username. Plan tài khoản mới phải loại bỏ lookup
+  email/phone dormant và thêm quyền xem liên hệ riêng cho bạn bè đã chấp nhận.
 - `friend.md` và `db_status.md` được cập nhật bằng evidence thật.
 - Chưa tuyên bố leaderboard hoàn thành cho đến khi point ledger/RPC riêng được
   triển khai và xác minh.
