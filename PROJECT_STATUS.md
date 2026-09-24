@@ -54,7 +54,7 @@ Chi tiết Friends MVP, giới hạn rollout và bằng chứng F1–F6 nằm tr
 [friend.md](friend.md).
 Kế hoạch đã duyệt cho xác nhận email/SMS quốc tế, quyền hiển thị liên hệ và giữ
 gói/ưu đãi khi đổi liên hệ nằm trong
-[docs/account_contact_verification_plan.md](docs/account_contact_verification_plan.md).
+[auth.md](auth.md).
 
 ## Route hiện tại
 

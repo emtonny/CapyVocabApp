@@ -1187,7 +1187,7 @@ Sau Production Gate 3:
 - Gói đang còn hạn không đổi khi thay liên hệ; lần gia hạn dùng liên hệ mới đã
   xác nhận. Đổi liên hệ không cấp lại ưu đãi; cần thêm lịch sử liên hệ/ưu đãi vì
   bảng subscription hiện tại chưa giải quyết trường hợp này.
-- Kế hoạch A0–A6 nằm tại `docs/account_contact_verification_plan.md`. Trạng thái
+- Kế hoạch A0–A6 nằm tại `auth.md`. Trạng thái
   chỉ là `APPROVED / PENDING IMPLEMENTATION`: chưa tạo migration, chưa bật SMS,
   chưa ghi Staging/Production và chưa deploy.
 
