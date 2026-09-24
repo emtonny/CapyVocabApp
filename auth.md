@@ -1,9 +1,22 @@
 # Kế hoạch xác nhận email và số điện thoại
 
 > Chốt sản phẩm: **2026-09-24**
-> Trạng thái: **APPROVED / PENDING IMPLEMENTATION**
-> Phạm vi: Android, iOS và Web; chưa có thay đổi dữ liệu hoặc triển khai từ tài
-> liệu này.
+> Trạng thái: **LOCAL IMPLEMENTED / VERIFIED — CHƯA DEPLOY**
+> Phạm vi: Android, iOS và Web. Migration và ứng dụng đã được làm/kiểm tra ở
+> local; chưa push, chưa ghi Staging/Production và chưa gửi SMS thật.
+
+## 0. Bảng phân công và trạng thái
+
+| Phần việc | Trạng thái | Ai thực hiện tiếp |
+|---|---|---|
+| Migration số quốc tế, dữ liệu riêng, quyền xem liên hệ | Local đã làm; PostgreSQL 23/23 | Chủ dự án duyệt diff rồi mới cho phép apply Staging |
+| Xác nhận email, gửi lại thư, đổi email | Local đã làm | Chủ dự án cấu hình mẫu thư, URL chuyển hướng và giới hạn gửi ở Staging |
+| SMS đăng ký/đổi số, bắt buộc mật khẩu khi đổi số | Local đã làm; chưa gửi SMS thật | Chủ dự án chọn/cấp SMS provider và khóa Staging qua kho bí mật |
+| Tìm bạn chỉ bằng username | Local đã làm | Chủ dự án kiểm tra UX trên thiết bị |
+| Hai công tắc email/SĐT cho bạn bè đã chấp nhận | Local đã làm | Chủ dự án kiểm tra bằng hai tài khoản Staging sau deploy được duyệt |
+| Giữ liên hệ của gói cũ, dùng liên hệ mới khi gia hạn | Local đã làm phần dữ liệu/trigger | Chủ dự án duyệt cách hệ thống thanh toán gọi gia hạn |
+| Sổ chống nhận ưu đãi lặp lại | Đã có bảng/ràng buộc local; chưa có luồng phát ưu đãi để nối | Chủ dự án chốt chính sách ưu đãi và quy trình xem xét số tái cấp |
+| Push, deploy, migration remote, SMS/email thật | Chưa thực hiện theo yêu cầu | Chỉ làm sau phê duyệt riêng |
 
 ## 1. Mục tiêu đã chốt
 
@@ -142,6 +155,9 @@ có đã giải quyết việc chống nhận lặp lại.
 
 ### A0 — Chốt nhà cung cấp và hợp đồng dữ liệu
 
+**Trạng thái 2026-09-24: CHỜ CHỦ DỰ ÁN.** Chưa có nhà cung cấp/khóa SMS
+Staging, ngân sách, thời hạn giữ lịch sử và quy định hỗ trợ số được tái cấp.
+
 **Làm:** chọn dịch vụ SMS có thể gửi quốc tế, thống kê quốc gia thực sự hỗ trợ,
 chi phí, giới hạn và cách nhận biết số tạm thời. Chốt thời hạn mã, thời gian chờ
 gửi lại, số lần nhập sai và thời gian giữ lịch sử chống lạm dụng.
@@ -151,6 +167,10 @@ phí/quốc gia và quy định giữ dữ liệu được duyệt.
 
 ### A1 — Migration số điện thoại quốc tế và dữ liệu riêng
 
+**Trạng thái 2026-09-24: LOCAL VERIFIED.** Có migration E.164, cài đặt hiển
+thị riêng, lịch sử liên hệ, dấu liên hệ gói và sổ ưu đãi. Bộ PostgreSQL tạm dùng
+dữ liệu giả đạt 23/23; không có remote write.
+
 **Làm:** sao lưu/kiểm kê số cũ, thêm cấu trúc số quốc tế, lịch sử liên hệ, quyền
 hiển thị và sổ ưu đãi; giữ tương thích trong thời gian chuyển đổi.
 
@@ -158,6 +178,11 @@ hiển thị và sổ ưu đãi; giữ tương thích trong thời gian chuyển
 thầm; người lạ không đọc được liên hệ; Production chưa bị thay đổi.
 
 ### A2 — Xác nhận email và đổi email
+
+**Trạng thái 2026-09-24: LOCAL VERIFIED / CÒN CẤU HÌNH.** Đã có nhãn Email,
+thẻ nhắc xác nhận, gửi lại thư với chờ 60 giây, đổi email bằng mật khẩu hiện tại
+và cổng máy chủ chặn onboarding khi email chưa xác nhận. Mẫu thư, thông báo email
+cũ, redirect và rate limit thực tế còn phụ thuộc cấu hình Supabase Staging.
 
 **Làm:** sửa nhãn đăng nhập chỉ còn **Email**, thêm gửi lại thư, khóa tài nguyên
 trước xác nhận, luồng đổi email và thông báo email cũ.
@@ -167,6 +192,11 @@ email cũ còn hiệu lực đến khi email mới xác nhận; lỗi và gửi 
 
 ### A3 — SMS quốc tế và đổi số điện thoại
 
+**Trạng thái 2026-09-24: LOCAL VERIFIED / CHƯA LIVE SMS.** Ứng dụng nhận số
+E.164 có mã quốc gia, gửi/xác nhận OTP, giữ chặt phiên tài khoản và bắt nhập mật
+khẩu hiện tại khi đổi số. Chưa có country picker, provider/khóa SMS và kiểm thử
+SMS thật; hiện người dùng nhập trực tiếp dạng `+84987654321`.
+
 **Làm:** thay bước SĐT Việt Nam bằng chọn quốc gia + số; gửi/xác nhận SMS; nối
 việc hoàn tất hồ sơ với trạng thái xác nhận; thêm đổi số.
 
@@ -174,6 +204,10 @@ việc hoàn tất hồ sơ với trạng thái xác nhận; thêm đổi số.
 chặn; đổi tài khoản giữa lúc xác nhận không áp dụng kết quả cho tài khoản cũ.
 
 ### A4 — Hiển thị liên hệ cho bạn bè
+
+**Trạng thái 2026-09-24: LOCAL VERIFIED.** Hai công tắc mặc định tắt; RPC chỉ
+trả liên hệ đã bật cho quan hệ bạn bè hai chiều đã chấp nhận. Liên hệ chỉ tải khi
+mở hộp thoại, không nằm trong tìm kiếm hoặc cache Bạn bè.
 
 **Làm:** hai công tắc mặc định tắt và màn hồ sơ bạn bè chỉ đọc liên hệ được chủ
 tài khoản cho phép.
@@ -183,6 +217,11 @@ hiệu lực ngay; tìm kiếm Bạn bè vẫn chỉ dùng username.
 
 ### A5 — Gói và ưu đãi khi đổi liên hệ
 
+**Trạng thái 2026-09-24: LOCAL FOUNDATION VERIFIED.** Trigger giữ dấu liên hệ
+cũ khi gói bị rút ngắn/chỉnh sửa và chỉ lấy liên hệ mới khi bắt đầu hoặc gia hạn.
+Ràng buộc sổ ưu đãi chặn trùng theo tài khoản/email/SĐT. Chưa có luồng phát ưu
+đãi hiện hữu để nối và chưa chốt quy trình xem xét thủ công số được tái cấp.
+
 **Làm:** chụp dấu liên hệ lúc bắt đầu/gia hạn gói; giữ gói hiện tại khi đổi; sổ
 ưu đãi từ chối nhận lại theo tài khoản và lịch sử liên hệ.
 
@@ -190,6 +229,9 @@ hiệu lực ngay; tìm kiếm Bạn bè vẫn chỉ dùng username.
 số được cấp lại đều có kiểm tra tự động; không mất gói hoặc nhận lặp ưu đãi.
 
 ### A6 — Exact-Staging và rollout
+
+**Trạng thái 2026-09-24: CHƯA THỰC HIỆN.** Không push, deploy, apply migration,
+đổi cấu hình Auth hay gửi email/SMS thật trong increment này.
 
 **Làm:** backup, dry-run, apply sau phê duyệt, thử email thật và SMS thật ở nhiều
 quốc gia, hai tài khoản/bạn bè/người lạ, đổi liên hệ, gói còn hạn và cleanup.

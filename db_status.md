@@ -204,7 +204,7 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | Global 64dp draggable mailbox bubble with 5-second edge retreat, responsive panel, search, real cached profile, unread-first ordering/badges and disabled AI notice; `/chat` detail remains the conversation route and marks cached inbound rows read when opened. Bidirectional raw relay/offline behavior remains verified. Sent still means server accepted, not delivery receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
 | Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
 | Friend management (F1–F6) | USERNAME-FIRST UI / EXACT-STAGING BACKEND VERIFIED 2026-09-24 | Public search exposes exact username only; atomic request/accept/reject, owner-scoped cache, public-only accepted list and canonical Chat handoff remain. Legacy email/phone lookup contracts stay dormant until removed by a later approved migration. Production/default remain OFF |
-| Account contact verification (A0–A6) | APPROVED / PENDING IMPLEMENTATION 2026-09-24 | Verified email plus international SMS are required before paid-cost resources; email/phone changes require re-verification; visibility defaults OFF and is limited to accepted friends; active subscriptions survive contact changes and renewal uses the new verified contacts. Requires international phone migration, private contact/promotion history, provider choice and separate Staging/Production approvals |
+| Account contact verification (A0–A6) | LOCAL IMPLEMENTED / VERIFIED, NOT DEPLOYED 2026-09-24 | E.164 migration, verified onboarding gate, email resend/change, SMS OTP/change, accepted-friend contact switches, subscription contact snapshots and promotion ledger are implemented locally. Flutter regression 129/129, analyzer clean, Web release build passes and isolated PostgreSQL 23/23; SMS provider/config, live email/SMS, Staging migration and Production remain pending separate approval |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
 ## Luồng runtime native hiện tại
@@ -1187,9 +1187,27 @@ Sau Production Gate 3:
 - Gói đang còn hạn không đổi khi thay liên hệ; lần gia hạn dùng liên hệ mới đã
   xác nhận. Đổi liên hệ không cấp lại ưu đãi; cần thêm lịch sử liên hệ/ưu đãi vì
   bảng subscription hiện tại chưa giải quyết trường hợp này.
-- Kế hoạch A0–A6 nằm tại `auth.md`. Trạng thái
-  chỉ là `APPROVED / PENDING IMPLEMENTATION`: chưa tạo migration, chưa bật SMS,
-  chưa ghi Staging/Production và chưa deploy.
+- Kế hoạch A0–A6 nằm tại `auth.md`. Trạng thái tại thời điểm chốt chỉ là
+  `APPROVED / PENDING IMPLEMENTATION`: chưa tạo migration, chưa bật SMS, chưa
+  ghi Staging/Production và chưa deploy.
+
+### 2026-09-24 — Account contact verification A1–A5 local implementation
+
+- Thêm migration `20260924120000_add_verified_account_contacts.sql`: chuyển số
+  Việt Nam hợp lệ sang E.164, dữ liệu liên hệ/lịch sử/sổ ưu đãi private, RPC
+  đồng bộ từ Auth, hai cờ hiển thị, đọc liên hệ cho bạn bè đã chấp nhận, snapshot
+  liên hệ gói và cổng onboarding bắt buộc email/SĐT đã xác nhận.
+- Flutter thêm gửi lại email xác nhận, OTP số quốc tế trong onboarding, đổi
+  email/SĐT (đổi SĐT bắt buộc mật khẩu hiện tại + OTP), hai công tắc cài đặt và
+  hộp thoại liên hệ chỉ tải khi người dùng mở. Tìm bạn ở máy chủ chỉ chấp nhận
+  exact username.
+- Verification local: `flutter analyze` sạch; Auth/Onboarding/Friends/Settings
+  **129/129**; Web release build pass; PostgreSQL tạm với dữ liệu giả **23/23**,
+  remote writes **0**. Web build còn cảnh báo Wasm từ `flutter_tts` và thiếu font
+  Cupertino; không làm hỏng build JS hiện tại.
+- Chưa push/deploy/apply remote, chưa đổi Auth config, chưa gửi email/SMS thật.
+  A0/A6, country picker, chính sách giữ lịch sử và nối luồng phát ưu đãi còn chờ
+  chủ dự án/phê duyệt riêng. Chi tiết phân công nằm trong `auth.md`.
 
 ### 2026-09-24 — Friends username-first product rollout (LOCAL VERIFIED)
 

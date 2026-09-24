@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../onboarding/application/onboarding_status_store.dart';
 import '../../../onboarding/presentation/providers/onboarding_status_provider.dart';
+import '../../data/repositories/email_confirmation_gateway.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 
@@ -217,4 +218,28 @@ class PasswordRecoveryNotifier extends StateNotifier<AsyncValue<void>> {
 final passwordRecoveryProvider =
     StateNotifierProvider<PasswordRecoveryNotifier, AsyncValue<void>>((ref) {
   return PasswordRecoveryNotifier(ref.watch(authRepositoryProvider));
+});
+
+class EmailConfirmationNotifier extends StateNotifier<AsyncValue<void>> {
+  EmailConfirmationNotifier(this._gateway) : super(const AsyncData(null));
+
+  final EmailConfirmationGateway _gateway;
+
+  Future<bool> resend(String email) async {
+    if (state.isLoading) return false;
+    state = const AsyncLoading();
+    try {
+      await _gateway.resendSignUpConfirmation(email.trim());
+      state = const AsyncData(null);
+      return true;
+    } catch (error, stackTrace) {
+      state = AsyncError(AuthFailure.from(error), stackTrace);
+      return false;
+    }
+  }
+}
+
+final emailConfirmationProvider =
+    StateNotifierProvider<EmailConfirmationNotifier, AsyncValue<void>>((ref) {
+  return EmailConfirmationNotifier(ref.watch(emailConfirmationGatewayProvider));
 });

@@ -7,6 +7,7 @@ import '../../domain/entities/friend_entity.dart';
 import '../providers/accepted_friends_provider.dart';
 import '../providers/friends_provider.dart';
 import 'friend_list_item.dart';
+import 'friend_contact_dialog.dart';
 
 class AcceptedFriendsList extends ConsumerWidget {
   const AcceptedFriendsList({super.key, required this.owner});
@@ -114,6 +115,11 @@ class AcceptedFriendsList extends ConsumerWidget {
                       return FriendListItem(
                         connection: item,
                         opening: opening,
+                        onViewContact: () => showFriendContactDialog(
+                          context,
+                          owner: owner,
+                          profile: item.profile,
+                        ),
                         onOpenChat: chat.canOpen && state.openingPeerId == null
                             ? () async {
                                 final openDirect = chat.openDirectChat;
