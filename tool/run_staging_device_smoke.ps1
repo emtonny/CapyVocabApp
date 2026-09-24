@@ -83,6 +83,7 @@ try {
         SUPABASE_ANON_KEY = $anonValue
         LIBRARY_SYNC_ENABLED = $true
         CHAT_RELAY_ENABLED = [bool]$ChatRelayEnabled
+        FRIENDS_ENABLED = $true
     } | ConvertTo-Json
     [IO.File]::WriteAllText(
         $defineFile,

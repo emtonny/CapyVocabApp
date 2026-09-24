@@ -2,7 +2,12 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-17 — Global chat mailbox overlay; ANDROID 9 + TEST VERIFIED**
+> Cập nhật gần nhất: **2026-09-24 — FRIENDS F1–F6 EXACT-STAGING VERIFIED**
+> Friends management có exact username/email/phone discovery, consent, atomic
+> request/accept/reject, owner-scoped cache, accepted list và Chat handoff.
+> Local SQL 68/68, Flutter full suite 658 pass + 1 opt-in skip, analyzer và Web
+> build sạch. Hai migration Friends đã apply exact Staging; Production/default
+> vẫn OFF. Synthetic phone OTP pass; SMS thật chờ Twilio credentials.
 >
 > Chat nay có bubble toàn cục 64dp kiểu AssistiveTouch, kéo/bám mép và tự lùi
 > vào mép sau 5 giây; panel neo-brutalist có tìm kiếm, thông báo AI chưa mở,
@@ -196,6 +201,7 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Operational Chat runtime (C3B.2) | IMPLEMENTED/STAGING VERIFIED; C3 COMPLETE | Single-flight/cache/runtime guards, foreground reconnect and explicit ascending UUID cursors verified. Default flag OFF; exact Staging only |
 | Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | Global 64dp draggable mailbox bubble with 5-second edge retreat, responsive panel, search, real cached profile, unread-first ordering/badges and disabled AI notice; `/chat` detail remains the conversation route and marks cached inbound rows read when opened. Bidirectional raw relay/offline behavior remains verified. Sent still means server accepted, not delivery receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
 | Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
+| Friend management (F1–F6) | IMPLEMENTED / EXACT-STAGING VERIFIED 2026-09-24 | Exact discovery with consent, atomic request/response, owner-scoped cache, public accepted list and Chat handoff. Staging runners enable Friends; Production/default remain OFF. Synthetic OTP verified; real SMS waits for Twilio credentials |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
 ## Luồng runtime native hiện tại
@@ -1167,6 +1173,13 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-24 — Friends F1–F6 local/exact-Staging verified
+
+- Added the additive Friends management contract and Auth phone-format compatibility migration.
+- Verified 68/68 isolated PostgreSQL checks with two concurrent clients, 70/70 targeted Flutter tests, full Flutter 658 pass + 1 opt-in skip, analyzer clean and Friends-enabled Web build pass.
+- Read-only exact-Staging history contains both Friends migrations and `db push --dry-run` reports `upToDate=true`; no remote write was performed in this verification.
+- Production/default remain OFF. Synthetic phone OTP is verified; real SMS remains blocked on Twilio credentials.
 
 ### 2026-09-18 — Chat box refinements, album photo picker, draggable dialog & zero-latency bubble (TEST & RUNTIME VERIFIED)
 
