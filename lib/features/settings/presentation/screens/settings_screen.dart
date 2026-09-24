@@ -11,6 +11,9 @@ import '../../../../shared/widgets/graph_paper_background.dart';
 import '../../../../shared/widgets/sticker_button.dart';
 import '../../../../shared/widgets/top_notification.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../friends/domain/entities/friend_entity.dart';
+import '../../../friends/presentation/providers/friends_provider.dart';
+import '../../../friends/presentation/widgets/friend_phone_verification_dialog.dart';
 import '../../../language_profile/domain/entities/language_profile.dart';
 import '../../../language_profile/presentation/language_profile_provider.dart';
 import '../../../onboarding/application/onboarding_status_store.dart';
@@ -43,6 +46,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isLoggingOut = false;
   bool _isUpdatingCloudBackup = false;
   bool _isBackfillingCloudBackup = false;
+  bool _isUpdatingFriendDiscovery = false;
 
   Future<void> _editLanguageProfile(LanguageProfile? profile) async {
     final saved = await showDialog<bool>(
@@ -193,6 +197,138 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     } finally {
       if (mounted) setState(() => _isBackfillingCloudBackup = false);
+    }
+  }
+
+  Future<void> _changeFriendDiscovery({
+    required FriendOwner owner,
+    required FriendDiscoverySettings settings,
+    bool? email,
+    bool? phone,
+  }) async {
+    if (_isUpdatingFriendDiscovery || ref.read(friendsOwnerProvider) != owner) {
+      return;
+    }
+    final nextEmail = email ?? settings.discoverableByEmail;
+    final nextPhone = phone ?? settings.discoverableByPhone;
+    if ((nextEmail && !settings.emailConfirmed) ||
+        (nextPhone && !settings.phoneVerified)) {
+      showTopNotification(
+        context,
+        const SnackBar(
+          content: Text(
+            'Hãy xác minh thông tin liên hệ rồi bấm “Kiểm tra lại”.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _isUpdatingFriendDiscovery = true);
+    try {
+      final repository =
+          await ref.read(friendsRepositoryProvider(owner).future);
+      if (repository == null || ref.read(friendsOwnerProvider) != owner) {
+        throw const FriendRefreshSuperseded();
+      }
+      await repository.updateDiscoverySettings(
+        discoverableByEmail: nextEmail,
+        discoverableByPhone: nextPhone,
+      );
+      ref.invalidate(friendDiscoverySettingsProvider(owner));
+      await ref.read(friendDiscoverySettingsProvider(owner).future);
+      if (!mounted || ref.read(friendsOwnerProvider) != owner) return;
+      showTopNotification(
+        context,
+        const SnackBar(
+          content: Text('Đã cập nhật quyền tìm thấy tài khoản.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted || ref.read(friendsOwnerProvider) != owner) return;
+      showTopNotification(
+        context,
+        SnackBar(content: Text(friendErrorMessage(error))),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdatingFriendDiscovery = false);
+    }
+  }
+
+  Future<void> _refreshFriendVerification({
+    required FriendOwner owner,
+  }) async {
+    if (_isUpdatingFriendDiscovery || ref.read(friendsOwnerProvider) != owner) {
+      return;
+    }
+    setState(() => _isUpdatingFriendDiscovery = true);
+    try {
+      final repository =
+          await ref.read(friendsRepositoryProvider(owner).future);
+      if (repository == null || ref.read(friendsOwnerProvider) != owner) {
+        throw const FriendRefreshSuperseded();
+      }
+      ref.invalidate(friendDiscoverySettingsProvider(owner));
+      await ref.read(friendDiscoverySettingsProvider(owner).future);
+      if (!mounted || ref.read(friendsOwnerProvider) != owner) return;
+      showTopNotification(
+        context,
+        const SnackBar(content: Text('Đã kiểm tra lại trạng thái xác minh.')),
+      );
+    } catch (error) {
+      if (!mounted || ref.read(friendsOwnerProvider) != owner) return;
+      showTopNotification(
+        context,
+        SnackBar(content: Text(friendErrorMessage(error))),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdatingFriendDiscovery = false);
+    }
+  }
+
+  Future<void> _verifyFriendPhone({required FriendOwner owner}) async {
+    if (_isUpdatingFriendDiscovery || ref.read(friendsOwnerProvider) != owner) {
+      return;
+    }
+    final gateway = ref.read(friendPhoneVerificationProvider(owner));
+    if (gateway == null) {
+      showTopNotification(
+        context,
+        const SnackBar(
+          content: Text('Phiên đăng nhập đã thay đổi. Hãy thử lại.'),
+        ),
+      );
+      return;
+    }
+    final verified = await showFriendPhoneVerificationDialog(
+      context,
+      gateway: gateway,
+    );
+    if (!verified || !mounted || ref.read(friendsOwnerProvider) != owner) {
+      return;
+    }
+    setState(() => _isUpdatingFriendDiscovery = true);
+    try {
+      final repository =
+          await ref.read(friendsRepositoryProvider(owner).future);
+      if (repository == null || ref.read(friendsOwnerProvider) != owner) {
+        throw const FriendRefreshSuperseded();
+      }
+      await repository.syncVerifiedPhone();
+      ref.invalidate(friendDiscoverySettingsProvider(owner));
+      await ref.read(friendDiscoverySettingsProvider(owner).future);
+      if (!mounted || ref.read(friendsOwnerProvider) != owner) return;
+      showTopNotification(
+        context,
+        const SnackBar(content: Text('Đã xác minh số điện thoại.')),
+      );
+    } catch (error) {
+      if (!mounted || ref.read(friendsOwnerProvider) != owner) return;
+      showTopNotification(
+        context,
+        SnackBar(content: Text(friendErrorMessage(error))),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdatingFriendDiscovery = false);
     }
   }
 
@@ -367,6 +503,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     final cloudBackupLoading = cloudBackupConsent.isLoading;
     final cloudBackupError = cloudBackupConsent.hasError;
+    final friendOwner = ref.watch(friendsOwnerProvider);
+    final friendDiscovery = friendOwner == null
+        ? const AsyncValue<FriendDiscoverySettings?>.data(null)
+        : ref.watch(friendDiscoverySettingsProvider(friendOwner));
     final metadata = user?.userMetadata;
     final displayName =
         (metadata?['display_name'] as String?)?.trim().isNotEmpty == true
@@ -604,6 +744,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
 
                   const SizedBox(height: 16),
+
+                  if (friendOwner != null) ...[
+                    _buildSectionHeading(
+                      title: 'Tìm thấy tài khoản',
+                      accent: AppColors.yellow,
+                    ),
+                    const SizedBox(height: 8),
+                    _FriendDiscoveryCard(
+                      state: friendDiscovery,
+                      saving: _isUpdatingFriendDiscovery,
+                      onEmailChanged: (settings, enabled) =>
+                          _changeFriendDiscovery(
+                        owner: friendOwner,
+                        settings: settings,
+                        email: enabled,
+                      ),
+                      onPhoneChanged: (settings, enabled) =>
+                          _changeFriendDiscovery(
+                        owner: friendOwner,
+                        settings: settings,
+                        phone: enabled,
+                      ),
+                      onRefreshEmail: () => _refreshFriendVerification(
+                        owner: friendOwner,
+                      ),
+                      onRefreshPhone: () => _verifyFriendPhone(
+                        owner: friendOwner,
+                      ),
+                      onRetry: () => ref.invalidate(
+                        friendDiscoverySettingsProvider(friendOwner),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
                   _buildSectionHeading(
                     title: 'Dữ liệu và quyền riêng tư',
@@ -1024,6 +1198,224 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 trailing,
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FriendDiscoveryCard extends StatelessWidget {
+  const _FriendDiscoveryCard({
+    required this.state,
+    required this.saving,
+    required this.onEmailChanged,
+    required this.onPhoneChanged,
+    required this.onRefreshEmail,
+    required this.onRefreshPhone,
+    required this.onRetry,
+  });
+
+  final AsyncValue<FriendDiscoverySettings?> state;
+  final bool saving;
+  final void Function(FriendDiscoverySettings settings, bool enabled)
+      onEmailChanged;
+  final void Function(FriendDiscoverySettings settings, bool enabled)
+      onPhoneChanged;
+  final VoidCallback onRefreshEmail;
+  final VoidCallback onRefreshPhone;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('friend-discovery-card'),
+      decoration: BoxDecoration(
+        color: AppColors.softWhite,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.ink, width: 2.8),
+        boxShadow: const [
+          BoxShadow(color: AppColors.ink, offset: Offset(4, 4)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: state.when(
+        loading: () => const SizedBox(
+          height: 104,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, __) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              const Text(
+                'Chưa tải được quyền tìm thấy tài khoản.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.mutedInk,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 48,
+                child: TextButton.icon(
+                  key: const Key('friend-discovery-retry'),
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Thử lại'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        data: (settings) {
+          if (settings == null) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Đăng nhập để quản lý quyền tìm thấy tài khoản.',
+                style: TextStyle(
+                  color: AppColors.mutedInk,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            );
+          }
+          return Column(
+            children: [
+              SwitchListTile.adaptive(
+                key: const Key('friend-discovery-email-switch'),
+                value: settings.discoverableByEmail,
+                activeThumbColor: AppColors.ink,
+                activeTrackColor: AppColors.yellow,
+                onChanged: saving
+                    ? null
+                    : (enabled) {
+                        if (enabled && !settings.emailConfirmed) {
+                          onRefreshEmail();
+                          return;
+                        }
+                        onEmailChanged(settings, enabled);
+                      },
+                secondary: _discoveryIcon(
+                  Icons.mark_email_read_outlined,
+                  settings.emailConfirmed,
+                ),
+                title: const Text(
+                  'Cho phép tìm bằng email',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                ),
+                subtitle: Text(
+                  settings.emailConfirmed
+                      ? 'Email đã xác minh · mặc định tắt'
+                      : 'Email chưa xác minh; xác nhận email rồi kiểm tra lại',
+                  style: const TextStyle(
+                    color: AppColors.mutedInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              ),
+              if (!settings.emailConfirmed)
+                _verificationButton(
+                  key: const Key('friend-discovery-email-verify'),
+                  label: 'Kiểm tra lại email',
+                  saving: saving,
+                  onPressed: onRefreshEmail,
+                ),
+              const Divider(height: 1, indent: 64),
+              SwitchListTile.adaptive(
+                key: const Key('friend-discovery-phone-switch'),
+                value: settings.discoverableByPhone,
+                activeThumbColor: AppColors.ink,
+                activeTrackColor: AppColors.yellow,
+                onChanged: saving
+                    ? null
+                    : (enabled) {
+                        if (enabled && !settings.phoneVerified) {
+                          onRefreshPhone();
+                          return;
+                        }
+                        onPhoneChanged(settings, enabled);
+                      },
+                secondary: _discoveryIcon(
+                  Icons.phonelink_lock_outlined,
+                  settings.phoneVerified,
+                ),
+                title: const Text(
+                  'Cho phép tìm bằng số điện thoại',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                ),
+                subtitle: Text(
+                  settings.phoneVerified
+                      ? 'Số điện thoại đã xác minh · mặc định tắt'
+                      : 'Cần xác minh số điện thoại trong tài khoản trước',
+                  style: const TextStyle(
+                    color: AppColors.mutedInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              ),
+              if (!settings.phoneVerified)
+                _verificationButton(
+                  key: const Key('friend-discovery-phone-verify'),
+                  label: 'Xác minh số điện thoại',
+                  saving: saving,
+                  onPressed: onRefreshPhone,
+                ),
+              if (saving)
+                const LinearProgressIndicator(
+                  key: Key('friend-discovery-saving'),
+                  minHeight: 3,
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  static Widget _discoveryIcon(IconData icon, bool verified) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: (verified ? AppColors.mint : AppColors.yellow)
+            .withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.ink, width: 1.8),
+      ),
+      child: Icon(icon, color: AppColors.ink),
+    );
+  }
+
+  static Widget _verificationButton({
+    required Key key,
+    required String label,
+    required bool saving,
+    required VoidCallback onPressed,
+  }) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: SizedBox(
+          height: 48,
+          child: TextButton.icon(
+            key: key,
+            onPressed: saving ? null : onPressed,
+            icon: const Icon(Icons.verified_user_outlined),
+            label: Text(label),
           ),
         ),
       ),

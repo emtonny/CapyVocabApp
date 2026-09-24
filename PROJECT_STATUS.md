@@ -42,13 +42,16 @@ startup config + local onboarding cache
 | AI Scan | Đã test local, chờ deploy bản ghép | Vilao mặc định, auth/entitlement, circuit breaker, ledger, overlay và persistence native | Live scan bản ghép, TTS, Web scan durability |
 | Storage album | Đã test local | SQLite Library, detail, Trash, media recovery và explicit cloud restore | Web scan durability; kiểm thử thiết bị bản ghép |
 | Settings | Một phần | Profile, đăng xuất, Cloud Backup consent/backfill; đã sửa Material regression | Theme và thanh toán hoàn chỉnh |
-| Friends/Pet shop | Scaffold UI | Route, coming-soon UI và một số datasource | Provider, business flow và persistence end-to-end |
+| Friends | Exact-Staging verified | Exact username/email/phone discovery, consent, request/accept/reject, owner-scoped cache, Realtime invalidation, accepted list và Chat handoff | Commit/publish client Staging, SMS OTP thật và Production rollout |
+| Pet shop | Scaffold UI | Route và coming-soon UI | Provider, business flow và persistence end-to-end |
 | Solo Arena/Mini-games | Scaffold | Route/file nền | Gameplay, state, scoring và persistence |
 | Chat/Notifications | Scaffold | Datasource hoặc file nền | UI, provider và flow end-to-end |
 | Payment | Chưa tích hợp | Một số abstraction/shell | SDK thực, backend verification và webhook |
 
 Chi tiết implementation của AI Scan nằm trong
 [docs/scan-feature.md](docs/scan-feature.md).
+Chi tiết Friends MVP, giới hạn rollout và bằng chứng F1–F6 nằm trong
+[friend.md](friend.md).
 
 ## Route hiện tại
 
@@ -63,13 +66,14 @@ Chi tiết implementation của AI Scan nằm trong
 | `/scan-overlay` | Màn kết quả riêng, không phải flow mặc định |
 | `/solo-arena` | Solo Arena scaffold |
 | `/pet-shop` | Pet Shop coming soon |
-| `/friends` | Friends coming soon |
+| `/friends` | Quản lý lời mời, danh sách bạn bè và Chat handoff; chỉ bật bằng `FRIENDS_ENABLED` trên exact Staging |
 | `/settings` | Cài đặt và đăng xuất |
 
 ## Backend và dữ liệu
 
 - Flutter chỉ chứa Supabase URL và public/publishable key.
-- 21 migration local khớp database mà client đang trỏ tới qua kiểm tra read-only;
+- Hai migration Friends `20260922120000` và `20260923120000` khớp exact
+  Staging qua kiểm tra read-only ngày 2026-09-24;
   đây là đối chiếu history, không thay thế kiểm chứng toàn bộ schema/RLS runtime.
 - Thay đổi database mới phải được ghi bằng migration trong
   `supabase/migrations/`.

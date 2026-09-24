@@ -3,6 +3,10 @@ import 'dart:async';
 
 import 'package:capy_vocab/features/auth/domain/repositories/auth_repository.dart';
 import 'package:capy_vocab/features/auth/presentation/providers/auth_provider.dart';
+import 'package:capy_vocab/features/friends/domain/entities/friend_entity.dart';
+import 'package:capy_vocab/features/friends/domain/friend_phone_verification.dart';
+import 'package:capy_vocab/features/friends/domain/repositories/friends_repository.dart';
+import 'package:capy_vocab/features/friends/presentation/providers/friends_provider.dart';
 import 'package:capy_vocab/features/library/domain/entities/library_enums.dart';
 import 'package:capy_vocab/features/library/domain/entities/local_account.dart';
 import 'package:capy_vocab/features/language_profile/application/language_profile_store.dart';
@@ -378,6 +382,131 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('discovery switches update verified contacts independently',
+      (tester) async {
+    final friends = _SettingsFriendsRepository(
+      const FriendDiscoverySettings(
+        discoverableByEmail: false,
+        discoverableByPhone: false,
+        emailConfirmed: true,
+        phoneVerified: true,
+      ),
+    );
+    final owner = FriendOwner(
+      projectRef: 'nxteaznowkfennxpqjmt',
+      userId: _userId,
+    );
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      friendOwner: owner,
+      friendsRepository: friends,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('friend-discovery-email-switch')),
+      180,
+    );
+    await tester.tap(find.byKey(const Key('friend-discovery-email-switch')));
+    await tester.pumpAndSettle();
+
+    expect(friends.updates, [(email: true, phone: false)]);
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const Key('friend-discovery-email-switch')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(find.text('Đã cập nhật quyền tìm thấy tài khoản.'), findsOneWidget);
+  });
+
+  testWidgets('unverified phone stays off and hides OTP provider details',
+      (tester) async {
+    final friends = _SettingsFriendsRepository(
+      const FriendDiscoverySettings(
+        discoverableByEmail: false,
+        discoverableByPhone: false,
+        emailConfirmed: true,
+        phoneVerified: false,
+      ),
+    );
+    final phoneGateway = _SettingsPhoneGateway(
+      requestError: const FriendException(
+        FriendFailureKind.contactNotVerified,
+        'private backend detail',
+      ),
+    );
+    final owner = FriendOwner(
+      projectRef: 'nxteaznowkfennxpqjmt',
+      userId: _userId,
+    );
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      friendOwner: owner,
+      friendsRepository: friends,
+      phoneVerificationGateway: phoneGateway,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('friend-discovery-phone-verify')),
+      180,
+    );
+    await tester.tap(find.byKey(const Key('friend-discovery-phone-verify')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('friend-phone-request-otp')));
+    await tester.pumpAndSettle();
+
+    expect(phoneGateway.requestCalls, 1);
+    expect(friends.phoneSyncCalls, 0);
+    expect(friends.updates, isEmpty);
+    expect(find.text('Thông tin liên hệ chưa được xác minh.'), findsOneWidget);
+    expect(find.textContaining('private backend detail'), findsNothing);
+  });
+
+  testWidgets('verified Auth phone is synced before discovery can be enabled',
+      (tester) async {
+    final friends = _SettingsFriendsRepository(
+      const FriendDiscoverySettings(
+        discoverableByEmail: false,
+        discoverableByPhone: false,
+        emailConfirmed: true,
+        phoneVerified: false,
+      ),
+      markPhoneVerifiedOnSync: true,
+    );
+    final owner = FriendOwner(
+      projectRef: 'nxteaznowkfennxpqjmt',
+      userId: _userId,
+    );
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      friendOwner: owner,
+      friendsRepository: friends,
+      phoneVerificationGateway: _SettingsPhoneGateway(),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('friend-discovery-phone-verify')),
+      180,
+    );
+    await tester.tap(find.byKey(const Key('friend-discovery-phone-verify')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('friend-phone-request-otp')));
+    await tester.pumpAndSettle();
+
+    expect(friends.phoneSyncCalls, 1);
+    expect(find.text('Đã xác minh số điện thoại.'), findsOneWidget);
+    expect(
+        find.text('Số điện thoại đã xác minh · mặc định tắt'), findsOneWidget);
+  });
 }
 
 const _userId = '10000000-0000-4000-8000-000000000001';
@@ -408,6 +537,9 @@ Future<void> _pumpSettingsScreen(
   String? languageUserId,
   LanguageProfileStore? languageStore,
   LanguageProfileRepository? languageRepository,
+  FriendOwner? friendOwner,
+  FriendsRepository? friendsRepository,
+  FriendPhoneVerificationGateway? phoneVerificationGateway,
 }) async {
   final router = GoRouter(
     initialLocation: '/settings',
@@ -428,6 +560,18 @@ Future<void> _pumpSettingsScreen(
       overrides: [
         authRepositoryProvider.overrideWithValue(repository),
         resetOnboardingProvider.overrideWithValue(resetOnboarding),
+        if (friendOwner != null) ...[
+          friendsEnabledProvider.overrideWithValue(true),
+          friendsOwnerProvider.overrideWithValue(friendOwner),
+        ],
+        if (friendsRepository != null)
+          friendsRepositoryProvider.overrideWith(
+            (ref, owner) async => friendsRepository,
+          ),
+        if (phoneVerificationGateway != null)
+          friendPhoneVerificationProvider.overrideWith(
+            (ref, owner) => phoneVerificationGateway,
+          ),
         if (languageUserId != null)
           currentLanguageProfileUserIdProvider.overrideWithValue(
             languageUserId,
@@ -459,6 +603,106 @@ Future<void> _pumpSettingsScreen(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+class _SettingsFriendsRepository implements FriendsRepository {
+  _SettingsFriendsRepository(
+    this.settings, {
+    this.markPhoneVerifiedOnSync = false,
+  });
+
+  FriendDiscoverySettings settings;
+  final bool markPhoneVerifiedOnSync;
+  final updates = <({bool email, bool phone})>[];
+  int phoneSyncCalls = 0;
+
+  @override
+  Stream<FriendRemoteSignal> get remoteSignals => const Stream.empty();
+
+  @override
+  Future<FriendDiscoverySettings> getDiscoverySettings() async => settings;
+
+  @override
+  Future<FriendDiscoverySettings> updateDiscoverySettings({
+    required bool discoverableByEmail,
+    required bool discoverableByPhone,
+  }) async {
+    updates.add((
+      email: discoverableByEmail,
+      phone: discoverableByPhone,
+    ));
+    settings = FriendDiscoverySettings(
+      discoverableByEmail: discoverableByEmail,
+      discoverableByPhone: discoverableByPhone,
+      emailConfirmed: settings.emailConfirmed,
+      phoneVerified: settings.phoneVerified,
+    );
+    return settings;
+  }
+
+  @override
+  Future<void> syncVerifiedPhone() async {
+    phoneSyncCalls++;
+    if (markPhoneVerifiedOnSync) {
+      settings = FriendDiscoverySettings(
+        discoverableByEmail: settings.discoverableByEmail,
+        discoverableByPhone: settings.discoverableByPhone,
+        emailConfirmed: settings.emailConfirmed,
+        phoneVerified: true,
+      );
+    }
+  }
+
+  @override
+  Future<FriendConnection?> searchFriend({
+    required FriendSearchMethod method,
+    required String query,
+  }) async =>
+      null;
+
+  @override
+  Future<FriendMutationResult> sendRequest(String targetUserId) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<FriendMutationResult> respondToRequest({
+    required String requesterId,
+    required FriendDecision decision,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> refresh(FriendListKind kind) async {}
+
+  @override
+  Future<List<FriendConnection>> readCached(FriendListKind kind) async => [];
+
+  @override
+  Stream<List<FriendConnection>> watchCached(FriendListKind kind) =>
+      const Stream.empty();
+
+  @override
+  Future<void> dispose() async {}
+}
+
+class _SettingsPhoneGateway implements FriendPhoneVerificationGateway {
+  _SettingsPhoneGateway({this.requestError});
+
+  final Object? requestError;
+  int requestCalls = 0;
+
+  @override
+  Future<FriendPhoneChallenge?> requestVerification() async {
+    requestCalls++;
+    if (requestError case final error?) throw error;
+    return null;
+  }
+
+  @override
+  Future<void> verify({
+    required FriendPhoneChallenge challenge,
+    required String token,
+  }) async {}
 }
 
 class _LanguageProfileRepository implements LanguageProfileRepository {

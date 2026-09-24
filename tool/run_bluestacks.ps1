@@ -100,6 +100,7 @@ try {
             SUPABASE_ANON_KEY = $anonValue
             LIBRARY_SYNC_ENABLED = $true
             CHAT_RELAY_ENABLED = $true
+            FRIENDS_ENABLED = $true
         } | ConvertTo-Json
         [IO.File]::WriteAllText($defineFile, $defines, (New-Object Text.UTF8Encoding($false)))
         $runArguments += "--dart-define-from-file=$defineFile"
