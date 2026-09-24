@@ -54,12 +54,6 @@ class _AddFriendSheetState extends ConsumerState<AddFriendSheet> {
     super.dispose();
   }
 
-  void _selectMethod(FriendSearchMethod method) {
-    ref.read(friendsSearchProvider(widget.owner).notifier).selectMethod(method);
-    _queryController.clear();
-    _queryFocus.requestFocus();
-  }
-
   @override
   Widget build(BuildContext context) {
     final activeOwner = ref.watch(friendsOwnerProvider);
@@ -127,7 +121,7 @@ class _AddFriendSheetState extends ConsumerState<AddFriendSheet> {
               ],
             ),
             const Text(
-              'Tìm chính xác bằng username, email hoặc số điện thoại.',
+              'Tìm chính xác bằng username để kết nối với bạn bè.',
               style: TextStyle(
                 fontSize: 13.5,
                 height: 1.35,
@@ -136,58 +130,23 @@ class _AddFriendSheetState extends ConsumerState<AddFriendSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: FriendSearchMethod.values.map((method) {
-                return Semantics(
-                  button: true,
-                  selected: state.method == method,
-                  label: 'Tìm bằng ${_methodLabel(method)}',
-                  child: ChoiceChip(
-                    key: Key('friend-method-${method.wireValue}'),
-                    label: Text(_methodLabel(method)),
-                    selected: state.method == method,
-                    onSelected:
-                        state.isSending ? null : (_) => _selectMethod(method),
-                    selectedColor: AppColors.yellow,
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: AppColors.ink, width: 1.8),
-                    labelStyle: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w800,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 10),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 14),
             TextField(
               key: const Key('friend-search-field'),
               controller: _queryController,
               focusNode: _queryFocus,
               enabled: state.ready && !state.isSending,
-              keyboardType: _keyboardType(state.method),
+              keyboardType: TextInputType.text,
               textInputAction: TextInputAction.search,
               autocorrect: false,
               enableSuggestions: false,
-              maxLength: state.method == FriendSearchMethod.username ? 20 : 320,
+              maxLength: 20,
               maxLengthEnforcement: MaxLengthEnforcement.enforced,
-              inputFormatters: state.method == FriendSearchMethod.phone
-                  ? [
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'[+0-9\s().-]'),
-                      ),
-                    ]
-                  : null,
               onChanged: notifier.queryChanged,
               onSubmitted: (_) => notifier.searchNow(),
               decoration: InputDecoration(
-                labelText: _fieldLabel(state.method),
-                hintText: _fieldHint(state.method),
-                prefixIcon: Icon(_methodIcon(state.method)),
+                labelText: 'Username',
+                hintText: 'ví dụ: deer_friend',
+                prefixIcon: const Icon(Icons.alternate_email_rounded),
                 suffixIcon: state.phase == FriendSearchPhase.searching
                     ? const Padding(
                         padding: EdgeInsets.all(14),
@@ -472,36 +431,6 @@ class _StatusPanel extends StatelessWidget {
     );
   }
 }
-
-String _methodLabel(FriendSearchMethod method) => switch (method) {
-      FriendSearchMethod.username => 'Username',
-      FriendSearchMethod.email => 'Email',
-      FriendSearchMethod.phone => 'Số điện thoại',
-    };
-
-String _fieldLabel(FriendSearchMethod method) => switch (method) {
-      FriendSearchMethod.username => 'Username',
-      FriendSearchMethod.email => 'Email chính xác',
-      FriendSearchMethod.phone => 'Số điện thoại Việt Nam',
-    };
-
-String _fieldHint(FriendSearchMethod method) => switch (method) {
-      FriendSearchMethod.username => 'ví dụ: deer_friend',
-      FriendSearchMethod.email => 'ví dụ: ban@example.com',
-      FriendSearchMethod.phone => 'ví dụ: 0912345678',
-    };
-
-IconData _methodIcon(FriendSearchMethod method) => switch (method) {
-      FriendSearchMethod.username => Icons.alternate_email_rounded,
-      FriendSearchMethod.email => Icons.mail_outline_rounded,
-      FriendSearchMethod.phone => Icons.phone_outlined,
-    };
-
-TextInputType _keyboardType(FriendSearchMethod method) => switch (method) {
-      FriendSearchMethod.username => TextInputType.text,
-      FriendSearchMethod.email => TextInputType.emailAddress,
-      FriendSearchMethod.phone => TextInputType.phone,
-    };
 
 String _actionLabel(FriendRelationshipState state) => switch (state) {
       FriendRelationshipState.none => 'Gửi lời mời',
