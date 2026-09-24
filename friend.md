@@ -524,7 +524,8 @@ REST/Realtime ba client và cleanup.
 - Logout/account switch không lộ cache.
 - Auth/row/cache fixture cleanup về baseline; Production không bị truy cập.
 
-**Trạng thái:** `EXACT-STAGING VERIFIED` ngày 2026-09-23. Backup mã hóa được tạo
+**Trạng thái:** `EXACT-STAGING VERIFIED`, chạy lại thành công ngày 2026-09-24.
+Backup mã hóa được tạo
 trước mỗi lần apply. Migration F1 và bản vá Auth phone đều xuất hiện đúng một
 lần trong history; post-apply dry-run trả `upToDate=true`. Bản vá giữ yêu cầu
 `phone_confirmed_at` và chỉ coi ba biểu diễn tương đương `0…`, `+84…`, `84…`
@@ -537,6 +538,13 @@ outsider RLS/Realtime isolation và canonical Chat đều pass. Cleanup theo đ�
 `test_scope + run_id` trả Auth/profile/friends/chat về baseline và còn 0 fixture;
 Production/Training/Library writes đều bằng 0. SQL local **68/68**, Friends +
 Settings **65/65**, full Flutter **653 pass + 1 opt-in skip**, analyzer sạch.
+
+**Rerun 2026-09-24:** exact Staging vẫn `ACTIVE_HEALTHY`; preflight và hậu kiểm
+`db push --linked --dry-run` đều trả `upToDate=true`. F6 live pass đủ tám nhóm,
+gồm ba verified account, exact discovery/consent, ba WebSocket thật, forged/self/
+outsider denial, idempotent request, accepted list đối xứng, canonical Chat và
+reject path. Cleanup trả `fixture_count_remaining=0`; Production, Training và
+Library đều `0 writes`.
 
 ### Hoàn thiện sau F6 — rollout UI và phone OTP
 

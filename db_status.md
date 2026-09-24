@@ -1174,6 +1174,12 @@ Sau Production Gate 3:
 
 ## Change log
 
+### 2026-09-24 — Friends F6 exact-Staging live rerun (VERIFIED)
+
+- Preflight confirmed exact project `nxteaznowkfennxpqjmt` uniquely linked and `ACTIVE_HEALTHY`; migration dry-runs before and after returned `upToDate=true`.
+- F6 live passed all eight groups: three verified synthetic accounts, exact discovery/consent/public projection, three real WebSockets, authorization denials, idempotent request, symmetric accepted lists, canonical Chat, reject path and exact-scope cleanup.
+- Final result: `fixture_count_remaining=0`; Production, Training and Library each reported `0 writes`. No deploy or Git push was performed.
+
 ### 2026-09-24 — Friends F1–F6 local/exact-Staging verified
 
 - Added the additive Friends management contract and Auth phone-format compatibility migration.
