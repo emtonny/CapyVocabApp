@@ -10,7 +10,7 @@
 > 2026-09-24 yêu cầu email và SĐT quốc tế đều được xác nhận trước khi dùng tài
 > nguyên có chi phí; SMS thật vì vậy trở lại thành release gate cho tài khoản,
 > không phải phương thức tìm bạn. Kế hoạch chi tiết nằm tại
-> `docs/account_contact_verification_plan.md`.
+> `auth.md`.
 > Phạm vi: tìm kiếm người dùng, gửi lời mời, chấp nhận/từ chối và danh sách
 > bạn bè. Bảng xếp hạng tuần là milestone kế tiếp sau khi milestone này hoàn tất.
 
@@ -344,7 +344,7 @@ Merge snapshot theo transaction. Khi logout/account switch:
 3. Chỉ bạn bè đã chấp nhận được đọc liên hệ đã bật; người lạ/lời mời chờ không
    được đọc. Tắt quyền hoặc hủy kết bạn có hiệu lực ngay cho lần đọc tiếp theo.
 4. Chi tiết đăng ký, đổi liên hệ, gói và ưu đãi nằm tại
-   `docs/account_contact_verification_plan.md`.
+   `auth.md`.
 
 ### 6.3 Nhận và phản hồi
 
