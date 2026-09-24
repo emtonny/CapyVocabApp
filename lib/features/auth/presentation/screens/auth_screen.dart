@@ -47,9 +47,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   bool _isSignUp = false;
   bool _obscurePassword = true;
   bool _rememberAccount = false;
+  String? _pendingConfirmationEmail;
+  int _resendSeconds = 0;
   String? _topMessage;
   bool _topMessageIsError = false;
   Timer? _topMessageTimer;
+  Timer? _resendTimer;
 
   bool get _showStagingTestBanner {
     if (widget.stagingTestMode != null) return widget.stagingTestMode!;
@@ -131,10 +134,48 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   void dispose() {
     _topMessageTimer?.cancel();
+    _resendTimer?.cancel();
     _displayNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _startResendCooldown() {
+    _resendTimer?.cancel();
+    setState(() => _resendSeconds = 60);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_resendSeconds <= 1) {
+        timer.cancel();
+        setState(() => _resendSeconds = 0);
+      } else {
+        setState(() => _resendSeconds -= 1);
+      }
+    });
+  }
+
+  Future<void> _resendConfirmation() async {
+    final email = _pendingConfirmationEmail;
+    if (email == null || _resendSeconds > 0) return;
+    final sent =
+        await ref.read(emailConfirmationProvider.notifier).resend(email);
+    if (!mounted) return;
+    if (sent) {
+      _startResendCooldown();
+      _showTopNotification('Đã gửi lại thư xác nhận.');
+      return;
+    }
+    final error = ref.read(emailConfirmationProvider).error;
+    _showTopNotification(
+      error is AuthFailure
+          ? error.message
+          : 'Không thể gửi lại thư xác nhận. Vui lòng thử lại.',
+      isError: true,
+    );
   }
 
   void _changeMode(bool isSignUp) {
@@ -180,7 +221,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         setState(() {
           _isSignUp = false;
           _rememberAccount = true;
+          _pendingConfirmationEmail = registeredEmail;
         });
+        _startResendCooldown();
         _showTopNotification(
           'Đã gửi email xác nhận. Vui lòng kiểm tra hộp thư để hoàn tất đăng ký Deery Vocab.',
         );
@@ -414,6 +457,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   Widget _buildFormCard(bool isLoading) {
+    final confirmationState = ref.watch(emailConfirmationProvider);
     return Container(
       key: const Key('auth-form-box'),
       width: double.infinity,
@@ -479,7 +523,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 const SizedBox(height: 16),
               ],
               _buildFieldLabel(
-                label: 'Email / Tên đăng nhập',
+                label: 'Email',
                 icon: Icons.email_outlined,
                 badgeColor: const Color(0xFF7DD3FC),
               ),
@@ -609,10 +653,73 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 const SizedBox(height: 12),
                 _buildRememberAndForgotPasswordRow(isLoading),
               ],
+              if (!_isSignUp && _pendingConfirmationEmail != null) ...[
+                const SizedBox(height: 14),
+                _buildEmailConfirmationCard(confirmationState.isLoading),
+              ],
               const SizedBox(height: 20),
               _buildSubmitButton(isLoading),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmailConfirmationCard(bool isSending) {
+    final canResend = !isSending && _resendSeconds == 0;
+    return Semantics(
+      container: true,
+      label: 'Email đang chờ xác nhận',
+      child: Container(
+        key: const Key('email-confirmation-card'),
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.yellow.withValues(alpha: 0.28),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.ink, width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Email chưa được xác nhận',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Mở thư đã gửi tới ${_pendingConfirmationEmail!}, sau đó đăng nhập để tiếp tục.',
+              style: const TextStyle(
+                fontFamily: 'Nunito',
+                fontWeight: FontWeight.w700,
+                color: AppColors.mutedInk,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 48,
+              child: TextButton.icon(
+                key: const Key('resend-confirmation-button'),
+                onPressed: canResend ? _resendConfirmation : null,
+                icon: isSending
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.mark_email_unread_outlined),
+                label: Text(
+                  _resendSeconds > 0
+                      ? 'Gửi lại sau ${_resendSeconds}s'
+                      : 'Gửi lại thư xác nhận',
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

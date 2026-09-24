@@ -1,3 +1,4 @@
+import 'package:capy_vocab/features/auth/data/repositories/account_phone_verification_gateway.dart';
 import 'package:capy_vocab/features/onboarding/data/repositories/onboarding_repository.dart';
 import 'package:capy_vocab/features/onboarding/domain/entities/onboarding_data.dart';
 import 'package:capy_vocab/features/onboarding/presentation/providers/onboarding_provider.dart';
@@ -22,6 +23,7 @@ void main() {
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
@@ -49,6 +51,7 @@ void main() {
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
@@ -91,10 +94,10 @@ void main() {
     final step2Card = tester.getRect(
       find.byKey(const Key('onboarding-step-content-card')),
     );
-    final phoneField = tester.getRect(
-      find.byKey(const Key('onboarding-phone-field')),
+    final requestCodeButton = tester.getRect(
+      find.byKey(const Key('onboarding-request-phone-code')),
     );
-    expect(step2Card.bottom - phoneField.bottom, closeTo(22.5, 0.1));
+    expect(step2Card.bottom - requestCodeButton.bottom, closeTo(22.5, 0.1));
 
     await tester.enterText(
       find.byKey(const Key('onboarding-age-field')),
@@ -102,8 +105,9 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('onboarding-phone-field')),
-      '0987654321',
+      '+84987654321',
     );
+    await _verifyPhone(tester);
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -198,6 +202,7 @@ void main() {
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
@@ -220,13 +225,15 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('onboarding-phone-field')),
-      '0987654321',
+      '+84987654321',
     );
-    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
-    await tester.tap(find.byKey(const Key('onboarding-next-button')));
+    await tester.ensureVisible(
+      find.byKey(const Key('onboarding-request-phone-code')),
+    );
+    await tester.tap(find.byKey(const Key('onboarding-request-phone-code')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Số điện thoại đã được sử dụng.'), findsOneWidget);
+    expect(find.text('Số điện thoại chưa hợp lệ.'), findsOneWidget);
     expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
   });
 
@@ -237,6 +244,7 @@ void main() {
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
@@ -259,8 +267,9 @@ void main() {
     await tester.enterText(find.byKey(const Key('onboarding-age-field')), '20');
     await tester.enterText(
       find.byKey(const Key('onboarding-phone-field')),
-      '0987654321',
+      '+84987654321',
     );
+    await _verifyPhone(tester);
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -416,6 +425,20 @@ Future<void> _selectLanguages(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _verifyPhone(WidgetTester tester) async {
+  await tester.ensureVisible(
+    find.byKey(const Key('onboarding-request-phone-code')),
+  );
+  await tester.tap(find.byKey(const Key('onboarding-request-phone-code')));
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const Key('onboarding-phone-code-field')),
+    '123456',
+  );
+  await tester.tap(find.byKey(const Key('onboarding-verify-phone-code')));
+  await tester.pumpAndSettle();
+}
+
 Color _cardBorderColor(WidgetTester tester, Key cardKey) {
   final animatedContainer = find.descendant(
     of: find.byKey(cardKey),
@@ -427,8 +450,21 @@ Color _cardBorderColor(WidgetTester tester, Key cardKey) {
   return decoration.border!.top.color;
 }
 
-class _WidgetTestRepository implements OnboardingRepository {
+class _WidgetTestRepository
+    implements OnboardingRepository, AccountPhoneVerificationGateway {
   bool phoneAvailable = true;
+  String? _verifiedPhone;
+
+  @override
+  String? get verifiedPhone => _verifiedPhone;
+
+  @override
+  Future<void> requestCode(String phone, {String? currentPassword}) async {}
+
+  @override
+  Future<void> verifyCode({required String phone, required String code}) async {
+    _verifiedPhone = phone;
+  }
 
   @override
   Future<OnboardingData> loadDraft() async {

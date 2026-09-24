@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,11 +7,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../providers/onboarding_provider.dart';
 
-class Step2AgePhone extends ConsumerWidget {
+class Step2AgePhone extends ConsumerStatefulWidget {
   const Step2AgePhone({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<Step2AgePhone> createState() => _Step2AgePhoneState();
+}
+
+class _Step2AgePhoneState extends ConsumerState<Step2AgePhone> {
+  final _codeController = TextEditingController();
+  Timer? _timer;
+  int _resendSeconds = 0;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  void _startCooldown() {
+    _timer?.cancel();
+    setState(() => _resendSeconds = 60);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _resendSeconds <= 1) {
+        timer.cancel();
+        if (mounted) setState(() => _resendSeconds = 0);
+        return;
+      }
+      setState(() => _resendSeconds -= 1);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(onboardingProvider);
     final notifier = ref.read(onboardingProvider.notifier);
 
@@ -79,8 +110,8 @@ class Step2AgePhone extends ConsumerWidget {
           keyboardType: TextInputType.phone,
           textInputAction: TextInputAction.done,
           inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(10),
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s().-]')),
+            LengthLimitingTextInputFormatter(24),
           ],
           style: const TextStyle(
             fontSize: 15,
@@ -89,7 +120,7 @@ class Step2AgePhone extends ConsumerWidget {
             fontFamily: 'Nunito',
           ),
           decoration: _inputDecoration(
-            hintText: '0987654321',
+            hintText: '+84987654321',
             errorText: state.fieldErrors['phone'],
             suffixIcon: state.isCheckingPhone
                 ? const Padding(
@@ -106,6 +137,73 @@ class Step2AgePhone extends ConsumerWidget {
           ),
           onChanged: notifier.updatePhone,
         ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            key: const Key('onboarding-request-phone-code'),
+            onPressed: state.isBusy || _resendSeconds > 0 || state.phoneVerified
+                ? null
+                : () async {
+                    final sent = await notifier.requestPhoneCode();
+                    if (sent &&
+                        mounted &&
+                        !ref.read(onboardingProvider).phoneVerified) {
+                      _startCooldown();
+                    }
+                  },
+            icon: state.phoneVerified
+                ? const Icon(Icons.verified_rounded)
+                : const Icon(Icons.sms_outlined),
+            label: Text(
+              state.phoneVerified
+                  ? 'Số điện thoại đã xác nhận'
+                  : _resendSeconds > 0
+                      ? 'Gửi lại mã sau ${_resendSeconds}s'
+                      : state.phoneVerificationSent
+                          ? 'Gửi lại mã SMS'
+                          : 'Gửi mã SMS',
+            ),
+          ),
+        ),
+        if (state.phoneVerificationSent && !state.phoneVerified) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            key: const Key('onboarding-phone-code-field'),
+            controller: _codeController,
+            enabled: !state.isBusy,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(6),
+            ],
+            decoration: _inputDecoration(
+              hintText: 'Mã xác nhận gồm 6 số',
+              errorText: state.fieldErrors['phoneCode'],
+            ),
+            onFieldSubmitted: state.isBusy
+                ? null
+                : (value) => notifier.verifyPhoneCode(value),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton(
+              key: const Key('onboarding-verify-phone-code'),
+              onPressed: state.isBusy
+                  ? null
+                  : () => notifier.verifyPhoneCode(_codeController.text),
+              child: Text(
+                state.isVerifyingPhone
+                    ? 'Đang xác nhận...'
+                    : 'Xác nhận số điện thoại',
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

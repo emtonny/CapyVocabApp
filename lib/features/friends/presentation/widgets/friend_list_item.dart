@@ -10,11 +10,13 @@ class FriendListItem extends StatelessWidget {
     required this.connection,
     required this.opening,
     required this.onOpenChat,
+    required this.onViewContact,
   });
 
   final FriendConnection connection;
   final bool opening;
   final VoidCallback? onOpenChat;
+  final VoidCallback onViewContact;
 
   @override
   Widget build(BuildContext context) {
@@ -92,26 +94,48 @@ class FriendListItem extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              height: 48,
-              child: FilledButton.icon(
-                key: ValueKey('accepted-friend-chat-${profile.id}'),
-                onPressed: opening ? null : onOpenChat,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.blue,
-                  foregroundColor: AppColors.ink,
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      key: ValueKey('accepted-friend-contact-${profile.id}'),
+                      onPressed: onViewContact,
+                      icon: const Icon(Icons.contact_phone_outlined),
+                      label: const Text(
+                        'Liên hệ',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
                 ),
-                icon: opening
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2.2),
-                      )
-                    : const Icon(Icons.chat_bubble_outline_rounded),
-                label: Text(
-                  opening ? 'Đang mở Chat…' : 'Nhắn tin',
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton.icon(
+                      key: ValueKey('accepted-friend-chat-${profile.id}'),
+                      onPressed: opening ? null : onOpenChat,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.blue,
+                        foregroundColor: AppColors.ink,
+                      ),
+                      icon: opening
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2.2),
+                            )
+                          : const Icon(Icons.chat_bubble_outline_rounded),
+                      label: Text(
+                        opening ? 'Đang mở…' : 'Nhắn tin',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),

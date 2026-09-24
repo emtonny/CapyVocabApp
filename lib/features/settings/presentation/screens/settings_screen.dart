@@ -16,6 +16,7 @@ import '../../../language_profile/presentation/language_profile_provider.dart';
 import '../../../onboarding/application/onboarding_status_store.dart';
 import '../../../onboarding/presentation/providers/onboarding_status_provider.dart';
 import '../providers/cloud_backup_consent_provider.dart';
+import '../widgets/account_contact_section.dart';
 
 typedef ResetOnboarding = Future<void> Function();
 
@@ -782,6 +783,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     accent: AppColors.coral,
                   ),
                   const SizedBox(height: 8),
+
+                  if (user != null) ...[
+                    const AccountContactSection(),
+                    const SizedBox(height: 16),
+                  ],
 
                   // Logout Button
                   Container(
