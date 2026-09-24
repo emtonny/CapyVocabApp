@@ -1,6 +1,6 @@
 # Deery Vocab — Project Status
 
-> Last verified: 2026-09-12 (local checks; remote migration history read-only)
+> Last verified: 2026-09-24 (local checks; Friends exact-Staging previously verified)
 > Phạm vi: trạng thái implementation hiện tại, khoảng trống và công việc tiếp
 > theo. Code và test là nguồn sự thật khi có khác biệt.
 
@@ -42,7 +42,7 @@ startup config + local onboarding cache
 | AI Scan | Đã test local, chờ deploy bản ghép | Vilao mặc định, auth/entitlement, circuit breaker, ledger, overlay và persistence native | Live scan bản ghép, TTS, Web scan durability |
 | Storage album | Đã test local | SQLite Library, detail, Trash, media recovery và explicit cloud restore | Web scan durability; kiểm thử thiết bị bản ghép |
 | Settings | Một phần | Profile, đăng xuất, Cloud Backup consent/backfill; đã sửa Material regression | Theme và thanh toán hoàn chỉnh |
-| Friends | Exact-Staging verified | Exact username/email/phone discovery, consent, request/accept/reject, owner-scoped cache, Realtime invalidation, accepted list và Chat handoff | Commit/publish client Staging, SMS OTP thật và Production rollout |
+| Friends | Username-first local; backend Exact-Staging verified | UI exact username, request/accept/reject, owner-scoped cache, Realtime invalidation, accepted list và Chat handoff; email/phone contract dormant | Review rồi publish client Staging; Production rollout. SMS OTP không còn chặn MVP |
 | Pet shop | Scaffold UI | Route và coming-soon UI | Provider, business flow và persistence end-to-end |
 | Solo Arena/Mini-games | Scaffold | Route/file nền | Gameplay, state, scoring và persistence |
 | Chat/Notifications | Scaffold | Datasource hoặc file nền | UI, provider và flow end-to-end |

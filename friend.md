@@ -4,9 +4,11 @@
 > Trạng thái: **F1–F6 IMPLEMENTED / EXACT-STAGING VERIFIED**. Hai migration
 > Friends đã apply đúng project Staging `nxteaznowkfennxpqjmt`; Production chưa
 > apply. Runner exact Staging bật rõ `FRIENDS_ENABLED=true`; mặc định vẫn tắt để
-> Production chưa có schema không vô tình kích hoạt. Luồng OTP phone phía client
-> và exact-Staging synthetic OTP đã hoàn tất. SMS thật còn chờ cấu hình đủ Twilio;
-> Phone provider và test OTP đã được trả về trạng thái tắt sau smoke.
+> Production chưa có schema không vô tình kích hoạt. UI MVP hiện chỉ cho tìm bằng
+> username; email/phone discovery và OTP đã được gỡ khỏi luồng người dùng nhưng
+> contract backend/migration vẫn giữ để tương thích. Vì vậy SMS/Twilio không còn
+> là điều kiện chặn Friends MVP. Phone provider và test OTP đã được trả về trạng
+> thái tắt sau smoke lịch sử.
 > Phạm vi: tìm kiếm người dùng, gửi lời mời, chấp nhận/từ chối và danh sách
 > bạn bè. Bảng xếp hạng tuần là milestone kế tiếp sau khi milestone này hoàn tất.
 
@@ -14,7 +16,7 @@
 
 Người dùng đã đăng nhập có thể:
 
-1. Tìm một người khác bằng username, email hoặc số điện thoại.
+1. Tìm một người khác bằng username chính xác.
 2. Gửi đúng một lời mời kết bạn.
 3. Xem lời mời đã gửi và lời mời nhận được.
 4. Chấp nhận hoặc từ chối lời mời nhận được.
@@ -58,13 +60,12 @@ Milestone này phải tạo đầu vào ổn định cho bảng xếp hạng b�
 - Màn Bạn bè có `Thêm bạn`, ba tab request/accepted và lối mở Chat sau cờ
   `FRIENDS_ENABLED`. Runner Web/Android exact Staging bật cờ rõ ràng; default và
   Production vẫn tắt.
-- Search hỗ trợ exact username/email/phone, debounce 350 ms, validation local,
+- UI Search chỉ hiển thị exact username, debounce 350 ms, validation local,
   stale-query/account cancellation, offline fail-fast và result chỉ chứa public
   profile. Send không tự giả accepted và refresh outgoing sau kết quả server.
-- Settings có opt-in email/phone độc lập và fail closed khi contact chưa được
-  server xác minh. Phone chưa verified mở dialog gửi/nhập OTP qua Supabase Auth,
-  chỉ dùng số private đã lưu của chính owner, che số trên UI và chỉ gọi
-  `sync_my_verified_friend_phone()` sau Auth success.
+- Email/phone discovery, opt-in và OTP không còn được render trong Settings hay
+  sheet Thêm bạn. Typed contract, RPC và migration tương ứng vẫn giữ nguyên để
+  tương thích dữ liệu đã apply và có thể tái đánh giá sau một rollout riêng.
 - F4 thêm ba tab `Lời mời`, `Đã gửi`, `Bạn bè`, badge lời mời đến, cache-first
   hydrate, refresh nền/Realtime invalidation và accept/reject khóa theo từng
   peer. Chỉ xóa lời mời khỏi UI sau server success; offline/lỗi giữ cache để thử
@@ -82,9 +83,10 @@ Milestone này phải tạo đầu vào ổn định cho bảng xếp hạng b�
 
 ### 3.1 Tìm kiếm
 
-- Hỗ trợ ba phương thức **username**, **email** và **số điện thoại** chính xác;
-  UI cho người dùng chọn phương thức để tránh nhầm username chỉ gồm chữ số với
-  số điện thoại.
+- MVP công khai chỉ hỗ trợ **username chính xác**. Sheet Thêm bạn không hiển thị
+  bộ chọn email/số điện thoại và Settings không hiển thị contact discovery/OTP.
+- Backend vẫn chấp nhận exact email/phone theo contract F1 đã deploy trên
+  Staging, nhưng đây là capability dormant, không phải luồng sản phẩm hiện tại.
 - Username chuẩn hóa bằng `lower(trim(query))` và giữ contract hiện tại:
   `^[a-z0-9_]{3,20}$`.
 - Email chuẩn hóa bằng `lower(trim(query))`, validate định dạng ở cả client và
@@ -546,31 +548,30 @@ outsider denial, idempotent request, accepted list đối xứng, canonical Chat
 reject path. Cleanup trả `fixture_count_remaining=0`; Production, Training và
 Library đều `0 writes`.
 
-### Hoàn thiện sau F6 — rollout UI và phone OTP
+### Hoàn thiện sau F6 — rollout UI username-first
 
-**Trạng thái 2026-09-24:** `SOURCE/LOCAL/STAGING SYNTHETIC OTP VERIFIED`; SMS thật
-chờ cấu hình đủ credential Twilio trên exact Staging.
+**Trạng thái 2026-09-24:** `USERNAME-FIRST SOURCE/LOCAL VERIFIED`; SMS thật và
+credential Twilio không còn là release blocker của Friends MVP.
 
 - Hai widget scaffold cũ `AddFriendModal` và `FriendListItem` đã có triển khai
   thật. Accepted list dùng thẻ public-profile chung; màn chính chỉ còn nhãn
   `Bạn bè`, không hứa hẹn leaderboard tuần trước khi có point ledger.
 - Lối mở trang Chat cũ được giữ tương thích. Môi trường không bật Friends hiển
   thị trạng thái không khả dụng rõ ràng, không còn nhãn “Đang phát triển”.
-- Settings gửi OTP đến số private đã lưu trong `public.users` của owner, chuẩn
-  hóa `0…`/`+84…`/`84…`, từ chối số Auth khác số profile, che số khi render,
-  khóa double tap và chỉ nhận mã sáu chữ số. Raw phone/OTP không được cache,
-  log hoặc đưa vào entity Friends.
+- Sheet Thêm bạn chỉ còn input username và một hành động gửi lời mời. Settings
+  không render opt-in email/phone hoặc OTP. Contract xác minh cũ vẫn fail closed;
+  raw phone/OTP vẫn không được cache, log hoặc đưa vào entity Friends.
 - `tool/run_staging_device_smoke.ps1` và `tool/run_bluestacks.ps1 -Staging` bật
   `FRIENDS_ENABLED=true`; cờ mặc định vẫn `false`, owner vẫn khóa exact host
   `nxteaznowkfennxpqjmt.supabase.co`, Production chưa apply migration.
-- Verification: Friends + Settings + màn Chat liên quan **86/86**; full Flutter
-  **658 pass + 1 opt-in skip**; analyzer toàn dự án sạch. Exact-Staging migration
-  dry-run trả `upToDate=true` và Web build với Friends + Chat bật đã pass. Warning
+- Verification sau thay đổi username-first: Friends + Settings **69/69**; full
+  Flutter **657 pass + 1 opt-in skip**; analyzer toàn dự án sạch. Web build với
+  Friends + Chat bật đã pass. Exact-Staging migration dry-run gần nhất trả
+  `upToDate=true`; thay đổi này không tạo schema hoặc remote write mới. Warning
   Web còn lại thuộc `flutter_tts` Wasm interop/Cupertino font đã có sẵn.
-- Lần thử từ tài khoản người dùng xác nhận client đọc đúng số private nhưng Auth
-  trả HTTP 500 ở bước cập nhật phone. Management config cho thấy provider được
-  chọn là Twilio nhưng thiếu Account SID, Auth Token và Message Service SID, nên
-  chưa thể gửi SMS thật.
+- Lần thử SMS lịch sử trả HTTP 500 vì cấu hình Twilio thiếu Account SID, Auth
+  Token và Message Service SID. Khoảng trống này được giữ làm bằng chứng kỹ
+  thuật, nhưng không còn nằm trên đường phát hành Friends username-first.
 - Smoke synthetic dùng test OTP chính thức của Supabase đã pass trọn luồng trên
   exact Staging: request 200, verify 200, có `phone_confirmed_at`, gọi
   `sync_my_verified_friend_phone()` và đọc lại `phone_verified=true`. Fixture Auth

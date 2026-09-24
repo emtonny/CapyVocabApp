@@ -199,6 +199,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('friend discovery exposes username only', (tester) async {
+    final repository = ImmediateFriendsRepository(searchResult: publicResult());
+    await pumpFriends(tester, repository);
+
+    await tester.tap(find.byKey(const Key('open-add-friend')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Username'), findsOneWidget);
+    expect(find.textContaining('username để kết nối'), findsOneWidget);
+    expect(find.byKey(const Key('friend-method-email')), findsNothing);
+    expect(find.byKey(const Key('friend-method-phone')), findsNothing);
+    expect(find.text('Email'), findsNothing);
+    expect(find.text('Số điện thoại'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('friend-search-field')),
+      'BAN_NAI',
+    );
+    await tester.pump(const Duration(milliseconds: 360));
+    await tester.pumpAndSettle();
+
+    expect(repository.searchCalls, 1);
+    expect(find.byKey(const Key('friend-search-result')), findsOneWidget);
+  });
+
   const relationshipLabels = <FriendRelationshipState, String>{
     FriendRelationshipState.none: 'Gửi lời mời',
     FriendRelationshipState.outgoingPending: 'Đã gửi',

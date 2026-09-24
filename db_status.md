@@ -2,12 +2,12 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-24 — FRIENDS F1–F6 EXACT-STAGING VERIFIED**
-> Friends management có exact username/email/phone discovery, consent, atomic
-> request/accept/reject, owner-scoped cache, accepted list và Chat handoff.
-> Local SQL 68/68, Flutter full suite 658 pass + 1 opt-in skip, analyzer và Web
-> build sạch. Hai migration Friends đã apply exact Staging; Production/default
-> vẫn OFF. Synthetic phone OTP pass; SMS thật chờ Twilio credentials.
+> Cập nhật gần nhất: **2026-09-24 — FRIENDS USERNAME-FIRST UI / BACKEND CONTRACT PRESERVED**
+> Friends F1–F6 backend vẫn EXACT-STAGING VERIFIED; public UI hiện chỉ cho exact
+> username discovery, request/accept/reject, owner-scoped cache, accepted list và
+> Chat handoff. Email/phone discovery và OTP không còn được render nhưng contract,
+> RLS và migration vẫn giữ để tương thích. Không có schema/remote write mới;
+> Production/default vẫn OFF và SMS/Twilio không còn chặn Friends MVP.
 >
 > Chat nay có bubble toàn cục 64dp kiểu AssistiveTouch, kéo/bám mép và tự lùi
 > vào mép sau 5 giây; panel neo-brutalist có tìm kiếm, thông báo AI chưa mở,
@@ -201,7 +201,7 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Operational Chat runtime (C3B.2) | IMPLEMENTED/STAGING VERIFIED; C3 COMPLETE | Single-flight/cache/runtime guards, foreground reconnect and explicit ascending UUID cursors verified. Default flag OFF; exact Staging only |
 | Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | Global 64dp draggable mailbox bubble with 5-second edge retreat, responsive panel, search, real cached profile, unread-first ordering/badges and disabled AI notice; `/chat` detail remains the conversation route and marks cached inbound rows read when opened. Bidirectional raw relay/offline behavior remains verified. Sent still means server accepted, not delivery receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
 | Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
-| Friend management (F1–F6) | IMPLEMENTED / EXACT-STAGING VERIFIED 2026-09-24 | Exact discovery with consent, atomic request/response, owner-scoped cache, public accepted list and Chat handoff. Staging runners enable Friends; Production/default remain OFF. Synthetic OTP verified; real SMS waits for Twilio credentials |
+| Friend management (F1–F6) | USERNAME-FIRST UI / EXACT-STAGING BACKEND VERIFIED 2026-09-24 | Public UI exposes exact username only; atomic request/accept/reject, owner-scoped cache, public-only accepted list and canonical Chat handoff remain. Email/phone consent, verification and lookup contracts stay dormant for compatibility. Two additive migrations are applied only to Staging; Production/default remain OFF. SMS/Twilio is not an MVP blocker |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
 ## Luồng runtime native hiện tại
@@ -1173,6 +1173,19 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-24 — Friends username-first product rollout (LOCAL VERIFIED)
+
+- Sheet Thêm bạn chỉ hiển thị exact username; đã gỡ method selector cho email và
+  phone. Settings không còn render contact discovery hoặc phone OTP.
+- Giữ nguyên enum/repository/RPC/RLS/migration email/phone để tương thích với
+  exact Staging và dữ liệu đã apply. Không có schema, migration, remote write,
+  Production hoặc Training change; Twilio không còn chặn Friends MVP.
+- Widget regression trực tiếp pass **24/24**; toàn bộ Friends + Settings pass
+  **69/69**; full Flutter pass **657 + 1 opt-in skip**; analyzer sạch và Web
+  build với Friends + Chat bật pass. Mobile audit script báo false positive vì
+  coi font/icon/padding nhỏ là touch target; test 320 px, text scale 1.3 và CTA
+  48–50 dp vẫn pass.
 
 ### 2026-09-24 — Friends F6 exact-Staging live rerun (VERIFIED)
 
