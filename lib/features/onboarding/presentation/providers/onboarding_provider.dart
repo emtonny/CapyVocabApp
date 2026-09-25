@@ -142,7 +142,9 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
     try {
       var data = await _repository.loadDraft();
-      final verifiedPhone = _phoneVerificationGateway.verifiedPhone;
+      final verifiedPhone = accountSmsVerificationEnabled
+          ? _phoneVerificationGateway.verifiedPhone
+          : null;
       if (verifiedPhone != null) {
         data = data.copyWith(phone: verifiedPhone);
       }
@@ -545,13 +547,19 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Future<bool> _validateAgePhoneStep() async {
     final errors = <String, String>{};
     final age = state.data.age;
-    final phone = normalizeAccountPhone(state.data.phone);
 
     if (age == null) {
       errors['age'] = 'Vui lòng nhập tuổi.';
     } else if (age < 1 || age > 120) {
       errors['age'] = 'Tuổi phải nằm trong khoảng từ 1 đến 120.';
     }
+
+    if (!accountSmsVerificationEnabled) {
+      state = state.copyWith(fieldErrors: errors);
+      return errors.isEmpty;
+    }
+
+    final phone = normalizeAccountPhone(state.data.phone);
 
     if (state.data.phone.trim().isEmpty) {
       errors['phone'] = 'Vui lòng nhập số điện thoại.';

@@ -38,25 +38,13 @@ void main() {
     notifier.updatePhone('123');
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['age'], contains('1 đến 120'));
-    expect(notifier.state.fieldErrors['phone'], contains('mã quốc gia'));
+    expect(notifier.state.fieldErrors['phone'], isNull);
 
     notifier.updateAge(20);
-    notifier.updatePhone('+84987654321');
     repository.phoneAvailable = false;
-    expect(await notifier.requestPhoneCode(), isFalse);
-    repository.phoneAvailable = true;
-    expect(await notifier.requestPhoneCode(), isTrue);
-    expect(await notifier.verifyPhoneCode('123456'), isTrue);
-    repository.phoneAvailable = false;
-    expect(await notifier.nextStep(), isFalse);
-    expect(notifier.state.currentStep, 2);
-    expect(
-        notifier.state.fieldErrors['phone'], 'Số điện thoại đã được sử dụng.');
-
-    repository.phoneAvailable = true;
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 3);
-    expect(repository.checkedPhone, '+84987654321');
+    expect(repository.checkedPhone, isNull);
 
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['accountRole'], isNotNull);
@@ -123,9 +111,6 @@ void main() {
     notifier.updateLearningLocale('ja-JP');
     await notifier.nextStep();
     notifier.updateAge(18);
-    notifier.updatePhone('+84912345678');
-    await notifier.requestPhoneCode();
-    await notifier.verifyPhoneCode('123456');
     await notifier.nextStep();
 
     notifier.previousStep();
@@ -135,7 +120,7 @@ void main() {
     expect(notifier.state.data.interfaceLocale, 'en-GB');
     expect(notifier.state.data.learningLocale, 'ja-JP');
     expect(notifier.state.data.age, 18);
-    expect(notifier.state.data.phone, '+84912345678');
+    expect(notifier.state.data.phone, isEmpty);
   });
 
   test('chặn submit lặp trong lúc đang lưu', () async {
@@ -253,9 +238,6 @@ Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
   expect(await notifier.nextStep(), isTrue);
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAge(20);
-  notifier.updatePhone('+84987654321');
-  expect(await notifier.requestPhoneCode(), isTrue);
-  expect(await notifier.verifyPhoneCode('123456'), isTrue);
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAccountRole('personal');
   expect(await notifier.nextStep(), isTrue);

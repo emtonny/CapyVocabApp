@@ -8,7 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('contacts default hidden and phone change requires password',
+  testWidgets('email visibility remains and every SMS control is hidden',
       (tester) async {
     final repository = _Repository();
     final gateway = _PhoneGateway();
@@ -39,33 +39,13 @@ void main() {
           .value,
       isFalse,
     );
+    expect(find.byKey(const Key('change-phone-tile')), findsNothing);
     expect(
-      tester
-          .widget<SwitchListTile>(
-            find.byKey(const Key('show-phone-to-friends-switch')),
-          )
-          .value,
-      isFalse,
+      find.byKey(const Key('show-phone-to-friends-switch')),
+      findsNothing,
     );
-
-    await tester.tap(find.byKey(const Key('change-phone-tile')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('current-password-for-phone-field')), findsOne);
-
-    await tester.enterText(
-      find.byKey(const Key('new-phone-field')),
-      '+33 1 42 27 81 86',
-    );
-    await tester.enterText(
-      find.byKey(const Key('current-password-for-phone-field')),
-      'current-password',
-    );
-    await tester.tap(find.byKey(const Key('request-phone-change')));
-    await tester.pumpAndSettle();
-
-    expect(gateway.requestedPhone, '+33142278186');
-    expect(gateway.currentPassword, 'current-password');
-    expect(find.byKey(const Key('phone-change-code-field')), findsOne);
+    expect(find.byKey(const Key('request-phone-change')), findsNothing);
+    expect(gateway.requestedPhone, isNull);
   });
 }
 

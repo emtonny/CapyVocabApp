@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../auth/domain/account_phone.dart';
 import '../../domain/entities/friend_entity.dart';
 import '../../domain/friend_shared_contact.dart';
 import '../providers/friend_contact_provider.dart';
@@ -78,9 +79,12 @@ class _ContactContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (contact.isEmpty) {
+    if (contact.email == null &&
+        (!accountSmsVerificationEnabled || contact.phone == null)) {
       return const Text(
-        'Người bạn này đang ẩn email và số điện thoại.',
+        accountSmsVerificationEnabled
+            ? 'Người bạn này đang ẩn email và số điện thoại.'
+            : 'Người bạn này đang ẩn email.',
         key: Key('friend-contact-hidden'),
       );
     }
@@ -95,13 +99,13 @@ class _ContactContent extends StatelessWidget {
             title: const Text('Email'),
             subtitle: SelectableText(email),
           ),
-        if (contact.phone case final phone?)
+        if (accountSmsVerificationEnabled && contact.phone != null)
           ListTile(
             key: const Key('friend-contact-phone'),
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.phone_outlined, color: AppColors.mint),
             title: const Text('Số điện thoại'),
-            subtitle: SelectableText(phone),
+            subtitle: SelectableText(contact.phone!),
           ),
       ],
     );

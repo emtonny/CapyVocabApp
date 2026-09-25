@@ -72,8 +72,8 @@ try {
         throw "Account-contact SQL tests failed (synthetic data only):`n$sqlOutput"
     }
     $passes = [regex]::Matches($sqlOutput, 'PASS:').Count
-    if ($passes -ne 23) {
-        throw "Expected all 23 account-contact SQL checks; observed $passes."
+    if ($passes -ne 24) {
+        throw "Expected all 24 account-contact SQL checks; observed $passes."
     }
 
     [pscustomobject]@{

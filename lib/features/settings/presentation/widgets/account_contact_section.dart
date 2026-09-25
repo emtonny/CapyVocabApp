@@ -76,32 +76,34 @@ class _AccountContactSectionState extends ConsumerState<AccountContactSection> {
             title: const Text('Cho phép bạn bè xem email'),
             subtitle: const Text('Chỉ bạn bè đã chấp nhận mới xem được'),
           ),
-          const Divider(height: 1, indent: 56),
-          ListTile(
-            key: const Key('change-phone-tile'),
-            leading: const Icon(Icons.phone_iphone_rounded),
-            title: const Text('Số điện thoại'),
-            subtitle: Text(
-              settings.phone == null
-                  ? 'Chưa thiết lập'
-                  : '${maskAccountPhone(settings.phone!)}\n${settings.phoneConfirmed ? 'Đã xác nhận' : 'Chưa xác nhận'}',
+          if (accountSmsVerificationEnabled) ...[
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              key: const Key('change-phone-tile'),
+              leading: const Icon(Icons.phone_iphone_rounded),
+              title: const Text('Số điện thoại'),
+              subtitle: Text(
+                settings.phone == null
+                    ? 'Chưa thiết lập'
+                    : '${maskAccountPhone(settings.phone!)}\n${settings.phoneConfirmed ? 'Đã xác nhận' : 'Chưa xác nhận'}',
+              ),
+              isThreeLine: settings.phone != null,
+              trailing: const Icon(Icons.edit_outlined),
+              onTap: state.isSaving ? null : _showChangePhoneDialog,
             ),
-            isThreeLine: settings.phone != null,
-            trailing: const Icon(Icons.edit_outlined),
-            onTap: state.isSaving ? null : _showChangePhoneDialog,
-          ),
-          const Divider(height: 1, indent: 56),
-          SwitchListTile.adaptive(
-            key: const Key('show-phone-to-friends-switch'),
-            value: settings.showPhoneToFriends,
-            onChanged: state.isSaving || !settings.phoneConfirmed
-                ? null
-                : (value) => ref
-                    .read(accountContactProvider.notifier)
-                    .updateVisibility(phone: value),
-            title: const Text('Cho phép bạn bè xem số điện thoại'),
-            subtitle: const Text('Mặc định ẩn; tắt có hiệu lực ngay'),
-          ),
+            const Divider(height: 1, indent: 56),
+            SwitchListTile.adaptive(
+              key: const Key('show-phone-to-friends-switch'),
+              value: settings.showPhoneToFriends,
+              onChanged: state.isSaving || !settings.phoneConfirmed
+                  ? null
+                  : (value) => ref
+                      .read(accountContactProvider.notifier)
+                      .updateVisibility(phone: value),
+              title: const Text('Cho phép bạn bè xem số điện thoại'),
+              subtitle: const Text('Mặc định ẩn; tắt có hiệu lực ngay'),
+            ),
+          ],
           if (state.error case final error?)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),

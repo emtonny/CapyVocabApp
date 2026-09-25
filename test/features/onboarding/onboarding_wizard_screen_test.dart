@@ -89,25 +89,25 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
+    expect(find.text('Độ tuổi'), findsOneWidget);
+    expect(find.byKey(const Key('onboarding-phone-field')), findsNothing);
+    expect(
+      find.byKey(const Key('onboarding-request-phone-code')),
+      findsNothing,
+    );
 
     final step2Card = tester.getRect(
       find.byKey(const Key('onboarding-step-content-card')),
     );
-    final requestCodeButton = tester.getRect(
-      find.byKey(const Key('onboarding-request-phone-code')),
+    final ageField = tester.getRect(
+      find.byKey(const Key('onboarding-age-field')),
     );
-    expect(step2Card.bottom - requestCodeButton.bottom, closeTo(22.5, 0.1));
+    expect(step2Card.bottom, greaterThan(ageField.bottom));
 
     await tester.enterText(
       find.byKey(const Key('onboarding-age-field')),
       '20',
     );
-    await tester.enterText(
-      find.byKey(const Key('onboarding-phone-field')),
-      '+84987654321',
-    );
-    await _verifyPhone(tester);
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -195,7 +195,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('hiện lỗi và không cho qua bước 3 khi SĐT đã được sử dụng',
+  testWidgets('ẩn SMS và không kiểm tra số điện thoại ở bước tuổi',
       (tester) async {
     final repository = _WidgetTestRepository()..phoneAvailable = false;
     await tester.pumpWidget(
@@ -223,18 +223,19 @@ void main() {
       find.byKey(const Key('onboarding-age-field')),
       '20',
     );
-    await tester.enterText(
-      find.byKey(const Key('onboarding-phone-field')),
-      '+84987654321',
-    );
-    await tester.ensureVisible(
+    expect(find.byKey(const Key('onboarding-phone-field')), findsNothing);
+    expect(
       find.byKey(const Key('onboarding-request-phone-code')),
+      findsNothing,
     );
-    await tester.tap(find.byKey(const Key('onboarding-request-phone-code')));
+    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
+    await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Số điện thoại chưa hợp lệ.'), findsOneWidget);
-    expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
+    expect(
+      find.text('Bạn sử dụng ứng dụng với vai trò nào?'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('tùy chỉnh khung giờ lưu cả giờ bắt đầu và kết thúc',
@@ -265,11 +266,6 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('onboarding-age-field')), '20');
-    await tester.enterText(
-      find.byKey(const Key('onboarding-phone-field')),
-      '+84987654321',
-    );
-    await _verifyPhone(tester);
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -422,20 +418,6 @@ Future<void> _selectLanguages(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('learning-language-field')));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Tiếng Anh').last);
-  await tester.pumpAndSettle();
-}
-
-Future<void> _verifyPhone(WidgetTester tester) async {
-  await tester.ensureVisible(
-    find.byKey(const Key('onboarding-request-phone-code')),
-  );
-  await tester.tap(find.byKey(const Key('onboarding-request-phone-code')));
-  await tester.pumpAndSettle();
-  await tester.enterText(
-    find.byKey(const Key('onboarding-phone-code-field')),
-    '123456',
-  );
-  await tester.tap(find.byKey(const Key('onboarding-verify-phone-code')));
   await tester.pumpAndSettle();
 }
 

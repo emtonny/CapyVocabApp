@@ -2,7 +2,7 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-24 — ACCOUNT CONTACT VERIFICATION PLAN APPROVED / PENDING**
+> Cập nhật gần nhất: **2026-09-25 — EMAIL-ONLY AUTH LOCAL / SMS DORMANT**
 > Friends F1–F6 backend vẫn EXACT-STAGING VERIFIED; public UI hiện chỉ cho exact
 > username discovery, request/accept/reject, owner-scoped cache, accepted list và
 > Chat handoff. Email/phone discovery và OTP không còn được render. Contract, RLS và
@@ -204,7 +204,7 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | Global 64dp draggable mailbox bubble with 5-second edge retreat, responsive panel, search, real cached profile, unread-first ordering/badges and disabled AI notice; `/chat` detail remains the conversation route and marks cached inbound rows read when opened. Bidirectional raw relay/offline behavior remains verified. Sent still means server accepted, not delivery receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
 | Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
 | Friend management (F1–F6) | USERNAME-FIRST UI / EXACT-STAGING BACKEND VERIFIED 2026-09-24 | Public search exposes exact username only; atomic request/accept/reject, owner-scoped cache, public-only accepted list and canonical Chat handoff remain. Legacy email/phone lookup contracts stay dormant until removed by a later approved migration. Production/default remain OFF |
-| Account contact verification (A0–A6) | LOCAL IMPLEMENTED / VERIFIED, NOT DEPLOYED 2026-09-24 | E.164 migration, verified onboarding gate, email resend/change, SMS OTP/change, accepted-friend contact switches, subscription contact snapshots and promotion ledger are implemented locally. Flutter regression 129/129, analyzer clean, Web release build passes and isolated PostgreSQL 23/23; SMS provider/config, live email/SMS, Staging migration and Production remain pending separate approval |
+| Account contact verification (A0–A6) | EMAIL-ONLY LOCAL, SMS DORMANT / NOT DEPLOYED 2026-09-25 | Email confirmation remains the onboarding gate. SMS fields/actions, phone sharing and phone change are hidden behind one disabled feature flag; dormant code/data contracts remain. Subscription phone snapshots are optional and the server no longer requires a verified phone. Verification for this increment is recorded in the change log; no push, remote migration, Auth config change or deploy |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
 ## Luồng runtime native hiện tại
@@ -1176,6 +1176,24 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-25 — Email-only auth rollout; SMS retained but dormant
+
+- Product decision: email ownership is confirmed through the message sent to
+  that email. A phone number and SMS OTP are not required to confirm email.
+- One disabled feature flag hides phone/SMS onboarding, phone change, phone
+  sharing and friend phone rendering. The OTP/change-phone implementation is
+  retained for a separately approved future rollout.
+- The onboarding server gate now requires only a confirmed Auth email. Existing
+  `complete_onboarding` overloads remain compatible but ignore the dormant
+  phone argument. Subscription snapshots require confirmed email and allow a
+  null phone, so email-only accounts are not blocked.
+- Documentation and deferred SMS rules remain in `auth.md`. No remote write,
+  push, deploy, live email or live SMS is part of this increment.
+- Local verification: Auth/Onboarding/Friends/Settings 133/133, isolated
+  PostgreSQL 24/24, full analyzer clean and Web release build passed. Existing
+  `flutter_tts` Wasm and missing Cupertino font warnings remain non-blocking for
+  the generated JS build. Remote writes: 0.
 
 ### 2026-09-24 — Account contact verification plan approved (PENDING)
 
