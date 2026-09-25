@@ -33,7 +33,7 @@ class OnboardingWizardScreen extends ConsumerWidget {
   static const _stepTitles = [
     'Thông tin cá nhân',
     'Ngôn ngữ',
-    'Độ tuổi & Liên hệ',
+    'Độ tuổi',
     'Vai trò sử dụng',
     'Ngôn ngữ của bạn',
     'Thời gian học tập',

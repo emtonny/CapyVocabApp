@@ -1,5 +1,10 @@
 final RegExp _e164Pattern = RegExp(r'^\+[1-9][0-9]{6,14}$');
 
+/// SMS verification is implemented but intentionally dormant while the
+/// email-only rollout is active. Keep this in one place so re-enabling it does
+/// not require rediscovering scattered UI branches.
+const accountSmsVerificationEnabled = false;
+
 /// Normalizes a user-entered international phone number to E.164.
 ///
 /// Formatting characters are ignored, but a leading `+` and 7-15 digits are

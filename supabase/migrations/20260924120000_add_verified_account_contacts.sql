@@ -82,8 +82,8 @@ CREATE TABLE IF NOT EXISTS private.subscription_contact_snapshots (
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     verified_email TEXT NOT NULL
         CHECK (verified_email = LOWER(BTRIM(verified_email))),
-    verified_phone TEXT NOT NULL
-        CHECK (verified_phone ~ '^\+[1-9][0-9]{6,14}$'),
+    verified_phone TEXT
+        CHECK (verified_phone IS NULL OR verified_phone ~ '^\+[1-9][0-9]{6,14}$'),
     captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -94,8 +94,8 @@ CREATE TABLE IF NOT EXISTS private.promotion_redemptions (
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     verified_email TEXT NOT NULL
         CHECK (verified_email = LOWER(BTRIM(verified_email))),
-    verified_phone TEXT NOT NULL
-        CHECK (verified_phone ~ '^\+[1-9][0-9]{6,14}$'),
+    verified_phone TEXT
+        CHECK (verified_phone IS NULL OR verified_phone ~ '^\+[1-9][0-9]{6,14}$'),
     redeemed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     manual_review_required BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (promotion_key, user_id),
@@ -167,17 +167,20 @@ ON CONFLICT (user_id, contact_type, contact_value) DO NOTHING;
 INSERT INTO private.subscription_contact_snapshots (
     subscription_id, user_id, verified_email, verified_phone, captured_at
 )
-SELECT s.id, s.user_id, LOWER(BTRIM(u.email)), u.phone,
+SELECT s.id, s.user_id, LOWER(BTRIM(u.email)),
+       CASE
+           WHEN au.phone_confirmed_at IS NOT NULL
+                AND au.phone IS NOT NULL
+                AND u.phone IS NOT NULL
+                AND private.normalize_account_phone(au.phone) = u.phone
+           THEN u.phone
+       END,
        COALESCE(s.start_date, s.created_at, NOW())
 FROM public.subscriptions AS s
 JOIN public.users AS u ON u.id = s.user_id
 JOIN auth.users AS au ON au.id = s.user_id
-WHERE u.phone IS NOT NULL
-  AND au.email_confirmed_at IS NOT NULL
-  AND au.phone_confirmed_at IS NOT NULL
+WHERE au.email_confirmed_at IS NOT NULL
   AND LOWER(BTRIM(au.email)) = LOWER(BTRIM(u.email))
-  AND au.phone IS NOT NULL
-  AND private.normalize_account_phone(au.phone) = u.phone
 ON CONFLICT (subscription_id) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION private.record_account_contact_change()
@@ -483,15 +486,14 @@ BEGIN
     END IF;
 
     SELECT LOWER(BTRIM(au.email)),
-           CASE WHEN au.phone IS NOT NULL
+           CASE WHEN au.phone_confirmed_at IS NOT NULL AND au.phone IS NOT NULL
                 THEN private.normalize_account_phone(au.phone) END
     INTO v_email, v_phone
     FROM auth.users AS au
     WHERE au.id = NEW.user_id
-      AND au.email_confirmed_at IS NOT NULL
-      AND au.phone_confirmed_at IS NOT NULL;
-    IF v_email IS NULL OR v_phone IS NULL THEN
-        RAISE EXCEPTION 'verified_contacts_required' USING ERRCODE = '22023';
+      AND au.email_confirmed_at IS NOT NULL;
+    IF v_email IS NULL THEN
+        RAISE EXCEPTION 'verified_email_required' USING ERRCODE = '22023';
     END IF;
     INSERT INTO private.subscription_contact_snapshots (
         subscription_id, user_id, verified_email, verified_phone, captured_at
@@ -607,8 +609,6 @@ SET search_path = ''
 AS $$
 DECLARE
     v_user UUID := (SELECT auth.uid());
-    v_phone TEXT := private.normalize_account_phone(p_phone);
-    v_auth_phone TEXT;
 BEGIN
     IF v_user IS NULL THEN
         RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '42501';
@@ -630,25 +630,22 @@ BEGIN
         RAISE EXCEPTION 'invalid_onboarding_data' USING ERRCODE = '22023';
     END IF;
 
-    SELECT CASE WHEN phone IS NOT NULL
-                THEN private.normalize_account_phone(phone) END
-    INTO v_auth_phone
-    FROM auth.users
-    WHERE id = v_user
-      AND email_confirmed_at IS NOT NULL
-      AND phone_confirmed_at IS NOT NULL;
-    IF v_auth_phone IS NULL OR v_auth_phone <> v_phone THEN
-        RAISE EXCEPTION 'verified_contacts_required' USING ERRCODE = '22023';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM auth.users
+        WHERE id = v_user
+          AND email_confirmed_at IS NOT NULL
+          AND email IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'verified_email_required' USING ERRCODE = '22023';
     END IF;
 
     PERFORM public.sync_my_verified_email();
-    PERFORM public.sync_my_verified_phone();
 
     UPDATE public.users
     SET display_name = BTRIM(p_display_name),
         username = LOWER(BTRIM(p_username)),
         age = p_age,
-        phone = v_phone,
         account_role = p_account_role,
         onboarding_completed = TRUE,
         updated_at = NOW()

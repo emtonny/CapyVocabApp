@@ -2,6 +2,7 @@
 \set b '10000000-0000-4000-8000-000000000002'
 \set c '10000000-0000-4000-8000-000000000003'
 \set subscription '20000000-0000-4000-8000-000000000001'
+\set email_only_subscription '20000000-0000-4000-8000-000000000002'
 
 SELECT public.f1_assert(
     (SELECT phone = '+84987654321' FROM public.users WHERE id = :'a'),
@@ -112,7 +113,7 @@ SELECT public.f1_expect_error(
 
 RESET ROLE;
 UPDATE auth.users
-SET email_confirmed_at = NOW(), phone = '14155552671', phone_confirmed_at = NOW()
+SET email_confirmed_at = NOW()
 WHERE id = :'c';
 
 SET ROLE authenticated;
@@ -121,15 +122,27 @@ SELECT public.f1_assert(
     public.complete_onboarding(
         'C Verified', 'charlie', 20, '+14155552671', 'personal', '20:00', 10
     ),
-    'compatibility onboarding overload accepts verified contacts'
+    'compatibility onboarding overload accepts a verified email without SMS'
 );
 SELECT public.f1_assert(
-    (SELECT onboarding_completed AND phone = '+14155552671'
+    (SELECT onboarding_completed AND phone IS NULL
      FROM public.users WHERE id = :'c'),
-    'verified onboarding updates the profile atomically'
+    'email-only onboarding ignores the dormant phone parameter'
 );
 
 RESET ROLE;
+INSERT INTO public.subscriptions (
+    id, user_id, plan_type, start_date, end_date
+) VALUES (
+    :'email_only_subscription', :'c', 'pro', '2026-09-25', '2026-10-25'
+);
+SELECT public.f1_assert(
+    (SELECT verified_email = 'c@example.com' AND verified_phone IS NULL
+     FROM private.subscription_contact_snapshots
+     WHERE subscription_id = :'email_only_subscription'),
+    'email-only account can start a subscription without a phone snapshot'
+);
+
 UPDATE auth.users
 SET email = 'b-new@example.com', email_confirmed_at = NOW(),
     phone = '33142278186', phone_confirmed_at = NOW()

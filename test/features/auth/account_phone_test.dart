@@ -2,6 +2,10 @@ import 'package:capy_vocab/features/auth/domain/account_phone.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('SMS xác nhận tài khoản đang tạm tắt', () {
+    expect(accountSmsVerificationEnabled, isFalse);
+  });
+
   test('chuẩn hóa số quốc tế mà không tự đoán mã quốc gia', () {
     expect(normalizeAccountPhone(' +84 987-654-321 '), '+84987654321');
     expect(normalizeAccountPhone('+1 (415) 555-2671'), '+14155552671');

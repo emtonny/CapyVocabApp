@@ -1,28 +1,47 @@
-# Kế hoạch xác nhận email và số điện thoại
+# Kế hoạch xác nhận tài khoản
 
-> Chốt sản phẩm: **2026-09-24**
-> Trạng thái: **LOCAL IMPLEMENTED / VERIFIED — CHƯA DEPLOY**
-> Phạm vi: Android, iOS và Web. Migration và ứng dụng đã được làm/kiểm tra ở
-> local; chưa push, chưa ghi Staging/Production và chưa gửi SMS thật.
+> Quyết định hiện hành: **2026-09-25 — CHỈ DÙNG EMAIL, TẠM ẨN SMS**
+> Trạng thái: **LOCAL VERIFIED — CHƯA PUSH / CHƯA DEPLOY**
+> Phạm vi: Android, iOS và Web. Người dùng xác nhận email bằng thư gửi tới
+> chính email đó; không cần xác nhận email bằng số điện thoại hoặc mã SMS.
+
+## Quyết định đang áp dụng
+
+- Giai đoạn hiện tại chỉ yêu cầu **email đã xác nhận** để hoàn tất đăng ký và
+  sử dụng tài khoản.
+- SMS có chi phí vận hành nên toàn bộ trường số điện thoại, nút gửi mã, ô nhập
+  mã, nút đổi số và quyền chia sẻ số điện thoại được **tạm ẩn**.
+- Máy chủ cũng không được yêu cầu số điện thoại hoặc mã SMS. Việc chỉ ẩn nút ở
+  giao diện nhưng vẫn chặn người dùng ở phía máy chủ là không được phép.
+- Mã nguồn, cấu trúc dữ liệu và đặc tả SMS không bị xóa. Chúng được giữ ở trạng
+  thái tạm ngưng để có thể đánh giá và bật lại bằng một đợt triển khai riêng.
+- Những phần SMS bên dưới là **kế hoạch hoãn lại**, không phải chức năng đang
+  áp dụng. Mọi việc bật lại SMS cần phê duyệt nhà cung cấp, chi phí, cấu hình,
+  kiểm thử và triển khai riêng.
 
 ## 0. Bảng phân công và trạng thái
 
 | Phần việc | Trạng thái | Ai thực hiện tiếp |
 |---|---|---|
-| Migration số quốc tế, dữ liệu riêng, quyền xem liên hệ | Local đã làm; PostgreSQL 23/23 | Chủ dự án duyệt diff rồi mới cho phép apply Staging |
+| Migration liên hệ và dữ liệu riêng | Đang điều chỉnh local theo email-only | Chủ dự án duyệt diff rồi mới cho phép apply Staging |
 | Xác nhận email, gửi lại thư, đổi email | Local đã làm | Chủ dự án cấu hình mẫu thư, URL chuyển hướng và giới hạn gửi ở Staging |
-| SMS đăng ký/đổi số, bắt buộc mật khẩu khi đổi số | Local đã làm; chưa gửi SMS thật | Chủ dự án chọn/cấp SMS provider và khóa Staging qua kho bí mật |
+| SMS đăng ký/đổi số | **Tạm ẩn; mã nguồn và đặc tả được giữ lại** | Chưa cần cấp SMS provider hoặc phát sinh chi phí |
 | Tìm bạn chỉ bằng username | Local đã làm | Chủ dự án kiểm tra UX trên thiết bị |
-| Hai công tắc email/SĐT cho bạn bè đã chấp nhận | Local đã làm | Chủ dự án kiểm tra bằng hai tài khoản Staging sau deploy được duyệt |
-| Giữ liên hệ của gói cũ, dùng liên hệ mới khi gia hạn | Local đã làm phần dữ liệu/trigger | Chủ dự án duyệt cách hệ thống thanh toán gọi gia hạn |
+| Công tắc email cho bạn bè đã chấp nhận | Local đã làm; công tắc SĐT tạm ẩn | Chủ dự án kiểm tra bằng hai tài khoản Staging sau deploy được duyệt |
+| Giữ email của gói cũ, dùng email mới khi gia hạn | Local đã làm phần dữ liệu/trigger; dấu SĐT là tùy chọn | Chủ dự án duyệt cách hệ thống thanh toán gọi gia hạn |
 | Sổ chống nhận ưu đãi lặp lại | Đã có bảng/ràng buộc local; chưa có luồng phát ưu đãi để nối | Chủ dự án chốt chính sách ưu đãi và quy trình xem xét số tái cấp |
 | Push, deploy, migration remote, SMS/email thật | Chưa thực hiện theo yêu cầu | Chỉ làm sau phê duyệt riêng |
+
+Kiểm tra local ngày 2026-09-25: Auth/Onboarding/Friends/Settings **133/133**,
+PostgreSQL cô lập **24/24**, analyzer sạch và Web release build thành công. Build
+Web còn cảnh báo Wasm có sẵn từ `flutter_tts` và thiếu font Cupertino; bản JS
+vẫn được tạo thành công. Remote writes: **0**.
 
 ## 1. Mục tiêu đã chốt
 
 - Email đã xác nhận dùng để đăng nhập, xác nhận tài khoản và lấy lại mật khẩu.
-- Số điện thoại đã xác nhận bằng SMS dùng để bảo vệ tài khoản và hạn chế tạo
-  nhiều tài khoản nhằm nhận lại tài nguyên hoặc ưu đãi.
+- Số điện thoại/SMS chưa tham gia luồng hiện hành. Mục đích bảo vệ tài khoản và
+  hạn chế lạm dụng bằng SMS được giữ lại để đánh giá ở giai đoạn sau.
 - Username là cách duy nhất để tìm bạn.
 - Email và số điện thoại mặc định ẩn. Khi người dùng bật hiển thị, chỉ bạn bè đã
   chấp nhận mới được xem; người lạ và tài khoản chỉ có lời mời chờ không được xem.
@@ -32,6 +51,9 @@
   đãi và không kéo dài thời hạn. Lần gia hạn mới dùng liên hệ mới đã xác nhận.
 
 ## 2. Nguyên tắc bắt buộc
+
+Các nguyên tắc về email áp dụng ngay. Những dòng liên quan SĐT chỉ áp dụng khi
+SMS được phê duyệt và bật lại trong tương lai.
 
 1. Không coi việc nhập đúng định dạng là đã xác nhận quyền sở hữu.
 2. Email mới chỉ có hiệu lực sau khi người dùng mở thư xác nhận.
@@ -49,16 +71,13 @@
 
 1. Người dùng nhập email, mật khẩu và tên.
 2. Ứng dụng gửi thư xác nhận; có nút **Gửi lại thư xác nhận** với thời gian chờ.
-3. Sau khi email được xác nhận, người dùng chọn quốc gia và nhập số điện thoại.
-4. Ứng dụng tự ghép mã quốc gia, hiển thị lại số đã chuẩn hóa và gửi mã SMS.
-5. Người dùng nhập mã sáu số. Mã có thời hạn, giới hạn số lần nhập sai và số lần
-   gửi lại.
-6. Người dùng hoàn thiện username, ngôn ngữ và các thông tin học tập.
-7. Email và số điện thoại đều ở trạng thái **Ẩn với bạn bè** khi vào ứng dụng.
+3. Sau khi email được xác nhận, người dùng hoàn thiện username, ngôn ngữ và các
+   thông tin học tập.
+4. Email ở trạng thái **Ẩn với bạn bè** khi vào ứng dụng.
 
-Người dùng chưa xác nhận đủ email và số điện thoại không được hoàn tất đăng ký
-hoặc dùng tài nguyên có chi phí. Trạng thái chờ phải cho phép đăng xuất, gửi lại
-mã và đổi email/số đã nhập sai.
+Người dùng chưa xác nhận email không được hoàn tất đăng ký hoặc dùng tài nguyên
+có chi phí. Trạng thái chờ phải cho phép đăng xuất, gửi lại thư và đổi email đã
+nhập sai. Luồng SMS cũ được lưu tại mục 5 và A3 để dùng khi được bật lại.
 
 ## 4. Đổi email
 
@@ -71,7 +90,10 @@ mã và đổi email/số đã nhập sai.
    động bật lại.
 6. Đổi email không cấp lại ưu đãi và không thay đổi gói đang còn hạn.
 
-## 5. Đổi số điện thoại
+## 5. Đổi số điện thoại — kế hoạch hoãn lại
+
+> Mục này được giữ nguyên làm đặc tả tương lai. Giao diện và yêu cầu máy chủ
+> tương ứng đang tắt; không xóa nội dung này.
 
 1. Người dùng xác nhận lại tài khoản bằng mật khẩu hiện tại.
 2. Chọn quốc gia, nhập số mới và nhận mã SMS tại số mới.
@@ -82,10 +104,11 @@ mã và đổi email/số đã nhập sai.
 
 ## 6. Quyền hiển thị cho bạn bè
 
-Cài đặt có hai công tắc độc lập:
+Cài đặt hiện có một công tắc đang hoạt động và một công tắc được giữ lại nhưng
+tạm ẩn:
 
 - **Cho phép bạn bè xem email** — mặc định tắt.
-- **Cho phép bạn bè xem số điện thoại** — mặc định tắt.
+- **Cho phép bạn bè xem số điện thoại** — tạm ẩn trong giai đoạn email-only.
 
 Quy tắc đọc:
 
@@ -103,8 +126,9 @@ Quy tắc đọc:
 
 - Gói gắn với tài khoản và ngày hết hạn, không gắn quyền sử dụng trực tiếp vào
   chuỗi email hoặc số điện thoại.
-- Khi mua/đăng ký gói, lưu dấu email và số điện thoại đã xác nhận tại thời điểm
-  đó trong vùng dữ liệu riêng để đối chiếu, không hiển thị công khai.
+- Khi mua/đăng ký gói, lưu dấu email đã xác nhận tại thời điểm đó trong vùng dữ
+  liệu riêng để đối chiếu, không hiển thị công khai. Dấu số điện thoại là tùy
+  chọn và chỉ có giá trị nếu SMS được bật lại sau này.
 - Nếu đổi liên hệ trong lúc gói còn hạn, quyền lợi và ngày hết hạn giữ nguyên.
 - Lần gia hạn sau dùng email và số điện thoại mới đã xác nhận.
 
@@ -121,6 +145,9 @@ Hệ thống hiện chưa có sổ ưu đãi. Không được suy diễn bảng 
 có đã giải quyết việc chống nhận lặp lại.
 
 ## 8. Hạn chế số ảo và hành vi tạo hàng loạt
+
+> **Kế hoạch hoãn lại cùng SMS.** Các quy tắc dưới đây chưa được áp dụng trong
+> giai đoạn email-only.
 
 - Cho phép mọi quốc gia; khả năng gửi thực tế phụ thuộc vùng mà nhà cung cấp SMS
   hỗ trợ và quy định của từng nước.
@@ -153,10 +180,11 @@ có đã giải quyết việc chống nhận lặp lại.
 
 ## 10. Các giai đoạn triển khai
 
-### A0 — Chốt nhà cung cấp và hợp đồng dữ liệu
+### A0 — Chốt nhà cung cấp và hợp đồng dữ liệu SMS
 
-**Trạng thái 2026-09-24: CHỜ CHỦ DỰ ÁN.** Chưa có nhà cung cấp/khóa SMS
-Staging, ngân sách, thời hạn giữ lịch sử và quy định hỗ trợ số được tái cấp.
+**Trạng thái 2026-09-25: TẠM HOÃN.** Giai đoạn hiện tại không cần nhà cung cấp,
+khóa hay ngân sách SMS. Chỉ mở lại mục này khi chủ dự án phê duyệt một đợt SMS
+riêng.
 
 **Làm:** chọn dịch vụ SMS có thể gửi quốc tế, thống kê quốc gia thực sự hỗ trợ,
 chi phí, giới hạn và cách nhận biết số tạm thời. Chốt thời hạn mã, thời gian chờ
@@ -167,9 +195,9 @@ phí/quốc gia và quy định giữ dữ liệu được duyệt.
 
 ### A1 — Migration số điện thoại quốc tế và dữ liệu riêng
 
-**Trạng thái 2026-09-24: LOCAL VERIFIED.** Có migration E.164, cài đặt hiển
-thị riêng, lịch sử liên hệ, dấu liên hệ gói và sổ ưu đãi. Bộ PostgreSQL tạm dùng
-dữ liệu giả đạt 23/23; không có remote write.
+**Trạng thái 2026-09-25: EMAIL-ONLY LOCAL.** Cấu trúc E.164 và lịch sử SĐT vẫn
+được giữ nhưng không bắt buộc. Đăng ký gói chỉ cần email đã xác nhận; dấu SĐT có
+thể để trống. Không có remote write.
 
 **Làm:** sao lưu/kiểm kê số cũ, thêm cấu trúc số quốc tế, lịch sử liên hệ, quyền
 hiển thị và sổ ưu đãi; giữ tương thích trong thời gian chuyển đổi.
@@ -192,10 +220,10 @@ email cũ còn hiệu lực đến khi email mới xác nhận; lỗi và gửi 
 
 ### A3 — SMS quốc tế và đổi số điện thoại
 
-**Trạng thái 2026-09-24: LOCAL VERIFIED / CHƯA LIVE SMS.** Ứng dụng nhận số
-E.164 có mã quốc gia, gửi/xác nhận OTP, giữ chặt phiên tài khoản và bắt nhập mật
-khẩu hiện tại khi đổi số. Chưa có country picker, provider/khóa SMS và kiểm thử
-SMS thật; hiện người dùng nhập trực tiếp dạng `+84987654321`.
+**Trạng thái 2026-09-25: TẠM ẨN / KHÔNG XÓA.** Mã nhận số E.164, gửi/xác nhận
+OTP và đổi số vẫn còn trong source nhưng cờ tính năng đang tắt. Giao diện không
+hiện trường SĐT, nút SMS, đổi số hoặc công tắc chia sẻ SĐT; máy chủ không yêu
+cầu SĐT để hoàn tất hồ sơ. Chưa cần provider/khóa SMS và chưa gửi SMS thật.
 
 **Làm:** thay bước SĐT Việt Nam bằng chọn quốc gia + số; gửi/xác nhận SMS; nối
 việc hoàn tất hồ sơ với trạng thái xác nhận; thêm đổi số.
@@ -205,22 +233,21 @@ chặn; đổi tài khoản giữa lúc xác nhận không áp dụng kết qu�
 
 ### A4 — Hiển thị liên hệ cho bạn bè
 
-**Trạng thái 2026-09-24: LOCAL VERIFIED.** Hai công tắc mặc định tắt; RPC chỉ
-trả liên hệ đã bật cho quan hệ bạn bè hai chiều đã chấp nhận. Liên hệ chỉ tải khi
-mở hộp thoại, không nằm trong tìm kiếm hoặc cache Bạn bè.
+**Trạng thái 2026-09-25: EMAIL ACTIVE / PHONE HIDDEN.** Công tắc email mặc định
+tắt; công tắc và dữ liệu SĐT không được render trong giai đoạn email-only. RPC
+vẫn giới hạn dữ liệu được bật cho quan hệ bạn bè đã chấp nhận.
 
-**Làm:** hai công tắc mặc định tắt và màn hồ sơ bạn bè chỉ đọc liên hệ được chủ
-tài khoản cho phép.
+**Làm hiện tại:** công tắc email mặc định tắt và màn hồ sơ bạn bè chỉ đọc email
+được chủ tài khoản cho phép. Giữ công tắc SĐT ẩn cho tới khi A3 được bật lại.
 
 **Hoàn thành khi:** chỉ bạn bè đã chấp nhận xem được; tắt quyền/hủy kết bạn có
 hiệu lực ngay; tìm kiếm Bạn bè vẫn chỉ dùng username.
 
 ### A5 — Gói và ưu đãi khi đổi liên hệ
 
-**Trạng thái 2026-09-24: LOCAL FOUNDATION VERIFIED.** Trigger giữ dấu liên hệ
-cũ khi gói bị rút ngắn/chỉnh sửa và chỉ lấy liên hệ mới khi bắt đầu hoặc gia hạn.
-Ràng buộc sổ ưu đãi chặn trùng theo tài khoản/email/SĐT. Chưa có luồng phát ưu
-đãi hiện hữu để nối và chưa chốt quy trình xem xét thủ công số được tái cấp.
+**Trạng thái 2026-09-25: EMAIL-ONLY LOCAL FOUNDATION.** Trigger giữ dấu email
+cũ khi gói bị rút ngắn/chỉnh sửa và lấy email mới khi bắt đầu hoặc gia hạn. Dấu
+SĐT cho gói/ưu đãi vẫn tồn tại nhưng là tùy chọn trong lúc SMS tắt.
 
 **Làm:** chụp dấu liên hệ lúc bắt đầu/gia hạn gói; giữ gói hiện tại khi đổi; sổ
 ưu đãi từ chối nhận lại theo tài khoản và lịch sử liên hệ.
@@ -230,7 +257,7 @@ số được cấp lại đều có kiểm tra tự động; không mất gói 
 
 ### A6 — Exact-Staging và rollout
 
-**Trạng thái 2026-09-24: CHƯA THỰC HIỆN.** Không push, deploy, apply migration,
+**Trạng thái 2026-09-25: CHƯA THỰC HIỆN.** Không push, deploy, apply migration,
 đổi cấu hình Auth hay gửi email/SMS thật trong increment này.
 
 **Làm:** backup, dry-run, apply sau phê duyệt, thử email thật và SMS thật ở nhiều
@@ -243,17 +270,19 @@ trước gate riêng; có cách tắt luồng mới nếu SMS/email provider g�
 
 - Tài khoản có gói còn hạn tiếp tục dùng tới ngày hết hạn dù chưa hoàn tất đổi
   liên hệ; phải xác nhận liên hệ hiện hành trước lần gia hạn mới.
-- Tài khoản miễn phí được yêu cầu xác nhận email/SĐT ở lần đăng nhập kế tiếp
-  trước khi dùng tài nguyên có chi phí.
+- Tài khoản miễn phí chỉ được yêu cầu xác nhận email ở lần đăng nhập kế tiếp
+  trước khi dùng tài nguyên có chi phí trong giai đoạn hiện tại.
 - Không tự bật quyền hiển thị cho bất kỳ tài khoản cũ nào.
 - Dữ liệu SĐT Việt Nam cũ chỉ chuyển sang `+84` khi vượt qua kiểm tra định dạng;
   bản ghi không rõ ràng phải đưa vào danh sách xử lý, không đoán.
 
 ## 12. Việc cần người vận hành cung cấp
 
-- Chọn nhà cung cấp SMS quốc tế và cấp khóa Staging qua kho bí mật.
-- Duyệt ngân sách, quốc gia không thể gửi và cách hỗ trợ người dùng ở vùng đó.
+- Cấu hình mẫu thư xác nhận email, địa chỉ chuyển hướng và giới hạn gửi lại trên
+  Staging khi phần local đã được duyệt.
 - Chốt thời gian giữ lịch sử email/SĐT phục vụ chống lạm dụng.
 - Chốt nội dung điều khoản riêng tư về lưu liên hệ, hiển thị cho bạn bè và lịch
   sử chống nhận ưu đãi lặp lại.
-- Phê duyệt riêng trước mọi migration, bật SMS thật, gửi email thật hoặc deploy.
+- Phê duyệt riêng trước mọi migration, gửi email thật hoặc deploy.
+- Nhà cung cấp, ngân sách và khóa SMS **chưa cần cung cấp**; chỉ chuẩn bị khi chủ
+  dự án quyết định bật lại A0/A3.
