@@ -1177,6 +1177,34 @@ Sau Production Gate 3:
 
 ## Change log
 
+### 2026-09-25 — Email-only auth applied; Chat/tag final Staging gate verified
+
+- Exact target guard xác nhận chỉ Staging `nxteaznowkfennxpqjmt` đang linked và
+  `ACTIVE_HEALTHY`; Production `vmxonxqxrlkssdzsucrg` không linked. Backup
+  `public/private` custom archive 305.090 byte được mã hóa DPAPI, kiểm tra
+  `pg_restore` và round-trip tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20260925T095312Z-bb62163a`.
+- Lần apply đầu rollback toàn transaction vì Staging không còn overload
+  onboarding bảy tham số. Migration được sửa để chỉ thu hồi quyền trên chữ ký
+  legacy còn tồn tại; fixture regression nay mô phỏng đúng overload bị thiếu.
+  PostgreSQL email-only 24/24 pass trước khi apply lại.
+- Apply duy nhất `20260924120000_add_verified_account_contacts.sql` thành công;
+  migration history local/remote khớp và post-apply dry-run `upToDate=true` với
+  danh sách pending rỗng. Ba tài khoản email-confirmed không có Auth phone vẫn
+  hoàn tất onboarding trong live Chat smoke, xác nhận SMS không phải điều kiện.
+- Live C6D smoke pass 10 nhóm: friendship/canonical direct chat, ba WebSocket
+  thật trên sáu bảng, raw Unicode A/B, correction audit, raw-sender-only Unicode
+  annotation, immutable row, outsider/anonymous denial, moderation/membership
+  fail-closed và cleanup về baseline. Fixture còn 0; Gemini 0; Training write 0.
+- Read-only Demo 1/2 audit sau apply: 2/2 login, accepted friendship đối xứng,
+  2 language profile, một shared conversation, remote writes 0. Chat Flutter
+  149/149; focused correction/annotation 74/74; SQL C6C 24/24, C6D 17/17,
+  C2 47/47; analyzer sạch.
+- APK exact-Staging build pass tại
+  `build/app/outputs/flutter-apk/app-debug.apk` (166.414.765 byte), SHA-256
+  `6B44A86E055430FE63215665F1BB54E8E93210F6FE9FFA1EECFFD72A97395901`.
+  Production không đổi; không push Git.
+
 ### 2026-09-25 — Friends and Chat enabled by default for eligible Staging accounts
 
 - `FRIENDS_ENABLED` and `CHAT_RELAY_ENABLED` now default to true in source; the
