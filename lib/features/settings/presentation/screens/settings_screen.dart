@@ -412,14 +412,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  const Text(
-                    'Cài đặt',
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.ink,
-                      letterSpacing: -0.4,
+                  const Expanded(
+                    child: Text(
+                      'Cài đặt',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                        letterSpacing: -0.4,
+                      ),
                     ),
                   ),
                 ],
@@ -568,13 +572,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         _buildSettingTile(
                           icon: Icons.language_rounded,
                           iconColor: AppColors.blue,
-                          title: 'Ngôn ngữ học',
+                          title: 'Ngôn ngữ giao tiếp và học',
                           subtitle: languageProfile == null
                               ? languageUserId == null
                                   ? 'Đăng nhập để thiết lập'
                                   : 'Chưa thiết lập'
-                              : '${languageLabel(languageProfile.nativeLanguageCode)} → '
-                                  '${languageLabel(languageProfile.learningLanguageCode)} · '
+                              : 'Giao tiếp: '
+                                  '${languageLabel(languageProfile.nativeLanguageCode)} · '
+                                  'Muốn học: '
+                                  '${languageLabel(languageProfile.learningLanguageCode)}\n'
                                   '${proficiencyLabel(languageProfile.proficiencyLevel)}',
                           onTap:
                               languageUserId == null || languageState.isSaving
@@ -1071,7 +1077,8 @@ class _LanguageProfileDialogState
     }
     if (native == learning) {
       setState(
-        () => _validationError = 'Ngôn ngữ học phải khác ngôn ngữ gốc.',
+        () => _validationError =
+            'Ngôn ngữ muốn học phải khác ngôn ngữ giao tiếp.',
       );
       return;
     }
@@ -1093,67 +1100,81 @@ class _LanguageProfileDialogState
     ];
 
     return AlertDialog(
-      title: const Text('Ngôn ngữ của bạn'),
-      content: SizedBox(
-        width: 360,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              key: const Key('settings-native-language-field'),
-              initialValue: _nativeLanguageCode,
-              decoration: const InputDecoration(labelText: 'Ngôn ngữ gốc'),
-              items: languageItems,
-              onChanged: state.isSaving
-                  ? null
-                  : (value) => setState(() {
-                        _nativeLanguageCode = value;
-                        _validationError = null;
-                      }),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: const Key('settings-learning-language-field'),
-              initialValue: _learningLanguageCode,
-              decoration: const InputDecoration(labelText: 'Ngôn ngữ muốn học'),
-              items: languageItems,
-              onChanged: state.isSaving
-                  ? null
-                  : (value) => setState(() {
-                        _learningLanguageCode = value;
-                        _validationError = null;
-                      }),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: const Key('settings-proficiency-level-field'),
-              initialValue: _proficiencyLevel,
-              decoration: const InputDecoration(labelText: 'Trình độ hiện tại'),
-              items: supportedProficiencyLevels
-                  .map(
-                    (level) => DropdownMenuItem(
-                      value: level,
-                      child: Text(proficiencyLabel(level)),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: state.isSaving
-                  ? null
-                  : (value) {
-                      if (value != null) {
-                        setState(() => _proficiencyLevel = value);
-                      }
-                    },
-            ),
-            if (_validationError != null || state.errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _validationError ?? state.errorMessage!,
-                key: const Key('language-profile-error'),
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+      title: const Text('Ngôn ngữ giao tiếp và học'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Ngôn ngữ giao tiếp được dùng khi nhắn tin và góp ý bản dịch. '
+                'Ngôn ngữ muốn học được dùng cho bản dịch và bài luyện tập.',
               ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: const Key('settings-native-language-field'),
+                isExpanded: true,
+                initialValue: _nativeLanguageCode,
+                decoration:
+                    const InputDecoration(labelText: 'Ngôn ngữ giao tiếp'),
+                items: languageItems,
+                onChanged: state.isSaving
+                    ? null
+                    : (value) => setState(() {
+                          _nativeLanguageCode = value;
+                          _validationError = null;
+                        }),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: const Key('settings-learning-language-field'),
+                isExpanded: true,
+                initialValue: _learningLanguageCode,
+                decoration:
+                    const InputDecoration(labelText: 'Ngôn ngữ muốn học'),
+                items: languageItems,
+                onChanged: state.isSaving
+                    ? null
+                    : (value) => setState(() {
+                          _learningLanguageCode = value;
+                          _validationError = null;
+                        }),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: const Key('settings-proficiency-level-field'),
+                isExpanded: true,
+                initialValue: _proficiencyLevel,
+                decoration:
+                    const InputDecoration(labelText: 'Trình độ hiện tại'),
+                items: supportedProficiencyLevels
+                    .map(
+                      (level) => DropdownMenuItem(
+                        value: level,
+                        child: Text(proficiencyLabel(level)),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: state.isSaving
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          setState(() => _proficiencyLevel = value);
+                        }
+                      },
+              ),
+              if (_validationError != null || state.errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _validationError ?? state.errorMessage!,
+                  key: const Key('language-profile-error'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
       actions: [

@@ -22,7 +22,7 @@ class Step4LanguageProfile extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Ngôn ngữ của bạn',
+          'Ngôn ngữ giao tiếp và học',
           style: TextStyle(
             fontFamily: 'Fredoka',
             fontSize: 22,
@@ -32,7 +32,8 @@ class Step4LanguageProfile extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Thông tin này giúp sắp xếp câu gốc và câu dịch đúng cho riêng bạn.',
+          'Chọn ngôn ngữ bạn dùng để giao tiếp và ngôn ngữ bạn muốn học. '
+          'Bạn có thể đổi lại trong Cài đặt.',
           style: TextStyle(color: AppColors.mutedInk, height: 1.35),
         ),
         const SizedBox(height: 20),
@@ -40,7 +41,7 @@ class Step4LanguageProfile extends ConsumerWidget {
           key: const Key('native-language-field'),
           initialValue: state.data.nativeLanguageCode,
           decoration: InputDecoration(
-            labelText: 'Ngôn ngữ gốc',
+            labelText: 'Ngôn ngữ giao tiếp',
             errorText: state.fieldErrors['nativeLanguageCode'],
           ),
           items: _languages,

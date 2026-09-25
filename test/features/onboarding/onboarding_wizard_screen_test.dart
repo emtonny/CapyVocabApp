@@ -123,7 +123,9 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Ngôn ngữ của bạn'), findsWidgets);
+    expect(find.text('Ngôn ngữ giao tiếp và học'), findsOneWidget);
+    expect(find.text('Ngôn ngữ giao tiếp'), findsOneWidget);
+    expect(find.text('Ngôn ngữ muốn học'), findsOneWidget);
 
     await _selectLanguages(tester);
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
@@ -145,7 +147,7 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
     await tester.tap(find.byKey(const Key('onboarding-back-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Ngôn ngữ của bạn'), findsWidgets);
+    expect(find.text('Ngôn ngữ giao tiếp và học'), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
     await tester.tap(find.byKey(const Key('onboarding-back-button')));

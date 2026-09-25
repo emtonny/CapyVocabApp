@@ -657,12 +657,13 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     final errors = <String, String>{};
 
     if (!supportedLanguageCodes.contains(native)) {
-      errors['nativeLanguageCode'] = 'Vui lòng chọn ngôn ngữ gốc.';
+      errors['nativeLanguageCode'] = 'Vui lòng chọn ngôn ngữ giao tiếp.';
     }
     if (!supportedLanguageCodes.contains(learning)) {
       errors['learningLanguageCode'] = 'Vui lòng chọn ngôn ngữ muốn học.';
     } else if (native == learning) {
-      errors['learningLanguageCode'] = 'Ngôn ngữ học phải khác ngôn ngữ gốc.';
+      errors['learningLanguageCode'] =
+          'Ngôn ngữ muốn học phải khác ngôn ngữ giao tiếp.';
     }
     if (!supportedProficiencyLevels.contains(proficiency)) {
       errors['proficiencyLevel'] = 'Vui lòng chọn trình độ hiện tại.';
