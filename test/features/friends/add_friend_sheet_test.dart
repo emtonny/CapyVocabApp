@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:capy_vocab/features/chat/presentation/operational_chat_provider.dart';
 import 'package:capy_vocab/features/friends/domain/entities/friend_entity.dart';
 import 'package:capy_vocab/features/friends/domain/repositories/friends_repository.dart';
 import 'package:capy_vocab/features/friends/presentation/providers/friends_provider.dart';
@@ -108,6 +109,7 @@ Future<ProviderContainer> pumpFriends(
   final container = ProviderContainer(
     overrides: [
       friendsEnabledProvider.overrideWithValue(true),
+      operationalChatEnabledProvider.overrideWithValue(false),
       friendsOwnerProvider.overrideWith(
         (ref) => ref.watch(testOwnerProvider),
       ),

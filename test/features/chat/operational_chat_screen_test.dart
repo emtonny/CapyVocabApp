@@ -8,6 +8,7 @@ import 'package:capy_vocab/features/chat/data/operational_chat_supabase_gateway.
 import 'package:capy_vocab/features/chat/domain/operational_chat.dart';
 import 'package:capy_vocab/features/chat/presentation/operational_chat_provider.dart';
 import 'package:capy_vocab/features/chat/presentation/operational_chat_screen.dart';
+import 'package:capy_vocab/features/friends/presentation/providers/friends_provider.dart';
 import 'package:capy_vocab/features/friends/presentation/screens/friends_leaderboard_screen.dart';
 import 'package:capy_vocab/features/language_profile/application/language_profile_store.dart';
 import 'package:capy_vocab/features/language_profile/domain/entities/language_profile.dart';
@@ -98,6 +99,7 @@ void main() {
             profiles.profileFor(f.a)?.nativeLanguageCode);
     container = ProviderContainer(overrides: [
       operationalChatEnabledProvider.overrideWithValue(true),
+      friendsEnabledProvider.overrideWithValue(false),
       operationalChatClientProvider.overrideWithValue(client),
       operationalChatDatabaseProvider.overrideWith((_) async => local),
       operationalChatStoreProvider(owner).overrideWith((_) async => store),
@@ -391,6 +393,7 @@ void main() {
     container.dispose();
     container = ProviderContainer(overrides: [
       operationalChatEnabledProvider.overrideWithValue(false),
+      friendsEnabledProvider.overrideWithValue(false),
       operationalChatClientProvider
           .overrideWith((_) => throw StateError('No SDK.')),
       operationalChatDatabaseProvider
@@ -412,6 +415,7 @@ void main() {
     container.dispose();
     container = ProviderContainer(overrides: [
       operationalChatEnabledProvider.overrideWithValue(false),
+      friendsEnabledProvider.overrideWithValue(false),
       operationalChatClientProvider
           .overrideWith((_) => throw StateError('No SDK.')),
       operationalChatDatabaseProvider

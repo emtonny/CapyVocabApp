@@ -33,7 +33,7 @@ flutter pub get
 Chỉ cần cài npm dependency khi sử dụng Supabase CLI trong repository:
 
 ```powershell
-npm install
+npm ci
 ```
 
 Flutter nạp cấu hình Supabase public từ `assets/config/client.config`. Chỉ đặt
@@ -51,11 +51,24 @@ flutter run -d emulator-5554 --no-dds
 # Web mặc định/Production
 flutter run -d chrome --web-port=3000
 
-# Web Staging có Chat test; tự lấy public key vào file tạm và cleanup khi dừng
+# Web Staging có Bạn bè + Chat mặc định; tự lấy public key vào file tạm và
+# cleanup khi dừng
 powershell -ExecutionPolicy Bypass -File tool/run_staging_device_smoke.ps1 `
-  -FlutterCommand 'C:\fulter\flutter\bin\flutter.bat' `
-  -Target web-device -WebPort 3000 -ChatRelayEnabled
+  -Target web-device -WebPort 3000
 ```
+
+Trên máy mới, chạy một lần trước lệnh Staging:
+
+```powershell
+npm ci
+flutter pub get
+npx supabase login
+npx supabase link --project-ref nxteaznowkfennxpqjmt
+```
+
+Friends và Chat mặc định bật trong source nhưng vẫn fail-closed ngoài exact
+Staging `nxteaznowkfennxpqjmt`; việc đổi cờ không cho phép client bỏ qua kiểm tra
+phiên, quan hệ bạn bè hoặc hồ sơ ngôn ngữ phía máy chủ.
 
 Nếu ID emulator khác `emulator-5554`, dùng ID do `flutter devices` trả về. Cờ
 `--no-dds` là workaround cho Dart Development Service trên môi trường Windows

@@ -7,7 +7,7 @@ param(
     [string]$DeviceId = '',
     [ValidateRange(1024, 65535)]
     [int]$WebPort = 3000,
-    [switch]$ChatRelayEnabled
+    [switch]$ChatRelayEnabled = $true
 )
 
 $ErrorActionPreference = 'Stop'
