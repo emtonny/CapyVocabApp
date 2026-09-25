@@ -27,9 +27,9 @@ CREATE TABLE public.subscriptions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE FUNCTION private.complete_onboarding_for_current_user(
-    TEXT, TEXT, INT, TEXT, TEXT, TEXT, INT
-) RETURNS BOOLEAN LANGUAGE sql AS $$ SELECT TRUE $$;
+-- The oldest seven-argument helper was dropped by the real migration chain.
+-- Keep it absent so the account-contact migration cannot assume every legacy
+-- overload still exists (the exact condition found on Staging).
 CREATE FUNCTION private.complete_onboarding_for_current_user(
     TEXT, TEXT, INT, TEXT, TEXT, TEXT, TEXT, INT
 ) RETURNS BOOLEAN LANGUAGE sql AS $$ SELECT TRUE $$;

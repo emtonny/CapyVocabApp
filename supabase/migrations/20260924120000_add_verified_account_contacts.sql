@@ -741,18 +741,28 @@ CREATE OR REPLACE FUNCTION public.complete_onboarding(
     );
 $$;
 
-REVOKE ALL ON FUNCTION private.complete_onboarding_for_current_user(
-    TEXT, TEXT, INT, TEXT, TEXT, TEXT, INT
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION private.complete_onboarding_for_current_user(
-    TEXT, TEXT, INT, TEXT, TEXT, TEXT, TEXT, INT
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION private.complete_onboarding_for_current_user(
-    TEXT, TEXT, INT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION private.complete_onboarding_for_current_user(
-    TEXT, TEXT, INT, TEXT, TEXT, TEXT, TEXT, INT, TEXT, TEXT, TEXT
-) FROM PUBLIC, anon, authenticated;
+-- Environments upgraded through older onboarding migrations do not necessarily
+-- retain every historical overload. Revoke only signatures that still exist so
+-- a missing legacy helper cannot block this additive migration.
+DO $$
+DECLARE
+    v_signature TEXT;
+BEGIN
+    FOREACH v_signature IN ARRAY ARRAY[
+        'private.complete_onboarding_for_current_user(text,text,integer,text,text,text,integer)',
+        'private.complete_onboarding_for_current_user(text,text,integer,text,text,text,text,integer)',
+        'private.complete_onboarding_for_current_user(text,text,integer,text,text,text,text,text,text,integer)',
+        'private.complete_onboarding_for_current_user(text,text,integer,text,text,text,text,integer,text,text,text)'
+    ] LOOP
+        IF TO_REGPROCEDURE(v_signature) IS NOT NULL THEN
+            EXECUTE FORMAT(
+                'REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated',
+                v_signature
+            );
+        END IF;
+    END LOOP;
+END;
+$$;
 
 REVOKE ALL ON FUNCTION public.sync_my_verified_email(),
     public.sync_my_verified_phone(),

@@ -1,7 +1,7 @@
 # Kế hoạch xác nhận tài khoản
 
 > Quyết định hiện hành: **2026-09-25 — CHỈ DÙNG EMAIL, TẠM ẨN SMS**
-> Trạng thái: **LOCAL VERIFIED — CHƯA PUSH / CHƯA DEPLOY**
+> Trạng thái: **EXACT-STAGING MIGRATION APPLIED / CHƯA PUSH GIT**
 > Phạm vi: Android, iOS và Web. Người dùng xác nhận email bằng thư gửi tới
 > chính email đó; không cần xác nhận email bằng số điện thoại hoặc mã SMS.
 
@@ -23,14 +23,14 @@
 
 | Phần việc | Trạng thái | Ai thực hiện tiếp |
 |---|---|---|
-| Migration liên hệ và dữ liệu riêng | Đang điều chỉnh local theo email-only | Chủ dự án duyệt diff rồi mới cho phép apply Staging |
+| Migration liên hệ và dữ liệu riêng | Đã apply exact Staging; post-dry-run sạch | Chủ dự án chỉ cần duyệt trước khi đưa sang Production |
 | Xác nhận email, gửi lại thư, đổi email | Local đã làm | Chủ dự án cấu hình mẫu thư, URL chuyển hướng và giới hạn gửi ở Staging |
 | SMS đăng ký/đổi số | **Tạm ẩn; mã nguồn và đặc tả được giữ lại** | Chưa cần cấp SMS provider hoặc phát sinh chi phí |
 | Tìm bạn chỉ bằng username | Local đã làm | Chủ dự án kiểm tra UX trên thiết bị |
-| Công tắc email cho bạn bè đã chấp nhận | Local đã làm; công tắc SĐT tạm ẩn | Chủ dự án kiểm tra bằng hai tài khoản Staging sau deploy được duyệt |
+| Công tắc email cho bạn bè đã chấp nhận | Staging schema đã có; công tắc SĐT tạm ẩn | Chủ dự án kiểm tra UX liên hệ bằng hai tài khoản thật nếu muốn bật email công khai |
 | Giữ email của gói cũ, dùng email mới khi gia hạn | Local đã làm phần dữ liệu/trigger; dấu SĐT là tùy chọn | Chủ dự án duyệt cách hệ thống thanh toán gọi gia hạn |
 | Sổ chống nhận ưu đãi lặp lại | Đã có bảng/ràng buộc local; chưa có luồng phát ưu đãi để nối | Chủ dự án chốt chính sách ưu đãi và quy trình xem xét số tái cấp |
-| Push, deploy, migration remote, SMS/email thật | Chưa thực hiện theo yêu cầu | Chỉ làm sau phê duyệt riêng |
+| Push Git, app distribution, SMS/email thật | Chưa thực hiện | Cấu hình email thật và phân phối APK cần phê duyệt/thao tác riêng; SMS vẫn hoãn |
 
 Kiểm tra local ngày 2026-09-25: Auth/Onboarding/Friends/Settings **133/133**,
 PostgreSQL cô lập **24/24**, analyzer sạch và Web release build thành công. Build
@@ -257,8 +257,12 @@ số được cấp lại đều có kiểm tra tự động; không mất gói 
 
 ### A6 — Exact-Staging và rollout
 
-**Trạng thái 2026-09-25: CHƯA THỰC HIỆN.** Không push, deploy, apply migration,
-đổi cấu hình Auth hay gửi email/SMS thật trong increment này.
+**Trạng thái 2026-09-25: STAGING SCHEMA APPLIED / APP DISTRIBUTION PENDING.**
+Backup DPAPI, dry-run, apply migration email-only và post-dry-run đã pass trên
+exact Staging. APK exact-Staging build pass; live ba tài khoản xác nhận tài khoản
+email-only không có Auth phone vẫn onboarding và dùng Chat/dán nhãn được. Chưa
+push Git, chưa đổi cấu hình mẫu thư Auth, chưa gửi email/SMS thật và chưa kiểm
+thử/build iOS vì máy hiện tại là Windows.
 
 **Làm:** backup, dry-run, apply sau phê duyệt, thử email thật và SMS thật ở nhiều
 quốc gia, hai tài khoản/bạn bè/người lạ, đổi liên hệ, gói còn hạn và cleanup.
