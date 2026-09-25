@@ -200,10 +200,10 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Training dataset | PARTIAL/FAIL-CLOSED VERIFIED | Có schema lineage/consent; AI prediction không tự thành nhãn. Missing media quarantine example liên quan. Permanent purge xóa source example + manifest/run links và invalidates model đã dùng source; historical non-content audit có thể còn. Builder/D6 vẫn chưa triển khai |
 | Operational Chat local (C3A) | IMPLEMENTED/VERIFIED; C3 COMPLETE | Separate SQLite chat v2 (3 tables), additive v1→v2 migration, project+owner scope, local read cursor/unread count and approved public peer-profile cache; atomic raw/outbox, single-flight/durable backoff/cap, immutable ACK/ordering, complete inventory/history reconcile/local streams. Durable restart/lost-response and physical multi-owner restoration verified |
 | Operational Chat adapter (C3B.1) | IMPLEMENTED/VERIFIED; C3 COMPLETE | Private SDK captured JWT, exact Staging only; insert/conflict/RPC, exhausted keyset pages, visibility checks and guarded Realtime lifecycle. Local HTTP/WebSocket tests plus live REST/Realtime smoke pass |
-| Operational Chat runtime (C3B.2) | IMPLEMENTED/STAGING VERIFIED; C3 COMPLETE | Single-flight/cache/runtime guards, foreground reconnect and explicit ascending UUID cursors verified. Default flag OFF; exact Staging only |
+| Operational Chat runtime (C3B.2) | DEFAULT ON / EXACT-STAGING GUARDED | Single-flight/cache/runtime guards, foreground reconnect and explicit ascending UUID cursors verified. Source default is ON; exact-Staging URL and current-session guards still deny Production and stale owners |
 | Operational Chat UI (C3C) | IMPLEMENTED/STAGING WEB + ANDROID VERIFIED; C3 COMPLETE | Global 64dp draggable mailbox bubble with 5-second edge retreat, responsive panel, search, real cached profile, unread-first ordering/badges and disabled AI notice; `/chat` detail remains the conversation route and marks cached inbound rows read when opened. Bidirectional raw relay/offline behavior remains verified. Sent still means server accepted, not delivery receipt. C4/C5 bilingual rendering remains pending; no Gemini/Training |
 | Operational Chat Android (C3C smoke) | COMPLETE 2026-09-17 | CPH2375/Android 13 exchanged both directions with Web, restored remote/local history, survived offline restart/reconnect and restored A's isolated cache after A→B→A. Current-process chat/sync/Failed/Exception matches: 0 after reconnect |
-| Friend management (F1–F6) | USERNAME-FIRST UI / EXACT-STAGING BACKEND VERIFIED 2026-09-24 | Public search exposes exact username only; atomic request/accept/reject, owner-scoped cache, public-only accepted list and canonical Chat handoff remain. Legacy email/phone lookup contracts stay dormant until removed by a later approved migration. Production/default remain OFF |
+| Friend management (F1–F6) | DEFAULT ON / EXACT-STAGING GUARDED 2026-09-25 | Friends and Chat source defaults are ON so eligible Staging accounts work without extra build flags. Exact-Staging URL, signed-in owner, accepted relationship and language-profile guards remain authoritative; Production is denied. Public search exposes exact username only; email/phone lookup stays dormant |
 | Account contact verification (A0–A6) | EMAIL-ONLY LOCAL, SMS DORMANT / NOT DEPLOYED 2026-09-25 | Email confirmation remains the onboarding gate. SMS fields/actions, phone sharing and phone change are hidden behind one disabled feature flag; dormant code/data contracts remain. Subscription phone snapshots are optional and the server no longer requires a verified phone. Verification for this increment is recorded in the change log; no push, remote migration, Auth config change or deploy |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
@@ -1176,6 +1176,24 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-09-25 — Friends and Chat enabled by default for eligible Staging accounts
+
+- `FRIENDS_ENABLED` and `CHAT_RELAY_ENABLED` now default to true in source; the
+  Staging Web runner also defaults Chat on while retaining its old switch for
+  command compatibility.
+- Enabling the flags does not broaden the backend boundary: Friends and Chat
+  owners still resolve only for exact Staging with a current signed-in session;
+  Chat revalidates accepted friendship and language profiles. The existing
+  Production-denial regression remains green.
+- Verification: Friends + Chat Flutter 205/205, full Flutter 667 pass + 1
+  intentional live skip, isolated Friend PostgreSQL 68/68 with two concurrent
+  clients, full analyzer clean and exact-Staging Web build passed. Read-only
+  Demo 1/2 audit confirmed both logins, reciprocal accepted friendship and one
+  shared conversation; remote writes 0.
+- Machine setup and the flag-free Staging Web command are documented in
+  `README.md`. Migration `20260924120000` remains dry-run pending; nothing was
+  applied, pushed or deployed.
 
 ### 2026-09-25 — Email-only auth rollout; SMS retained but dormant
 

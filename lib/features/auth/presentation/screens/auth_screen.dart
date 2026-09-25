@@ -36,7 +36,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   static const _stagingSupabaseHost = 'nxteaznowkfennxpqjmt.supabase.co';
   static const _chatRelayEnabled = bool.fromEnvironment(
     'CHAT_RELAY_ENABLED',
-    defaultValue: false,
+    defaultValue: true,
   );
 
   final _formKey = GlobalKey<FormState>();

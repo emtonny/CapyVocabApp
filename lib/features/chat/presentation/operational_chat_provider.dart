@@ -17,7 +17,7 @@ import '../data/operational_chat_supabase_gateway.dart';
 import '../domain/operational_chat.dart';
 
 final operationalChatEnabledProvider = Provider<bool>((_) =>
-    const bool.fromEnvironment('CHAT_RELAY_ENABLED', defaultValue: false));
+    const bool.fromEnvironment('CHAT_RELAY_ENABLED', defaultValue: true));
 final operationalChatClientProvider =
     Provider<SupabaseClient>((_) => SupabaseService.client);
 

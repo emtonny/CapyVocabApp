@@ -17,7 +17,7 @@ import '../../domain/friend_phone_verification.dart';
 import '../../domain/repositories/friends_repository.dart';
 
 final friendsEnabledProvider = Provider<bool>(
-    (_) => const bool.fromEnvironment('FRIENDS_ENABLED', defaultValue: false));
+    (_) => const bool.fromEnvironment('FRIENDS_ENABLED', defaultValue: true));
 
 final friendsClientProvider =
     Provider<SupabaseClient>((_) => SupabaseService.client);
