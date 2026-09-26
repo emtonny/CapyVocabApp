@@ -9,7 +9,7 @@ import 'package:capy_vocab/features/language_profile/application/language_profil
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('wizard validate và chuyển đúng thứ tự 7 bước', () async {
+  test('wizard validate và chuyển đúng thứ tự 6 bước', () async {
     final repository = _FakeOnboardingRepository();
     final notifier = _buildNotifier(repository);
     addTearDown(notifier.dispose);
@@ -29,10 +29,22 @@ void main() {
 
     expect(notifier.state.data.interfaceLocale, 'vi-VN');
     expect(notifier.state.data.learningLocale, 'en-US');
+    expect(notifier.state.data.nativeLanguageCode, 'vi');
+    expect(notifier.state.data.learningLanguageCode, 'en');
     notifier.updateInterfaceLocale('en-GB');
-    notifier.updateLearningLocale('ja-JP');
+    notifier.updateLearningLocale('en-US');
+    expect(await notifier.nextStep(), isFalse);
+    expect(
+      notifier.state.fieldErrors['learningLocale'],
+      contains('phải khác'),
+    );
+
+    notifier.updateLearningLocale('vi-VN');
+    notifier.updateProficiencyLevel('intermediate');
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 2);
+    expect(notifier.state.data.nativeLanguageCode, 'en');
+    expect(notifier.state.data.learningLanguageCode, 'vi');
 
     notifier.updateAge(0);
     notifier.updatePhone('123');
@@ -53,22 +65,6 @@ void main() {
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 4);
 
-    expect(await notifier.nextStep(), isFalse);
-    expect(notifier.state.fieldErrors['nativeLanguageCode'], isNotNull);
-
-    notifier.updateNativeLanguage('vi');
-    notifier.updateLearningLanguage('vi');
-    expect(await notifier.nextStep(), isFalse);
-    expect(
-      notifier.state.fieldErrors['learningLanguageCode'],
-      contains('phải khác'),
-    );
-
-    notifier.updateLearningLanguage('en');
-    notifier.updateProficiencyLevel('intermediate');
-    expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 5);
-
     notifier.updateReminderTime('25:00');
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['reminderTime'], isNotNull);
@@ -83,7 +79,7 @@ void main() {
 
     notifier.updateStudyTimeRange(start: '22:00', end: '02:00');
     expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 6);
+    expect(notifier.state.currentStep, 5);
 
     notifier.updateDailyTargetWords(0);
     expect(await notifier.validateCurrentStep(), isFalse);
@@ -108,7 +104,7 @@ void main() {
     notifier.updateUsername('capy_may');
     await notifier.nextStep();
     notifier.updateInterfaceLocale('en-GB');
-    notifier.updateLearningLocale('ja-JP');
+    notifier.updateLearningLocale('vi-VN');
     await notifier.nextStep();
     notifier.updateAge(18);
     await notifier.nextStep();
@@ -118,7 +114,7 @@ void main() {
     expect(notifier.state.currentStep, 2);
     expect(notifier.state.data.username, 'capy_may');
     expect(notifier.state.data.interfaceLocale, 'en-GB');
-    expect(notifier.state.data.learningLocale, 'ja-JP');
+    expect(notifier.state.data.learningLocale, 'vi-VN');
     expect(notifier.state.data.age, 18);
     expect(notifier.state.data.phone, isEmpty);
   });
@@ -180,7 +176,7 @@ void main() {
     await _moveToFinalStep(notifier);
 
     expect(await notifier.completeOnboarding(), isFalse);
-    expect(notifier.state.currentStep, 6);
+    expect(notifier.state.currentStep, 5);
     expect(notifier.state.isSaving, isFalse);
     expect(notifier.state.saveError, contains('thử lại'));
   });
@@ -206,7 +202,7 @@ void main() {
     (
       field: OnboardingConflictField.email,
       message: 'Email đã được sử dụng. Vui lòng dùng email khác.',
-      expectedStep: 6,
+      expectedStep: 5,
       expectedErrorKey: null,
     ),
   ]) {
@@ -236,14 +232,13 @@ void main() {
 Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
   notifier.updateUsername('capy_may');
   expect(await notifier.nextStep(), isTrue);
+  notifier.updateInterfaceLocale('vi-VN');
+  notifier.updateLearningLocale('en-US');
+  notifier.updateProficiencyLevel('beginner');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAge(20);
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAccountRole('personal');
-  expect(await notifier.nextStep(), isTrue);
-  notifier.updateNativeLanguage('vi');
-  notifier.updateLearningLanguage('en');
-  notifier.updateProficiencyLevel('beginner');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateStudyTimeRange(start: '20:00', end: '21:00');
   expect(await notifier.nextStep(), isTrue);

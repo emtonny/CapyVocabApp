@@ -11,11 +11,10 @@ import '../widgets/step1_name_username.dart';
 import '../widgets/step2_language_selector.dart';
 import '../widgets/step2_age_phone.dart';
 import '../widgets/step3_role_selector.dart';
-import '../widgets/step4_language_profile.dart';
 import '../widgets/step4_study_time.dart';
 import '../widgets/step5_daily_target.dart';
 
-const _onboardingStepCount = 7;
+const _onboardingStepCount = 6;
 
 class OnboardingWizardScreen extends ConsumerWidget {
   const OnboardingWizardScreen({super.key});
@@ -25,7 +24,6 @@ class OnboardingWizardScreen extends ConsumerWidget {
     Step2LanguageSelector(),
     Step2AgePhone(),
     Step3RoleSelector(),
-    Step4LanguageProfile(),
     Step4StudyTime(),
     Step5DailyTarget(),
   ];
@@ -35,7 +33,6 @@ class OnboardingWizardScreen extends ConsumerWidget {
     'Ngôn ngữ',
     'Độ tuổi',
     'Vai trò sử dụng',
-    'Ngôn ngữ của bạn',
     'Thời gian học tập',
     'Mục tiêu hàng ngày',
   ];
