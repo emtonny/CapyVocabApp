@@ -283,37 +283,16 @@ try {
 
     foreach ($table in $baselineTables) { $baseline[$table] = Count-Rows $table }
 
-    $seed = [convert]::ToUInt32($runId.Substring(0,7), 16) % 10000000
     for ($index=0; $index -lt 3; $index++) {
         $email = "f6-$runId-$index@example.com"
-        $phone = '09' + (($seed + $index) % 100000000).ToString('D8')
         $password = 'F6!' + [guid]::NewGuid().ToString('N')
         $created = Request POST '/auth/v1/admin/users' $adminHeaders @{
             email=$email; password=$password; email_confirm=$true
-            phone=('+84' + $phone.Substring(1)); phone_confirm=$true
             user_metadata=@{test_scope=$scope; run_id=$runId}
         }
         Assert-Status $created @(200,201) 'Fixture creation'
         $id = [string]$created.Json.id
         if ($id -notmatch '^[0-9a-f-]{36}$') { throw 'Fixture identity missing.' }
-        $storedAuthPhone = [string]$created.Json.phone
-        $allowedAuthPhones = @(
-            $phone,
-            ('+84' + $phone.Substring(1)),
-            ('84' + $phone.Substring(1))
-        )
-        if ($storedAuthPhone -notin $allowedAuthPhones) {
-            $shape = @{
-                present=(-not [string]::IsNullOrWhiteSpace($storedAuthPhone))
-                length=$storedAuthPhone.Length
-                e164=($storedAuthPhone -match '^\+84[0-9]{9}$')
-                local=($storedAuthPhone -match '^0[0-9]{9}$')
-            } | ConvertTo-Json -Compress
-            throw "Fixture Auth phone shape mismatch: $shape"
-        }
-        if (-not $created.Json.phone_confirmed_at) {
-            throw 'Fixture Auth phone was not confirmed by the admin create contract.'
-        }
         $null = $fixtureIds.Add($id)
         $login = Request POST '/auth/v1/token?grant_type=password' $anonHeaders @{
             email=$email; password=$password
@@ -329,7 +308,7 @@ try {
         $username = 'f6' + $runId.Substring(0,15) + $index
         $completed = Request POST '/rest/v1/rpc/complete_onboarding' $owner @{
             p_display_name="F6 fixture $index"; p_username=$username
-            p_age=25; p_phone=$phone; p_account_role='personal'
+            p_age=25; p_phone=''; p_account_role='personal'
             p_reminder_time='22:00'; p_study_end_time='02:00'; p_daily_target_words=10
             p_native_language_code='vi'; p_learning_language_code='en'
             p_proficiency_level='beginner'
@@ -341,11 +320,11 @@ try {
         if (@($profile.Json).Count -ne 1 -or
             [string]$profile.Json[0].id -ne $id -or
             [string]$profile.Json[0].email -ne $email -or
-            [string]$profile.Json[0].phone -ne $phone) {
-            throw 'Fixture profile contact fields do not match the verified Auth account.'
+            -not [string]::IsNullOrEmpty([string]$profile.Json[0].phone)) {
+            throw 'Fixture profile does not match the verified email-only Auth account.'
         }
         $accounts.Add([pscustomobject]@{
-            Id=$id; Email=$email; Phone=$phone; Username=$username
+            Id=$id; Email=$email; Username=$username
             Headers=$owner; Token=$login.Json.access_token
         })
     }
@@ -358,49 +337,22 @@ try {
         if (@($settings.Json).Count -ne 1 -or
             $settings.Json[0].discoverable_by_email -ne $false -or
             $settings.Json[0].discoverable_by_phone -ne $false -or
-            $settings.Json[0].email_confirmed -ne $true) {
+            $settings.Json[0].email_confirmed -ne $true -or
+            $settings.Json[0].phone_verified -ne $false) {
             throw 'Discovery settings did not default to private.'
         }
-        $synced = Request POST '/rest/v1/rpc/sync_my_verified_friend_phone' $account.Headers @{}
-        Assert-Status $synced @(200) 'Verified phone sync'
-        if ($synced.Json -ne $true) { throw 'Verified phone sync failed.' }
     }
     $byUsername = Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
         p_method='username'; p_query=$b.Username.ToUpperInvariant()
     }
     Assert-One $byUsername $b.Id 'Username discovery'
-    Assert-Empty (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
+    Assert-BusinessError (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
         p_method='email'; p_query=$b.Email
-    }) 'Email discovery default opt-out'
-    Assert-Empty (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
-        p_method='phone'; p_query=('+84' + $b.Phone.Substring(1))
-    }) 'Phone discovery default opt-out'
-    $enabled = Request POST '/rest/v1/rpc/update_my_friend_discovery_settings' $b.Headers @{
-        p_discoverable_by_email=$true; p_discoverable_by_phone=$true
-    }
-    Assert-Status $enabled @(200) 'Discovery opt-in'
-    if (@($enabled.Json).Count -ne 1 -or
-        $enabled.Json[0].discoverable_by_email -ne $true -or
-        $enabled.Json[0].discoverable_by_phone -ne $true -or
-        $enabled.Json[0].phone_verified -ne $true) {
-        throw 'Verified discovery opt-in was not persisted.'
-    }
-    Assert-One (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
-        p_method='email'; p_query=('  ' + $b.Email.ToUpperInvariant() + '  ')
-    }) $b.Id 'Normalized email discovery'
-    Assert-One (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
-        p_method='phone'; p_query=('+84' + $b.Phone.Substring(1))
-    }) $b.Id 'Normalized phone discovery'
-    Assert-Status (Request POST '/rest/v1/rpc/update_my_friend_discovery_settings' $b.Headers @{
-        p_discoverable_by_email=$false; p_discoverable_by_phone=$false
-    }) @(200) 'Discovery opt-out'
-    Assert-Empty (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
-        p_method='email'; p_query=$b.Email
-    }) 'Email discovery after opt-out'
-    Assert-Empty (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
-        p_method='phone'; p_query=$b.Phone
-    }) 'Phone discovery after opt-out'
-    $checks.Add('username_email_phone_normalization_consent_and_public_projection')
+    }) @(400) '22023' 'invalid_search_method' 'Email discovery disabled'
+    Assert-BusinessError (Request POST '/rest/v1/rpc/search_friend' $a.Headers @{
+        p_method='phone'; p_query='+84912345678'
+    }) @(400) '22023' 'invalid_search_method' 'Phone discovery disabled'
+    $checks.Add('email_only_fixtures_username_discovery_and_non_username_denial')
 
     foreach ($account in $accounts) {
         $connection = [pscustomobject]@{
