@@ -13,7 +13,7 @@ final class OperationalChatDatabase {
 
   Future<Database> open() => _opening ??= factory.openDatabase(path,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 6,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, _) async {
           await db.execute('''CREATE TABLE chat_conversations (
@@ -40,9 +40,17 @@ final class OperationalChatDatabase {
           await db.execute(
               "CREATE INDEX chat_outbox ON chat_messages(owner_scope,next_attempt_at) WHERE send_status='pending'");
           await _createVersion2(db);
+          await _createVersion3(db);
+          await _createVersion4(db);
+          await _createVersion5(db);
+          await _createVersion6(db);
         },
         onUpgrade: (db, oldVersion, _) async {
           if (oldVersion < 2) await _createVersion2(db);
+          if (oldVersion < 3) await _createVersion3(db);
+          if (oldVersion < 4) await _createVersion4(db);
+          if (oldVersion < 5) await _createVersion5(db);
+          if (oldVersion < 6) await _createVersion6(db);
         },
       ));
 
@@ -58,6 +66,151 @@ final class OperationalChatDatabase {
       avatar_url TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL,
       PRIMARY KEY(owner_scope,peer_id)
     )''');
+  }
+
+  static Future<void> _createVersion3(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS chat_translations (
+      owner_scope TEXT NOT NULL, id TEXT NOT NULL, message_id TEXT NOT NULL,
+      target_language_code TEXT NOT NULL CHECK(target_language_code IN ('vi','en')),
+      translated_text TEXT, provider TEXT NOT NULL CHECK(provider='gemini'),
+      model TEXT NOT NULL CHECK(model='gemini-3.5-flash-lite'),
+      prompt_version TEXT NOT NULL CHECK(prompt_version='chat-translate-p1'),
+      translator_version TEXT NOT NULL CHECK(translator_version='chat-translate-v1'),
+      status TEXT NOT NULL CHECK(status IN ('queued','processing','succeeded','failed')),
+      attempt_count INTEGER NOT NULL CHECK(attempt_count BETWEEN 0 AND 4),
+      next_attempt_at INTEGER, error_code TEXT,
+      created_at INTEGER NOT NULL, completed_at INTEGER, updated_at INTEGER NOT NULL,
+      PRIMARY KEY(owner_scope,id),
+      UNIQUE(owner_scope,message_id,target_language_code,translator_version),
+      FOREIGN KEY(owner_scope,message_id) REFERENCES chat_messages(owner_scope,id) ON DELETE CASCADE,
+      CHECK(error_code IS NULL OR (length(error_code) BETWEEN 1 AND 64 AND error_code NOT GLOB '*[^A-Z0-9_]*')),
+      CHECK((status='succeeded' AND translated_text IS NOT NULL
+        AND length(translated_text) BETWEEN 1 AND 16000 AND trim(translated_text)<>''
+        AND completed_at IS NOT NULL AND error_code IS NULL AND next_attempt_at IS NULL)
+        OR (status<>'succeeded' AND translated_text IS NULL AND completed_at IS NULL
+          AND ((status='failed' AND error_code IS NOT NULL)
+            OR (status<>'failed' AND error_code IS NULL))))
+    )''');
+    await db.execute('''CREATE INDEX IF NOT EXISTS chat_translation_message
+      ON chat_translations(owner_scope,message_id,translator_version)''');
+  }
+
+  static Future<void> _createVersion4(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS chat_corrections (
+      owner_scope TEXT NOT NULL, id TEXT NOT NULL, message_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      target_language_code TEXT NOT NULL CHECK(target_language_code IN ('vi','en')),
+      proposed_text TEXT NOT NULL CHECK(length(proposed_text) BETWEEN 1 AND 4000 AND trim(proposed_text)<>''),
+      status TEXT NOT NULL CHECK(status IN ('proposed','accepted','rejected')),
+      accepted_by TEXT, accepted_at INTEGER, rejected_by TEXT, rejected_at INTEGER,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      sync_status TEXT NOT NULL CHECK(sync_status IN
+        ('synced','proposalPending','proposalBlocked','decisionPending','decisionBlocked')),
+      pending_decision TEXT CHECK(pending_decision IN ('accepted','rejected')),
+      attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count BETWEEN 0 AND 4),
+      next_attempt_at INTEGER,
+      PRIMARY KEY(owner_scope,id),
+      FOREIGN KEY(owner_scope,message_id) REFERENCES chat_messages(owner_scope,id) ON DELETE CASCADE,
+      CHECK((status='proposed' AND accepted_by IS NULL AND accepted_at IS NULL
+        AND rejected_by IS NULL AND rejected_at IS NULL)
+        OR (status='accepted' AND accepted_by IS NOT NULL AND accepted_at IS NOT NULL
+          AND rejected_by IS NULL AND rejected_at IS NULL)
+        OR (status='rejected' AND rejected_by IS NOT NULL AND rejected_at IS NOT NULL
+          AND accepted_by IS NULL AND accepted_at IS NULL)),
+      CHECK((sync_status='synced' AND pending_decision IS NULL
+          AND attempt_count=0 AND next_attempt_at IS NULL)
+        OR (sync_status='proposalPending' AND status='proposed'
+          AND pending_decision IS NULL AND next_attempt_at IS NOT NULL)
+        OR (sync_status='proposalBlocked' AND status='proposed'
+          AND pending_decision IS NULL AND next_attempt_at IS NULL)
+        OR (sync_status='decisionPending' AND status='proposed'
+          AND pending_decision IS NOT NULL AND next_attempt_at IS NOT NULL)
+        OR (sync_status='decisionBlocked' AND status='proposed'
+          AND pending_decision IS NOT NULL AND next_attempt_at IS NULL))
+    )''');
+    await db.execute('''CREATE INDEX IF NOT EXISTS chat_correction_message
+      ON chat_corrections(owner_scope,message_id,created_at,id)''');
+    await db.execute('''CREATE INDEX IF NOT EXISTS chat_correction_outbox
+      ON chat_corrections(owner_scope,next_attempt_at)
+      WHERE sync_status IN ('proposalPending','decisionPending')''');
+    await db.execute(
+        '''CREATE UNIQUE INDEX IF NOT EXISTS chat_correction_one_proposed
+      ON chat_corrections(owner_scope,message_id,author_id)
+      WHERE status='proposed' AND sync_status<>'proposalBlocked' ''');
+  }
+
+  static Future<void> _createVersion5(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS chat_slang_annotations (
+      owner_scope TEXT NOT NULL, id TEXT NOT NULL, message_id TEXT NOT NULL,
+      correction_id TEXT NOT NULL, created_by TEXT NOT NULL,
+      span_text TEXT NOT NULL CHECK(length(span_text) BETWEEN 1 AND 4000 AND trim(span_text)<>''),
+      span_start INTEGER NOT NULL CHECK(span_start>=0),
+      span_end INTEGER NOT NULL CHECK(span_end>span_start),
+      tag_type TEXT NOT NULL CHECK(tag_type IN
+        ('slang','abbreviation','informal_address','idiom','typo_or_phonetic_spelling','other')),
+      normalized_source TEXT NOT NULL
+        CHECK(length(normalized_source) BETWEEN 1 AND 4000 AND trim(normalized_source)<>''),
+      annotator_role TEXT NOT NULL DEFAULT 'source_speaker'
+        CHECK(annotator_role='source_speaker'),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status='active'),
+      created_at INTEGER NOT NULL,
+      sync_status TEXT NOT NULL CHECK(sync_status IN ('synced','pending','blocked')),
+      attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count BETWEEN 0 AND 4),
+      next_attempt_at INTEGER,
+      PRIMARY KEY(owner_scope,id),
+      FOREIGN KEY(owner_scope,message_id)
+        REFERENCES chat_messages(owner_scope,id) ON DELETE CASCADE,
+      FOREIGN KEY(owner_scope,correction_id)
+        REFERENCES chat_corrections(owner_scope,id) ON DELETE CASCADE,
+      UNIQUE(owner_scope,correction_id,created_by,span_start,span_end,tag_type,normalized_source),
+      CHECK((sync_status='synced' AND attempt_count=0 AND next_attempt_at IS NULL)
+        OR (sync_status='pending' AND next_attempt_at IS NOT NULL)
+        OR (sync_status='blocked' AND next_attempt_at IS NULL))
+    )''');
+    await db.execute('''CREATE INDEX IF NOT EXISTS chat_annotation_message
+      ON chat_slang_annotations(owner_scope,message_id,created_at,id)''');
+    await db.execute('''CREATE INDEX IF NOT EXISTS chat_annotation_outbox
+      ON chat_slang_annotations(owner_scope,next_attempt_at)
+      WHERE sync_status='pending' ''');
+  }
+
+  static Future<void> _createVersion6(DatabaseExecutor db) async {
+    // Some pre-release v4 databases did not contain the optional translation
+    // cache. Create its v1 shape first so this additive rebuild is safe for
+    // every database version already distributed to testers.
+    await _createVersion3(db);
+    await db.execute('''CREATE TABLE chat_translations_v6 (
+      owner_scope TEXT NOT NULL, id TEXT NOT NULL, message_id TEXT NOT NULL,
+      target_language_code TEXT NOT NULL CHECK(target_language_code IN ('vi','en')),
+      translated_text TEXT, provider TEXT NOT NULL,
+      model TEXT NOT NULL, prompt_version TEXT NOT NULL,
+      translator_version TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('queued','processing','succeeded','failed')),
+      attempt_count INTEGER NOT NULL CHECK(attempt_count BETWEEN 0 AND 4),
+      next_attempt_at INTEGER, error_code TEXT,
+      created_at INTEGER NOT NULL, completed_at INTEGER, updated_at INTEGER NOT NULL,
+      PRIMARY KEY(owner_scope,id),
+      UNIQUE(owner_scope,message_id,target_language_code,translator_version),
+      FOREIGN KEY(owner_scope,message_id) REFERENCES chat_messages(owner_scope,id) ON DELETE CASCADE,
+      CHECK((provider='gemini' AND model='gemini-3.5-flash-lite'
+          AND prompt_version='chat-translate-p1' AND translator_version='chat-translate-v1')
+        OR (provider='vilao' AND model='gemini-3.8-flash'
+          AND prompt_version='chat-translate-p2' AND translator_version='chat-translate-v2')),
+      CHECK(error_code IS NULL OR (length(error_code) BETWEEN 1 AND 64 AND error_code NOT GLOB '*[^A-Z0-9_]*')),
+      CHECK((status='succeeded' AND translated_text IS NOT NULL
+        AND length(translated_text) BETWEEN 1 AND 16000 AND trim(translated_text)<>''
+        AND completed_at IS NOT NULL AND error_code IS NULL AND next_attempt_at IS NULL)
+        OR (status<>'succeeded' AND translated_text IS NULL AND completed_at IS NULL
+          AND ((status='failed' AND error_code IS NOT NULL)
+            OR (status<>'failed' AND error_code IS NULL))))
+    )''');
+    await db.execute('''INSERT INTO chat_translations_v6
+      SELECT * FROM chat_translations''');
+    await db.execute('DROP TABLE chat_translations');
+    await db.execute(
+        'ALTER TABLE chat_translations_v6 RENAME TO chat_translations');
+    await db.execute('''CREATE INDEX chat_translation_message
+      ON chat_translations(owner_scope,message_id,translator_version)''');
   }
 
   Future<void> close() async {

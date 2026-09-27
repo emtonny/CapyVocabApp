@@ -22,6 +22,7 @@ typedef LibraryCloudBackfillCandidate = ({
 final class SqliteLibraryStore
     implements
         LibraryRepository,
+        LocalVocabularyLookupRepository,
         AlbumRepository,
         LearningRepository,
         SyncRepository,
@@ -328,6 +329,94 @@ final class SqliteLibraryStore
     userId = requireUuid(userId, 'userId');
     photoNoteId = requireUuid(photoNoteId, 'photoNoteId');
     return _loadPhotoNoteSnapshot(_database, userId, photoNoteId);
+  }
+
+  @override
+  Future<List<LocalVocabularyMatch>> lookupLocalVocabulary({
+    required String userId,
+    required String query,
+    int limit = 8,
+  }) async {
+    userId = requireUuid(userId, 'userId');
+    if (limit <= 0 || limit > 20) {
+      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 20');
+    }
+    final normalizedQuery = normalizeLocalVocabularyQuery(query);
+    if (normalizedQuery.isEmpty || normalizedQuery.runes.length > 80) {
+      return const [];
+    }
+
+    final rows = await _database.rawQuery('''
+      WITH candidates AS (
+        SELECT
+          COALESCE(NULLIF(TRIM(a.corrected_word), ''), d.word_raw) AS word,
+          COALESCE(NULLIF(TRIM(a.corrected_phonetic), ''), d.phonetic) AS phonetic,
+          COALESCE(NULLIF(TRIM(a.corrected_meaning_vi), ''), d.meaning_vi) AS meaning_vi,
+          d.part_of_speech,
+          d.example_en,
+          d.example_vi,
+          CASE WHEN a.corrected_word IS NOT NULL
+                 OR a.corrected_phonetic IS NOT NULL
+                 OR a.corrected_meaning_vi IS NOT NULL
+               THEN 1 ELSE 0 END AS corrected,
+          p.id AS photo_note_id,
+          p.updated_at
+        FROM vocab_detections d
+        JOIN scan_runs s
+          ON s.id = d.scan_run_id AND s.user_id = ?
+        JOIN photo_notes p
+          ON p.primary_scan_run_id = s.id AND p.user_id = s.user_id
+        LEFT JOIN vocab_annotations a ON a.id = (
+          SELECT latest.id
+          FROM vocab_annotations latest
+          WHERE latest.user_id = s.user_id
+            AND latest.detection_id = d.id
+            AND latest.deleted_at IS NULL
+          ORDER BY latest.revision DESC, latest.updated_at DESC, latest.id DESC
+          LIMIT 1
+        )
+        WHERE s.status = 'succeeded'
+          AND p.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM sync_tombstones tombstone
+            WHERE tombstone.user_id = p.user_id
+              AND tombstone.entity_type = 'photo_note'
+              AND tombstone.entity_id = p.id
+          )
+      ), matches AS (
+        SELECT * FROM candidates
+        WHERE lower(trim(word)) = ?
+      )
+      SELECT
+        word,
+        phonetic,
+        meaning_vi,
+        part_of_speech,
+        example_en,
+        example_vi,
+        MAX(corrected) AS corrected,
+        COUNT(DISTINCT photo_note_id) AS occurrence_count,
+        MAX(updated_at) AS last_seen_at
+      FROM matches
+      GROUP BY word, phonetic, meaning_vi, part_of_speech, example_en, example_vi
+      ORDER BY corrected DESC, last_seen_at DESC, word COLLATE NOCASE
+      LIMIT ?
+    ''', [userId, normalizedQuery, limit]);
+
+    return rows
+        .map(
+          (row) => LocalVocabularyMatch(
+            word: row['word']! as String,
+            phonetic: row['phonetic'] as String?,
+            meaningVi: row['meaning_vi'] as String?,
+            partOfSpeech: row['part_of_speech'] as String?,
+            exampleEn: row['example_en'] as String?,
+            exampleVi: row['example_vi'] as String?,
+            occurrenceCount: row['occurrence_count']! as int,
+            corrected: row['corrected'] == 1,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<PhotoNoteSnapshot?> _loadPhotoNoteSnapshot(

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:capy_vocab/core/services/tts_service.dart';
 import 'package:capy_vocab/features/chat/application/operational_chat_coordinator.dart';
 import 'package:capy_vocab/features/chat/data/operational_chat_database.dart';
 import 'package:capy_vocab/features/chat/data/operational_chat_store.dart';
@@ -8,11 +9,14 @@ import 'package:capy_vocab/features/chat/data/operational_chat_supabase_gateway.
 import 'package:capy_vocab/features/chat/domain/operational_chat.dart';
 import 'package:capy_vocab/features/chat/presentation/operational_chat_provider.dart';
 import 'package:capy_vocab/features/chat/presentation/operational_chat_screen.dart';
-import 'package:capy_vocab/features/friends/presentation/providers/friends_provider.dart';
 import 'package:capy_vocab/features/friends/presentation/screens/friends_leaderboard_screen.dart';
+import 'package:capy_vocab/features/friends/presentation/providers/friends_provider.dart';
 import 'package:capy_vocab/features/language_profile/application/language_profile_store.dart';
 import 'package:capy_vocab/features/language_profile/domain/entities/language_profile.dart';
 import 'package:capy_vocab/features/language_profile/presentation/language_profile_provider.dart';
+import 'package:capy_vocab/features/library/domain/entities/local_vocabulary_match.dart';
+import 'package:capy_vocab/features/library/domain/repositories/local_vocabulary_lookup_repository.dart';
+import 'package:capy_vocab/features/library/presentation/providers/library_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +29,40 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'operational_chat_coordinator_test.dart' as c;
 import 'operational_chat_relay_test.dart' as f;
 import 'operational_chat_supabase_gateway_test.dart' as auth;
+
+final class _RecordingTtsService extends TtsService {
+  final calls = <(String, String)>[];
+
+  @override
+  Future<void> speak(String text, {String languageCode = 'en'}) async {
+    calls.add((text, languageCode));
+  }
+
+  @override
+  Future<void> stop() async {}
+}
+
+final class _RecordingLookupRepository
+    implements LocalVocabularyLookupRepository {
+  final calls = <(String, String)>[];
+
+  @override
+  Future<List<LocalVocabularyMatch>> lookupLocalVocabulary({
+    required String userId,
+    required String query,
+    int limit = 8,
+  }) async {
+    calls.add((userId, query));
+    return [
+      LocalVocabularyMatch(
+        word: 'Translated',
+        meaningVi: 'đã dịch',
+        occurrenceCount: 1,
+        corrected: false,
+      ),
+    ];
+  }
+}
 
 Future<void> flush(WidgetTester tester, {bool Function()? until}) async {
   // FFI completes on real IO, not the widget test's fake clock.
@@ -53,6 +91,8 @@ void main() {
   late GoRouter router;
   late List<http.Request> requests;
   late bool friendsOnline, relayOnline;
+  late _RecordingTtsService speech;
+  late _RecordingLookupRepository dictionary;
   final owner = ChatOwner(
       projectRef: OperationalChatSupabaseGateway.stagingRef, userId: f.a);
 
@@ -66,6 +106,8 @@ void main() {
     requests = [];
     friendsOnline = false;
     relayOnline = false;
+    speech = _RecordingTtsService();
+    dictionary = _RecordingLookupRepository();
     httpClient = MockClient((request) async {
       requests.add(request);
       final after = request.url.queryParameters['friend_id'];
@@ -106,6 +148,9 @@ void main() {
       operationalChatCoordinatorProvider.overrideWith((_) async => coordinator),
       operationalChatNetworkProvider
           .overrideWithValue(() async => friendsOnline),
+      operationalChatTtsProvider.overrideWithValue(speech),
+      localVocabularyLookupRepositoryProvider
+          .overrideWith((_) async => dictionary),
       languageProfileStoreProvider.overrideWithValue(profiles),
       languageProfileRepositoryProvider
           .overrideWith((_) => throw StateError('No profile HTTP.')),
@@ -176,10 +221,31 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('sent and blocked have truthful status; raw remains selectable',
+  testWidgets(
+      'route keeps raw selectable and adds cached personalized translation',
       (tester) async {
     await tester.runAsync(() async {
       await store.mergeRemote(f.ack(f.message(1, text: 'sent')));
+      await store.mergeTranslations(
+        conversationId: f.conversation,
+        translations: [
+          OperationalChatTranslation(
+            id: f.uuid(400),
+            messageId: f.uuid(1),
+            targetLanguageCode: 'en',
+            translatedText: 'translated',
+            provider: operationalChatTranslationProvider,
+            model: operationalChatTranslationModel,
+            promptVersion: operationalChatPromptVersion,
+            translatorVersion: operationalChatTranslatorVersion,
+            status: ChatTranslationStatus.succeeded,
+            attemptCount: 1,
+            createdAt: f.instant,
+            updatedAt: f.instant,
+            completedAt: f.instant,
+          ),
+        ],
+      );
       await store.enqueue(f.message(2, text: 'blocked'));
       await store.fail(f.message(2, text: 'blocked'),
           blocked: true, retryAt: f.instant);
@@ -189,8 +255,73 @@ void main() {
     expect(find.textContaining('Server đã nhận'), findsOneWidget);
     expect(find.textContaining('Không gửi được · bản local được giữ'),
         findsOneWidget);
+    final primary = find.byKey(ValueKey('chat-primary-${f.uuid(1)}'));
+    final secondary = find.byKey(ValueKey('chat-secondary-${f.uuid(1)}'));
+    expect(find.descendant(of: primary, matching: find.text('translated')),
+        findsOneWidget);
+    expect(find.descendant(of: secondary, matching: find.text('sent')),
+        findsOneWidget);
+    await tester.tap(find.byKey(
+      ValueKey('chat-speak-chat-primary-${f.uuid(1)}'),
+    ));
+    await tester.pump();
+    expect(speech.calls, [('translated', 'en')]);
     expect(find.widgetWithText(SelectableText, 'blocked'), findsOneWidget);
     expect(requests, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('selected English translation opens owner-scoped local lookup',
+      (tester) async {
+    await tester.runAsync(() async {
+      await store.mergeRemote(f.ack(f.message(1, text: 'đã gửi')));
+      await store.mergeTranslations(
+        conversationId: f.conversation,
+        translations: [
+          OperationalChatTranslation(
+            id: f.uuid(401),
+            messageId: f.uuid(1),
+            targetLanguageCode: 'en',
+            translatedText: 'translated',
+            provider: operationalChatTranslationProvider,
+            model: operationalChatTranslationModel,
+            promptVersion: operationalChatPromptVersion,
+            translatorVersion: operationalChatTranslatorVersion,
+            status: ChatTranslationStatus.succeeded,
+            attemptCount: 1,
+            createdAt: f.instant,
+            updatedAt: f.instant,
+            completedAt: f.instant,
+          ),
+        ],
+      );
+    });
+    router.go('/chat/${f.conversation}');
+    await mount(tester);
+
+    final textFinder = find.byKey(
+      ValueKey('chat-text-chat-primary-${f.uuid(1)}'),
+    );
+    final editable = tester.state<EditableTextState>(find.descendant(
+      of: textFinder,
+      matching: find.byType(EditableText),
+    ));
+    final renderEditable = editable.renderEditable;
+    final selectionPosition = renderEditable.localToGlobal(
+      renderEditable.getLocalRectForCaret(const TextPosition(offset: 1)).center,
+    );
+    await tester.longPressAt(selectionPosition);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tra từ'));
+    await tester.pumpAndSettle();
+
+    expect(dictionary.calls, [(f.a, 'translated')]);
+    expect(find.text('Tra từ trên máy'), findsOneWidget);
+    expect(find.text('Translated'), findsOneWidget);
+    expect(find.text('đã dịch'), findsOneWidget);
+    expect(find.textContaining('không dùng mạng'), findsOneWidget);
+    expect(requests, isEmpty);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -351,6 +482,26 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('friends header opens the full Chat route additively',
+      (tester) async {
+    router.go('/friends');
+    await mount(tester);
+    expect(find.text('Bạn bè'), findsOneWidget);
+    expect(find.byKey(const Key('friends-open-chat')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('friends-open-chat')));
+    await flush(tester,
+        until: () =>
+            router.routeInformationProvider.value.uri.path == '/chat' &&
+            find.text('Trò chuyện · Staging').evaluate().isNotEmpty);
+
+    expect(router.routeInformationProvider.value.uri.path, '/chat');
+    expect(find.text('Trò chuyện · Staging'), findsOneWidget);
+    expect(find.byKey(const Key('chat-new')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
       'friend list switches owners and shows reciprocal peer without A data leakage',
       (tester) async {
@@ -405,12 +556,12 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets(
-      'friends screen has no duplicate chat entry and disabled mode avoids SDK',
+  testWidgets('friends screen exposes one Chat CTA only when relay is enabled',
       (tester) async {
     router.go('/friends');
     await mount(tester);
     expect(find.text('Trò chuyện · Staging'), findsNothing);
+    expect(find.byKey(const Key('friends-open-chat')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     container = ProviderContainer(overrides: [
@@ -424,6 +575,7 @@ void main() {
     router.go('/friends');
     await mount(tester);
     expect(find.text('Trò chuyện · Staging'), findsNothing);
+    expect(find.byKey(const Key('friends-open-chat')), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

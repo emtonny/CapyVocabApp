@@ -33,11 +33,30 @@ void main() {
     sourceLanguageCode: 'vi',
     clientCreatedAt: DateTime.utc(2026, 9, 17, 12),
     sentAt: DateTime.utc(2026, 9, 17, 12, 1),
-    rawText: 'Chào bạn!',
+    rawText: 'Giữ nguyên 📷 [Ảnh: demo.jpg] như nội dung text.',
     sendStatus: ChatSendStatus.sent,
   );
+  final translation = OperationalChatTranslation(
+    id: '50000000-0000-0000-0000-000000000001',
+    messageId: message.id,
+    targetLanguageCode: 'en',
+    translatedText: 'Keep 📷 [Image: demo.jpg] as plain text.',
+    provider: operationalChatTranslationProvider,
+    model: operationalChatTranslationModel,
+    promptVersion: operationalChatPromptVersion,
+    translatorVersion: operationalChatTranslatorVersion,
+    status: ChatTranslationStatus.succeeded,
+    attemptCount: 1,
+    createdAt: DateTime.utc(2026, 9, 17, 12, 1),
+    updatedAt: DateTime.utc(2026, 9, 17, 12, 2),
+    completedAt: DateTime.utc(2026, 9, 17, 12, 2),
+  );
 
-  Widget app({ValueChanged<String>? openConversation}) => ProviderScope(
+  Widget app({
+    ValueChanged<String>? openConversation,
+    String viewerNativeLanguageCode = 'vi',
+  }) =>
+      ProviderScope(
         overrides: [
           operationalChatEnabledProvider.overrideWithValue(true),
           operationalChatOwnerProvider.overrideWithValue(owner),
@@ -49,8 +68,11 @@ void main() {
               .overrideWith((_) => Stream.value([profile])),
           operationalChatMessagesProvider((owner, _conversation))
               .overrideWith((_) => Stream.value([message])),
-          operationalChatStoreProvider(owner)
-              .overrideWith((_) async => null),
+          operationalChatTranslationsProvider((owner, _conversation))
+              .overrideWith((_) => Stream.value([translation])),
+          operationalChatSourceProvider(owner)
+              .overrideWith((_) => Stream.value(viewerNativeLanguageCode)),
+          operationalChatStoreProvider(owner).overrideWith((_) async => null),
           operationalChatProfileRefreshProvider(owner)
               .overrideWith((_) async {}),
         ],
@@ -62,7 +84,8 @@ void main() {
         ),
       );
 
-  testWidgets('bubble shows unread, opens mailbox and opens conversation in-box',
+  testWidgets(
+      'bubble shows unread, opens mailbox and opens conversation in-box',
       (tester) async {
     String? opened;
     await tester.pumpWidget(app(openConversation: (id) => opened = id));
@@ -92,10 +115,22 @@ void main() {
 
     // In-box conversation view is rendered inside the box chat
     expect(find.byKey(const Key('chat-mailbox-back')), findsOneWidget);
-    expect(find.text('Chỉ text gốc, chưa dịch'), findsOneWidget);
-    expect(find.text('Chào bạn!'), findsOneWidget);
+    expect(find.text('Tin gốc luôn được giữ · bản dịch theo hồ sơ'),
+        findsOneWidget);
+    expect(
+      find.text('Giữ nguyên 📷 [Ảnh: demo.jpg] như nội dung text.'),
+      findsOneWidget,
+    );
+    expect(
+        find.text('Keep 📷 [Image: demo.jpg] as plain text.'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(ValueKey('chat-primary-${message.id}'))).dy,
+      lessThan(tester
+          .getTopLeft(find.byKey(ValueKey('chat-secondary-${message.id}')))
+          .dy),
+    );
     expect(find.byKey(const Key('chat-compose')), findsOneWidget);
-    expect(find.byKey(const Key('chat-pick-image')), findsOneWidget);
+    expect(find.byKey(const Key('chat-pick-image')), findsNothing);
     expect(find.byKey(const Key('chat-send')), findsOneWidget);
 
     // Tapping back button returns to the mailbox friend list
@@ -105,7 +140,44 @@ void main() {
     expect(find.text('Capy Mây'), findsOneWidget);
   });
 
-  testWidgets('AI card announces unavailable and idle bubble retreats to edge',
+  testWidgets(
+      'same shared row follows each viewer language without UI overflow',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final semantics = tester.ensureSemantics();
+
+    await tester.pumpWidget(app(viewerNativeLanguageCode: 'en'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('operational-chat-bubble')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Capy Mây'));
+    await tester.pumpAndSettle();
+
+    final primary = find.byKey(ValueKey('chat-primary-${message.id}'));
+    final secondary = find.byKey(ValueKey('chat-secondary-${message.id}'));
+    expect(primary, findsOneWidget);
+    expect(secondary, findsOneWidget);
+    expect(find.descendant(of: primary, matching: find.text(message.rawText)),
+        findsOneWidget);
+    expect(
+      find.descendant(
+          of: secondary, matching: find.text(translation.translatedText!)),
+      findsOneWidget,
+    );
+    expect(
+        find.bySemanticsLabel(RegExp('Dòng chính, Tin gốc')), findsOneWidget);
+    expect(tester.getRect(find.byKey(const Key('chat-send'))).right,
+        lessThanOrEqualTo(320));
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('mailbox has no chatbot and idle bubble retreats to edge',
       (tester) async {
     await tester.pumpWidget(app());
     await tester.pump();
@@ -117,14 +189,9 @@ void main() {
 
     await tester.tapAt(const Offset(797, 450));
     await tester.pumpAndSettle();
-    if (find.byKey(const Key('chat-ai-card')).evaluate().isEmpty) {
-      await tester.tap(bubble, warnIfMissed: false);
-      await tester.pumpAndSettle();
-    }
-    await tester.tap(find.byKey(const Key('chat-ai-card')));
-    await tester.pump();
-    expect(find.text('Chat với AI chưa mở. Bạn quay lại sau nhé!'),
-        findsOneWidget);
+    expect(find.byKey(const Key('chat-mailbox-search')), findsOneWidget);
+    expect(find.byKey(const Key('chat-ai-card')), findsNothing);
+    expect(find.byKey(const Key('chatbot-window')), findsNothing);
   });
 
   testWidgets('bubble can be dragged and docks to the nearest edge',
@@ -224,4 +291,3 @@ void main() {
     expect(find.text('Capy Mây'), findsNothing);
   });
 }
-

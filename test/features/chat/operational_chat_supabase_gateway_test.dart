@@ -52,6 +52,63 @@ Map<String, dynamic> chatRow(
       'participant_high': high,
       'last_message_at': null
     };
+Map<String, dynamic> translationRow(int n,
+        {String conversationId = conversation,
+        String translatorVersion = operationalChatTranslatorVersion}) =>
+    {
+      'id': uuid(n + 500),
+      'message_id': uuid(n),
+      'target_language_code': 'en',
+      'translated_text': 'Synthetic translation $n',
+      'provider': operationalChatTranslationProvider,
+      'model': operationalChatTranslationModel,
+      'prompt_version': operationalChatPromptVersion,
+      'translator_version': translatorVersion,
+      'status': 'succeeded',
+      'attempt_count': 1,
+      'next_attempt_at': null,
+      'error_code': null,
+      'created_at': instant.toIso8601String(),
+      'completed_at': instant.toIso8601String(),
+      'updated_at': instant.toIso8601String(),
+      'chat_operational_messages': {'conversation_id': conversationId}
+    };
+Map<String, dynamic> correctionRow(int n,
+        {String conversationId = conversation,
+        String status = 'proposed',
+        String author = a}) =>
+    {
+      'id': uuid(n + 700),
+      'message_id': uuid(n),
+      'author_id': author,
+      'target_language_code': 'en',
+      'proposed_text': 'Are you going tonight?',
+      'status': status,
+      'accepted_by': status == 'accepted' ? a : null,
+      'accepted_at': status == 'accepted' ? instant.toIso8601String() : null,
+      'rejected_by': status == 'rejected' ? a : null,
+      'rejected_at': status == 'rejected' ? instant.toIso8601String() : null,
+      'created_at': instant.toIso8601String(),
+      'updated_at': instant.toIso8601String(),
+      'chat_operational_messages': {'conversation_id': conversationId}
+    };
+Map<String, dynamic> annotationRow(int n,
+        {String conversationId = conversation}) =>
+    {
+      'id': uuid(n + 800),
+      'message_id': uuid(n),
+      'correction_id': uuid(n + 700),
+      'created_by': a,
+      'span_text': '😀',
+      'span_start': 9,
+      'span_end': 10,
+      'tag_type': 'slang',
+      'normalized_source': 'vui',
+      'annotator_role': 'source_speaker',
+      'status': 'active',
+      'created_at': instant.toIso8601String(),
+      'chat_operational_messages': {'conversation_id': conversationId}
+    };
 http.Response jsonResponse(Object? value, [int status = 200]) =>
     http.Response(jsonEncode(value), status,
         headers: {'content-type': 'application/json; charset=utf-8'});
@@ -238,6 +295,147 @@ void main() {
       expect(request.url.queryParameters['deleted_at'], 'is.null');
       expect(request.url.queryParameters['moderation_state'], 'eq.visible');
     }
+  });
+  test('translations paginate by version and conversation through RLS join',
+      () async {
+    handler = (request) {
+      final cursor = request.url.queryParameters['id'];
+      return jsonResponse(cursor == null
+          ? [translationRow(1)]
+          : cursor == 'gt.${uuid(501)}'
+              ? [translationRow(2)]
+              : []);
+    };
+
+    final rows = await gateway.fetchTranslations(conversation);
+
+    expect(rows.map((row) => row.messageId), [uuid(1), uuid(2)]);
+    expect(rows.every((row) => row.status == ChatTranslationStatus.succeeded),
+        isTrue);
+    expect(requests.length, 3);
+    for (final request in requests) {
+      expect(request.url.path, '/rest/v1/chat_translations');
+      expect(request.url.queryParameters['order'], 'id.asc.nullslast');
+      expect(request.url.queryParameters['translator_version'],
+          'in.("$operationalChatLegacyTranslatorVersion","$operationalChatTranslatorVersion")');
+      expect(
+          request
+              .url.queryParameters['chat_operational_messages.conversation_id'],
+          'eq.$conversation');
+      expect(request.url.queryParameters['select'],
+          contains('chat_operational_messages!inner(conversation_id)'));
+    }
+  });
+  test('translation response from another chat or stale policy fails closed',
+      () async {
+    for (final row in [
+      translationRow(1, conversationId: uuid(999)),
+      translationRow(1, translatorVersion: 'chat-translate-old'),
+    ]) {
+      handler = (request) =>
+          jsonResponse(request.url.queryParameters['id'] == null ? [row] : []);
+      await expectLater(
+          gateway.fetchTranslations(conversation), throwsFormatException);
+    }
+  });
+  test('correction proposal sends only immutable proposal columns', () async {
+    final pending = OperationalChatCorrection(
+      id: uuid(701),
+      messageId: uuid(1),
+      authorId: a,
+      targetLanguageCode: 'en',
+      proposedText: 'Are you going tonight?',
+      status: ChatCorrectionStatus.proposed,
+      createdAt: instant,
+      updatedAt: instant,
+      syncStatus: ChatCorrectionSyncStatus.proposalPending,
+      nextAttemptAt: instant,
+    );
+    handler = (_) => jsonResponse(correctionRow(1), 201);
+
+    final ack = await gateway.proposeCorrection(pending);
+
+    expect(ack.id, pending.id);
+    expect(requests.single.url.path, '/rest/v1/chat_corrections');
+    expect(jsonDecode(requests.single.body), pending.insertPayload);
+    expect(jsonDecode(requests.single.body), isNot(contains('status')));
+  });
+  test('corrections page by conversation and reject a foreign joined row',
+      () async {
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null ? [correctionRow(1)] : []);
+    expect((await gateway.fetchCorrections(conversation)).single.messageId,
+        uuid(1));
+    expect(
+        requests.first.url
+            .queryParameters['chat_operational_messages.conversation_id'],
+        'eq.$conversation');
+
+    requests.clear();
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null
+            ? [correctionRow(1, conversationId: uuid(999))]
+            : []);
+    await expectLater(
+        gateway.fetchCorrections(conversation), throwsFormatException);
+  });
+  test('accept decision uses resolver RPC and validates its final state',
+      () async {
+    handler = (_) => jsonResponse(correctionRow(1, status: 'accepted'));
+
+    final result = await gateway.resolveCorrection(
+        uuid(701), ChatCorrectionDecision.accepted);
+
+    expect(result.status, ChatCorrectionStatus.accepted);
+    expect(requests.single.url.path, '/rest/v1/rpc/resolve_chat_correction');
+    expect(jsonDecode(requests.single.body), {
+      'p_correction_id': uuid(701),
+      'p_decision': 'accepted',
+    });
+  });
+  test('annotation proposal sends code-point span and immutable fields only',
+      () async {
+    final pending = OperationalChatAnnotation(
+      id: uuid(801),
+      messageId: uuid(1),
+      correctionId: uuid(701),
+      createdBy: a,
+      spanText: '😀',
+      spanStart: 9,
+      spanEnd: 10,
+      tagType: ChatAnnotationType.slang,
+      normalizedSource: 'vui',
+      createdAt: instant,
+      syncStatus: ChatAnnotationSyncStatus.pending,
+      nextAttemptAt: instant,
+    );
+    handler = (_) => jsonResponse(annotationRow(1), 201);
+
+    final ack = await gateway.proposeAnnotation(pending);
+
+    expect(ack.id, pending.id);
+    expect(requests.single.url.path, '/rest/v1/chat_slang_annotations');
+    expect(jsonDecode(requests.single.body), pending.insertPayload);
+    expect(jsonDecode(requests.single.body), isNot(contains('created_at')));
+  });
+  test('annotations page by conversation and reject a foreign joined row',
+      () async {
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null ? [annotationRow(1)] : []);
+    expect(
+        (await gateway.fetchAnnotations(conversation)).single.spanText, '😀');
+    expect(
+        requests.first.url
+            .queryParameters['chat_operational_messages.conversation_id'],
+        'eq.$conversation');
+
+    requests.clear();
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null
+            ? [annotationRow(1, conversationId: uuid(999))]
+            : []);
+    await expectLater(
+        gateway.fetchAnnotations(conversation), throwsFormatException);
   });
   test('partial pagination failure returns no complete inventory', () async {
     handler = (request) => request.url.queryParameters['id'] == null
@@ -475,7 +673,14 @@ void main() {
           (joins.single['payload']['config']['postgres_changes'] as List)
               .map((row) => row['table'])
               .toSet(),
-          {'chat_conversations', 'chat_members', 'chat_operational_messages'});
+          {
+            'chat_conversations',
+            'chat_members',
+            'chat_operational_messages',
+            'chat_translations',
+            'chat_corrections',
+            'chat_slang_annotations'
+          });
       final payload = {
         'ids': [3],
         'data': {

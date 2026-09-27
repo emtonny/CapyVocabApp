@@ -103,13 +103,18 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  test('separate DB v2 contains operational chat and peer cache only',
-      () async {
+  test('separate DB v6 contains operational chat caches only', () async {
     final rows = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-    expect(rows.map((row) => row['name']).toSet(),
-        {'chat_conversations', 'chat_messages', 'chat_peer_profiles'});
-    expect(await db.getVersion(), 2);
+    expect(rows.map((row) => row['name']).toSet(), {
+      'chat_conversations',
+      'chat_messages',
+      'chat_peer_profiles',
+      'chat_translations',
+      'chat_corrections',
+      'chat_slang_annotations'
+    });
+    expect(await db.getVersion(), 6);
     expect((await db.rawQuery('PRAGMA foreign_keys')).single.values.single, 1);
   });
   test('raw validation preserves Unicode and counts code points not UTF16', () {

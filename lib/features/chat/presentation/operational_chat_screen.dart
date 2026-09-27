@@ -4,10 +4,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/widgets/graph_paper_background.dart';
+import '../../library/domain/entities/local_vocabulary_match.dart';
+import '../../library/presentation/providers/library_provider.dart';
 import '../domain/operational_chat.dart';
+import 'operational_chat_dictionary_sheet.dart';
+import 'operational_chat_correction_panel.dart';
+import 'operational_chat_message_body.dart';
 import 'operational_chat_provider.dart';
 
-/// Operational raw text only. No translation or Training reads/writes here.
+/// Operational Chat reads local raw/translation caches; Training stays separate.
 class OperationalChatScreen extends ConsumerWidget {
   const OperationalChatScreen({super.key, this.conversationId});
   final String? conversationId;
@@ -115,6 +120,7 @@ class _DetailState extends ConsumerState<_Detail> {
   final _text = TextEditingController();
   bool _saving = false;
   bool _markingRead = false;
+  String? _speakingLineKey;
   @override
   void dispose() {
     _text.dispose();
@@ -164,6 +170,83 @@ class _DetailState extends ConsumerState<_Detail> {
     }
   }
 
+  Future<void> _speak(
+    OperationalChatMessage message,
+    String text,
+    String languageCode,
+  ) async {
+    if (_speakingLineKey != null ||
+        ref.read(operationalChatOwnerProvider) != widget.owner) {
+      return;
+    }
+    final lineKey = '${message.id}:$languageCode';
+    setState(() => _speakingLineKey = lineKey);
+    try {
+      await ref
+          .read(operationalChatTtsProvider)
+          .speak(text, languageCode: languageCode);
+    } catch (_) {
+      if (mounted && ref.read(operationalChatOwnerProvider) == widget.owner) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Thiết bị chưa phát được nội dung này. Hãy kiểm tra giọng đọc.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted && _speakingLineKey == lineKey) {
+        setState(() => _speakingLineKey = null);
+      }
+    }
+  }
+
+  Future<void> _lookupVocabulary(
+      String selectedText, String languageCode) async {
+    final query = normalizeLocalVocabularyQuery(selectedText);
+    if (languageCode != 'en' ||
+        query.isEmpty ||
+        query.runes.length > 80 ||
+        ref.read(operationalChatOwnerProvider) != widget.owner) {
+      return;
+    }
+
+    Future<List<LocalVocabularyMatch>> lookup() async {
+      if (ref.read(operationalChatOwnerProvider) != widget.owner) {
+        throw StateError('Chat owner changed.');
+      }
+      final repository =
+          await ref.read(localVocabularyLookupRepositoryProvider.future);
+      if (ref.read(operationalChatOwnerProvider) != widget.owner) {
+        throw StateError('Chat owner changed.');
+      }
+      final matches = await repository.lookupLocalVocabulary(
+        userId: widget.owner.userId,
+        query: query,
+      );
+      if (ref.read(operationalChatOwnerProvider) != widget.owner) {
+        throw StateError('Chat owner changed.');
+      }
+      return matches;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => Consumer(
+        builder: (context, ref, child) {
+          if (ref.watch(operationalChatOwnerProvider) != widget.owner) {
+            return const SafeArea(
+              child: _Notice('Phiên đăng nhập đã thay đổi. Hãy đóng tra từ.'),
+            );
+          }
+          return OperationalChatDictionarySheet(query: query, lookup: lookup);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final inbox = ref.watch(operationalChatInboxProvider(widget.owner));
@@ -189,11 +272,25 @@ class _DetailState extends ConsumerState<_Detail> {
     final ready = source != null && runtime.asData?.value != null && !_saving;
     final messages = ref.watch(
         operationalChatMessagesProvider((widget.owner, widget.conversationId)));
+    final translations = ref.watch(operationalChatTranslationsProvider(
+        (widget.owner, widget.conversationId)));
+    final translationsByMessage = {
+      for (final row
+          in translations.asData?.value ?? <OperationalChatTranslation>[])
+        row.messageId: row,
+    };
     return Column(children: [
       Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child:
-              Text('${_peer(conversation.peerId)} · chỉ text gốc, chưa dịch')),
+          child: Column(children: [
+            Text(
+                '${_peer(conversation.peerId)} · tin gốc luôn được giữ · bản dịch theo hồ sơ'),
+            const Text(
+              'Bôi đen từ tiếng Anh để Tra từ trong Library trên máy.',
+              key: Key('chat-dictionary-hint'),
+              style: TextStyle(fontSize: 12, color: Color(0xFF665952)),
+            ),
+          ])),
       Expanded(
           child: messages.when(
         skipLoadingOnRefresh: false,
@@ -224,7 +321,24 @@ class _DetailState extends ConsumerState<_Detail> {
                         child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              SelectableText(message.rawText),
+                              OperationalChatMessageBody(
+                                message: message,
+                                viewerNativeLanguageCode: source,
+                                translation: translationsByMessage[message.id],
+                                translationCacheLoading: translations.isLoading,
+                                translationCacheError: translations.hasError,
+                                speakingLineKey: _speakingLineKey,
+                                onSpeak: (text, languageCode) =>
+                                    _speak(message, text, languageCode),
+                                onLookup: (text, languageCode) =>
+                                    _lookupVocabulary(text, languageCode),
+                              ),
+                              OperationalChatCorrectionPanel(
+                                owner: widget.owner,
+                                conversationId: widget.conversationId,
+                                message: message,
+                                viewerNativeLanguageCode: source,
+                              ),
                               const SizedBox(height: 6),
                               Text(
                                   '${_time(message.sentAt ?? message.clientCreatedAt)} · ${_status(message.sendStatus)}',

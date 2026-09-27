@@ -1,18 +1,22 @@
 #requires -Version 7.0
+param([switch]$CorrectionOnly, [switch]$AnnotationOnly)
 # C2 backend smoke only. Synthetic accounts/content; no Gemini or Training calls.
 # Realtime wire protocol: https://supabase.com/docs/guides/realtime/protocol
 $ErrorActionPreference = 'Stop'
 $stagingRef = 'nxteaznowkfennxpqjmt'
 $baseUrl = "https://$stagingRef.supabase.co"
 $runId = [guid]::NewGuid().ToString('N')
-$scope = 'c2_operational_chat_smoke'
+$scope = if ($AnnotationOnly) { 'c6d_chat_annotation_smoke' } elseif ($CorrectionOnly) { 'c6c_chat_correction_smoke' } else { 'c2_operational_chat_smoke' }
 $fixtureIds = [Collections.Generic.HashSet[string]]::new()
 $accounts = [Collections.Generic.List[object]]::new()
 $sockets = [Collections.Generic.List[object]]::new()
 $checks = [Collections.Generic.List[string]]::new()
 $chatTables = @('chat_conversations','chat_members','chat_operational_messages','chat_translations','chat_corrections')
+if ($AnnotationOnly) { $chatTables += 'chat_slang_annotations' }
+$subscriptionCount = if ($AnnotationOnly) { 6 } else { 5 }
 $baseline = @{}
 $conversationId = $null
+$translationMode = 'skipped'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
 function Request([string]$Method, [string]$Path, [hashtable]$Headers, [object]$Body) {
@@ -86,8 +90,8 @@ function Pump($Connection) {
     catch { throw 'C2 Realtime JSON invalid; frame was not logged.' }
     $Connection.Stream.SetLength(0)
     if ($frame.event -eq 'phx_reply' -and $frame.ref -eq '1') {
-        if ($frame.payload.status -ne 'ok' -or @($frame.payload.response.postgres_changes).Count -ne 5) {
-            throw 'C2 Realtime join rejected or five-table subscription incomplete.'
+        if ($frame.payload.status -ne 'ok' -or @($frame.payload.response.postgres_changes).Count -ne $subscriptionCount) {
+            throw 'C2 Realtime join rejected or table subscription incomplete.'
         }
         $Connection.Joined = $true
     }
@@ -129,7 +133,7 @@ try {
     if (-not $publicValue -or -not $adminValue) { throw 'Unsupported credential shape.' }
     $anonHeaders = @{apikey=$publicValue; 'User-Agent'='capy-c2-smoke/1.0'}
     $adminHeaders = @{apikey=$adminValue; Authorization="Bearer $adminValue"; Prefer='return=representation,count=exact'; 'User-Agent'='capy-c2-smoke/1.0'}
-    foreach ($table in @($chatTables)+@('friends','chat_messages','user_language_profiles')) { $baseline[$table] = Count-Rows $table }
+    foreach ($table in @($chatTables)+@('chat_correction_events','friends','chat_messages','user_language_profiles')) { $baseline[$table] = Count-Rows $table }
     for ($index=0; $index -lt 3; $index++) {
         $email = "c2-$runId-$index@example.com"
         $password = 'C2!' + [guid]::NewGuid().ToString('N')
@@ -180,7 +184,7 @@ try {
     Status (Request POST '/rest/v1/chat_members' $c.Headers @{conversation_id=$conversationId; user_id=$c.Id}) @(403) 'Member injection denial'
     $checks.Add('canonical_atomic_rpc_and_no_client_membership_mutation')
 
-    $messageId=[guid]::NewGuid().ToString(); $translationId=[guid]::NewGuid().ToString(); $correctionId=[guid]::NewGuid().ToString()
+    $messageId=[guid]::NewGuid().ToString(); $translationId=[guid]::NewGuid().ToString(); $correctionId=[guid]::NewGuid().ToString(); $correction2Id=[guid]::NewGuid().ToString(); $annotationId=[guid]::NewGuid().ToString()
     foreach ($account in $accounts) {
         $connection = [pscustomobject]@{
             Socket=[Net.WebSockets.ClientWebSocket]::new(); Buffer=[byte[]]::new(65536)
@@ -203,10 +207,11 @@ try {
             @{event='*'; schema='public'; table='chat_translations'; filter="message_id=eq.$messageId"},
             @{event='*'; schema='public'; table='chat_corrections'; filter="message_id=eq.$messageId"}
         )
+        if ($AnnotationOnly) { $subscriptions += @{event='*'; schema='public'; table='chat_slang_annotations'; filter="message_id=eq.$messageId"} }
         Send-Frame $connection phx_join @{config=@{broadcast=@{ack=$false; self=$false}; presence=@{enabled=$false}; private=$false; postgres_changes=$subscriptions}; access_token=$account.Token} $connection.Topic '1'
     }
-    Wait-Realtime { @($sockets | Where-Object { -not $_.Joined -or -not $_.Ready }).Count -eq 0 } 'Five-table subscriptions'
-    $checks.Add('three_real_websocket_sessions_five_table_subscriptions_ready')
+    Wait-Realtime { @($sockets | Where-Object { -not $_.Joined -or -not $_.Ready }).Count -eq 0 } 'Chat table subscriptions'
+    $checks.Add("three_real_websocket_sessions_$($subscriptionCount)_table_subscriptions_ready")
 
     $raw = @{id=$messageId; conversation_id=$conversationId; sender_id=$a.Id; raw_text='C2 synthetic: Tối nay đi quẩy k bro?'; source_language_code='vi'; client_generated_id=[guid]::NewGuid().ToString(); client_created_at='2000-01-01T00:00:00Z'}
     $sent = Request POST '/rest/v1/chat_operational_messages' $a.Headers $raw
@@ -217,8 +222,7 @@ try {
         $event = @($connection.Events | Where-Object { $_.table -eq 'chat_operational_messages' -and $_.record.id -eq $messageId })[0]
         if ($event.record.raw_text -cne $raw.raw_text) { throw 'Realtime raw text mismatch.' }
     }
-    Empty (Request GET "/rest/v1/chat_translations?message_id=eq.$messageId&select=id" $b.Headers) 'Raw relay before translation'
-    $checks.Add('raw_unicode_server_clock_realtime_both_members_before_translation')
+    $checks.Add('raw_unicode_server_clock_realtime_both_members')
     Status (Request POST '/rest/v1/chat_operational_messages' $a.Headers $raw) @(409) 'Idempotent duplicate'
     $spoof = $raw.Clone(); $spoof.id=[guid]::NewGuid().ToString(); $spoof.client_generated_id=[guid]::NewGuid().ToString(); $spoof.sender_id=$b.Id
     Status (Request POST '/rest/v1/chat_operational_messages' $a.Headers $spoof) @(403) 'Sender spoof denial'
@@ -226,34 +230,140 @@ try {
     Status (Request DELETE "/rest/v1/chat_operational_messages?id=eq.$messageId" $a.Headers) @(403) 'Client raw delete denial'
     $checks.Add('retry_no_duplicate_sender_spoof_edit_delete_denied')
 
-    $translation = @{id=$translationId; message_id=$messageId; target_language_code='en'; translator_version='c2-synthetic-v1'; status='queued'}
-    Status (Request POST '/rest/v1/chat_translations' $a.Headers $translation) @(403) 'Client provider write denial'
-    Status (Request POST '/rest/v1/chat_translations' $adminHeaders $translation) @(201) 'Service translation job'
-    Status (Request PATCH "/rest/v1/chat_translations?id=eq.$translationId" $adminHeaders @{
-        status='succeeded'; translated_text='C2 synthetic translation for backend smoke only.'; model='synthetic-no-provider-call'; prompt_version='synthetic'; completed_at=[DateTime]::UtcNow.ToString('o'); attempt_count=1
-    }) @(200) 'Service translation completion'
-    Wait-Realtime {
-        @($sockets[0].Events | Where-Object { $_.table -eq 'chat_translations' -and $_.record.id -eq $translationId -and $_.record.status -eq 'succeeded' }).Count -gt 0 -and
-        @($sockets[1].Events | Where-Object { $_.table -eq 'chat_translations' -and $_.record.id -eq $translationId -and $_.record.status -eq 'succeeded' }).Count -gt 0
-    } 'Shared translation A/B relay'
-    foreach ($connection in @($sockets[0],$sockets[1])) {
-        $event = @($connection.Events | Where-Object { $_.table -eq 'chat_translations' -and $_.record.id -eq $translationId -and $_.record.status -eq 'succeeded' })[0]
-        if ($event.record.translated_text -cne 'C2 synthetic translation for backend smoke only.') { throw 'Shared Realtime translation content mismatch.' }
+    if (-not $CorrectionOnly -and -not $AnnotationOnly) {
+        $translation = @{id=$translationId; message_id=$messageId; target_language_code='en'; translator_version='c2-synthetic-v1'; status='queued'}
+        Status (Request POST '/rest/v1/chat_translations' $a.Headers $translation) @(403) 'Client provider write denial'
+        $serviceCreate = Request POST '/rest/v1/chat_translations' $adminHeaders $translation
+        if ($serviceCreate.Status -eq 201) {
+            $translationMode = 'synthetic'
+            Status (Request PATCH "/rest/v1/chat_translations?id=eq.$translationId" $adminHeaders @{
+                status='succeeded'; translated_text='C2 synthetic translation for backend smoke only.'; model='synthetic-no-provider-call'; prompt_version='synthetic'; completed_at=[DateTime]::UtcNow.ToString('o'); attempt_count=1
+            }) @(200) 'Service translation completion'
+        }
+        else {
+            Status $serviceCreate @(403,409) 'Active worker translation ownership'
+            $translationMode = 'active_worker'
+            $translationDeadline = [DateTime]::UtcNow.AddSeconds(60)
+            do {
+                $workerTranslation = Request GET "/rest/v1/chat_translations?message_id=eq.$messageId&target_language_code=eq.en&select=id,target_language_code,translated_text,provider,model,prompt_version,translator_version,status,attempt_count,error_code" $a.Headers
+                Status $workerTranslation @(200) 'Active worker translation read'
+                if (@($workerTranslation.Json).Count -gt 1) {
+                    throw 'Active worker created duplicate translations.'
+                }
+                if (@($workerTranslation.Json).Count -eq 1 -and
+                    $workerTranslation.Json[0].status -eq 'succeeded') {
+                    break
+                }
+                if (@($workerTranslation.Json).Count -eq 1 -and
+                    $workerTranslation.Json[0].status -eq 'failed') {
+                    $safeError = if (
+                        [string]$workerTranslation.Json[0].error_code -match
+                        '^[a-z0-9_]+$'
+                    ) { [string]$workerTranslation.Json[0].error_code } else {
+                        'unavailable'
+                    }
+                    throw "Active worker translation failed: error_code=$safeError; attempt_count=$($workerTranslation.Json[0].attempt_count)."
+                }
+                Start-Sleep -Milliseconds 250
+            } while ([DateTime]::UtcNow -lt $translationDeadline)
+            if (@($workerTranslation.Json).Count -ne 1 -or
+                $workerTranslation.Json[0].status -ne 'succeeded' -or
+                [string]::IsNullOrWhiteSpace([string]$workerTranslation.Json[0].translated_text) -or
+                [string]::IsNullOrWhiteSpace([string]$workerTranslation.Json[0].provider) -or
+                [string]::IsNullOrWhiteSpace([string]$workerTranslation.Json[0].model) -or
+                [string]::IsNullOrWhiteSpace([string]$workerTranslation.Json[0].prompt_version) -or
+                [string]::IsNullOrWhiteSpace([string]$workerTranslation.Json[0].translator_version)) {
+                throw 'Active worker translation did not reach a complete valid state.'
+            }
+            $translationId = [string]$workerTranslation.Json[0].id
+            foreach ($member in @($a,$b)) {
+                $memberTranslation = Request GET "/rest/v1/chat_translations?id=eq.$translationId&select=id,status" $member.Headers
+                Status $memberTranslation @(200) 'Shared active translation read'
+                if (@($memberTranslation.Json).Count -ne 1 -or
+                    $memberTranslation.Json[0].status -ne 'succeeded') {
+                    throw 'Active worker translation was not shared with both members.'
+                }
+            }
+        }
+        Wait-Realtime {
+            @($sockets[0].Events | Where-Object { $_.table -eq 'chat_translations' -and $_.record.id -eq $translationId -and $_.record.status -eq 'succeeded' }).Count -gt 0 -and
+            @($sockets[1].Events | Where-Object { $_.table -eq 'chat_translations' -and $_.record.id -eq $translationId -and $_.record.status -eq 'succeeded' }).Count -gt 0
+        } 'Shared translation A/B relay'
+        if ($translationMode -eq 'synthetic') {
+            foreach ($connection in @($sockets[0],$sockets[1])) {
+                $event = @($connection.Events | Where-Object { $_.table -eq 'chat_translations' -and $_.record.id -eq $translationId -and $_.record.status -eq 'succeeded' })[0]
+                if ($event.record.translated_text -cne 'C2 synthetic translation for backend smoke only.') { throw 'Shared Realtime translation content mismatch.' }
+            }
+        }
+        $identityStatus = if ($translationMode -eq 'active_worker') {
+            @(403,409)
+        } else {
+            @(409)
+        }
+        Status (Request POST '/rest/v1/chat_translations' $adminHeaders $translation) $identityStatus 'Translation identity unique'
+        $immutableStatus = if ($translationMode -eq 'active_worker') {
+            @(400,403)
+        } else {
+            @(400)
+        }
+        Status (Request PATCH "/rest/v1/chat_translations?id=eq.$translationId" $adminHeaders @{translated_text='rewrite'}) $immutableStatus 'Successful translation immutable'
+        $checks.Add("$($translationMode)_shared_translation_realtime_unique_and_immutable")
     }
-    Status (Request POST '/rest/v1/chat_translations' $adminHeaders $translation) @(409) 'Translation identity unique'
-    Status (Request PATCH "/rest/v1/chat_translations?id=eq.$translationId" $adminHeaders @{translated_text='rewrite'}) @(400) 'Successful translation immutable'
-    $checks.Add('service_only_shared_translation_realtime_unique_and_immutable')
 
     $correction = @{id=$correctionId; message_id=$messageId; author_id=$b.Id; target_language_code='en'; proposed_text='C2 synthetic human correction.'}
-    Status (Request POST '/rest/v1/chat_corrections' $b.Headers $correction) @(201) 'Other member correction'
+    $proposed = Request POST '/rest/v1/chat_corrections' $b.Headers $correction
+    Status $proposed @(201) 'Other member correction'
+    if ($proposed.Json[0].status -ne 'proposed' -or -not $proposed.Json[0].updated_at) { throw 'Correction proposal server state missing.' }
+    $duplicate = $correction.Clone(); $duplicate.id = $correction2Id
+    Status (Request POST '/rest/v1/chat_corrections' $b.Headers $duplicate) @(409) 'Duplicate open correction denial'
+    Status (Request POST '/rest/v1/rpc/resolve_chat_correction' $b.Headers @{p_correction_id=$correctionId; p_decision='accepted'}) @(403) 'Correction author decision denial'
     Status (Request PATCH "/rest/v1/chat_corrections?id=eq.$correctionId" $b.Headers @{status='accepted'; accepted_by=$a.Id; accepted_at=[DateTime]::UtcNow.ToString('o')}) @(403) 'Client correction decision denial'
-    Status (Request PATCH "/rest/v1/chat_corrections?id=eq.$correctionId" $adminHeaders @{status='accepted'; accepted_by=$b.Id; accepted_at=[DateTime]::UtcNow.ToString('o')}) @(400) 'Wrong decision actor denial'
-    Status (Request PATCH "/rest/v1/chat_corrections?id=eq.$correctionId" $adminHeaders @{status='accepted'; accepted_by=$a.Id; accepted_at=[DateTime]::UtcNow.ToString('o')}) @(200) 'Trusted correction decision'
+    $accepted = Request POST '/rest/v1/rpc/resolve_chat_correction' $a.Headers @{p_correction_id=$correctionId; p_decision='accepted'}
+    Status $accepted @(200) 'Sender correction acceptance RPC'
+    if ($accepted.Json.status -ne 'accepted' -or $accepted.Json.accepted_by -ne $a.Id) { throw 'Correction acceptance RPC returned an invalid actor/state.' }
+    if ($AnnotationOnly) {
+        $annotation = @{
+            id=$annotationId; message_id=$messageId; correction_id=$correctionId; created_by=$a.Id
+            span_text='quẩy'; span_start=25; span_end=29; tag_type='slang'; normalized_source='đi chơi hoặc đi bar'
+        }
+        Status (Request POST '/rest/v1/chat_slang_annotations' $b.Headers $annotation) @(403) 'Correction author source-tag denial'
+        Status (Request POST '/rest/v1/chat_slang_annotations' $c.Headers $annotation) @(403) 'Outsider source-tag denial'
+        $tagged = Request POST '/rest/v1/chat_slang_annotations' $a.Headers $annotation
+        Status $tagged @(201) 'Source speaker annotation'
+        if ($tagged.Json[0].span_text -cne 'quẩy' -or $tagged.Json[0].span_start -ne 25 -or
+            $tagged.Json[0].span_end -ne 29 -or $tagged.Json[0].annotator_role -ne 'source_speaker') {
+            throw 'C6D Unicode annotation response mismatch.'
+        }
+        Status (Request POST '/rest/v1/chat_slang_annotations' $a.Headers $annotation) @(409) 'Annotation lost-ACK identity duplicate'
+        Status (Request PATCH "/rest/v1/chat_slang_annotations?id=eq.$annotationId" $a.Headers @{normalized_source='rewrite'}) @(403) 'Client annotation rewrite denial'
+        Status (Request PATCH "/rest/v1/chat_slang_annotations?id=eq.$annotationId" $adminHeaders @{normalized_source='rewrite'}) @(400) 'Trusted annotation rewrite denial'
+        Wait-Realtime {
+            (Has-Event $sockets[0] chat_slang_annotations $annotationId) -and
+            (Has-Event $sockets[1] chat_slang_annotations $annotationId)
+        } 'Annotation A/B relay'
+        $readA = Request GET "/rest/v1/chat_slang_annotations?id=eq.$annotationId&select=span_text,span_start,span_end,tag_type,normalized_source" $a.Headers
+        $readB = Request GET "/rest/v1/chat_slang_annotations?id=eq.$annotationId&select=span_text,span_start,span_end,tag_type,normalized_source" $b.Headers
+        Status $readA @(200) 'Source annotation read'
+        Status $readB @(200) 'Peer annotation read'
+        if (@($readA.Json).Count -ne 1 -or @($readB.Json).Count -ne 1) { throw 'C6D member annotation read missing.' }
+        $checks.Add('accepted_source_only_unicode_annotation_realtime_immutable')
+    }
+    $audit = Request GET "/rest/v1/chat_correction_events?correction_id=eq.$correctionId&select=actor_id,action" $a.Headers
+    Status $audit @(200) 'Correction audit read'
+    if (@($audit.Json).Count -ne 2 -or @($audit.Json.action) -notcontains 'proposed' -or @($audit.Json.action) -notcontains 'accepted') { throw 'Correction audit transition set is incomplete.' }
+    Status (Request POST '/rest/v1/rpc/resolve_chat_correction' $a.Headers @{p_correction_id=$correctionId; p_decision='accepted'}) @(200) 'Idempotent correction acceptance'
+    $auditRetry = Request GET "/rest/v1/chat_correction_events?correction_id=eq.$correctionId&select=id" $a.Headers
+    Status $auditRetry @(200) 'Idempotent correction audit read'
+    if (@($auditRetry.Json).Count -ne 2) { throw 'Idempotent correction decision duplicated audit history.' }
+    Status (Request POST '/rest/v1/rpc/resolve_chat_correction' $a.Headers @{p_correction_id=$correctionId; p_decision='rejected'}) @(400) 'Opposite final correction denial'
+    Status (Request PATCH "/rest/v1/chat_corrections?id=eq.$correctionId" $adminHeaders @{proposed_text='rewrite'}) @(400) 'Final correction content rewrite denial'
+    Status (Request POST '/rest/v1/chat_corrections' $b.Headers $duplicate) @(201) 'New proposal after final decision'
+    Status (Request POST '/rest/v1/rpc/resolve_chat_correction' $a.Headers @{p_correction_id=$correction2Id; p_decision='rejected'}) @(200) 'Sender correction rejection RPC'
     Wait-Realtime {
         @($sockets[0].Events | Where-Object { $_.table -eq 'chat_corrections' -and $_.record.id -eq $correctionId -and $_.record.status -eq 'accepted' }).Count -gt 0 -and
         @($sockets[1].Events | Where-Object { $_.table -eq 'chat_corrections' -and $_.record.id -eq $correctionId -and $_.record.status -eq 'accepted' }).Count -gt 0
     } 'Accepted correction A/B relay'
-    $checks.Add('human_correction_separate_relay_and_sender_decision_invariant')
+    $checks.Add('append_only_correction_sender_rpc_idempotent_accept_reject_and_audit')
     foreach ($table in $chatTables) {
         $filter = if ($table -eq 'chat_conversations') { "id=eq.$conversationId" }
                   elseif ($table -in @('chat_members','chat_operational_messages')) { "conversation_id=eq.$conversationId" }
@@ -261,13 +371,17 @@ try {
         Empty (Request GET "/rest/v1/$Table`?$filter&select=*" $c.Headers) 'Outsider read denial'
         Status (Request GET "/rest/v1/$Table`?$filter&select=*" $anonHeaders) @(401,403) 'Anonymous read denial'
     }
+    Empty (Request GET "/rest/v1/chat_correction_events?correction_id=eq.$correctionId&select=*" $c.Headers) 'Outsider correction audit denial'
+    Status (Request GET "/rest/v1/chat_correction_events?correction_id=eq.$correctionId&select=*" $anonHeaders) @(401,403) 'Anonymous correction audit denial'
     $watchUntil=[DateTime]::UtcNow.AddSeconds(3)
     while ([DateTime]::UtcNow -lt $watchUntil) { foreach ($connection in $sockets) { Pump $connection } }
     if ($sockets[2].Events.Count -ne 0) { throw 'Outsider received a protected Realtime event.' }
-    $checks.Add('outsider_rest_all_five_tables_empty_and_realtime_zero_events_anon_denied')
+    $checks.Add("outsider_rest_all_$($subscriptionCount)_tables_empty_and_realtime_zero_events_anon_denied")
 
     Status (Request PATCH "/rest/v1/chat_operational_messages?id=eq.$messageId" $adminHeaders @{moderation_state='held'}) @(200) 'Service moderation hold'
-    foreach ($table in @('chat_operational_messages','chat_translations','chat_corrections')) {
+    $heldTables = @('chat_operational_messages','chat_translations','chat_corrections')
+    if ($AnnotationOnly) { $heldTables += 'chat_slang_annotations' }
+    foreach ($table in $heldTables) {
         $filter = if ($table -eq 'chat_operational_messages') { "id=eq.$messageId" } else { "message_id=eq.$messageId" }
         Empty (Request GET "/rest/v1/$Table`?$filter&select=id" $b.Headers) 'Held content hidden'
     }
@@ -303,4 +417,4 @@ finally {
         Pop-Location
     }
 }
-[pscustomobject]@{status='VERIFIED'; project_ref=$stagingRef; checks=$checks.ToArray(); fixture_count_remaining=0; gemini_calls=0; training_writes=0} | ConvertTo-Json -Depth 4
+[pscustomobject]@{status='VERIFIED'; project_ref=$stagingRef; checks=$checks.ToArray(); fixture_count_remaining=0; translation_mode=$translationMode; training_writes=0} | ConvertTo-Json -Depth 4

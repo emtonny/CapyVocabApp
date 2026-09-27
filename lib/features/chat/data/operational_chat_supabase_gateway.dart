@@ -17,6 +17,19 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
       'client_generated_id,client_created_at,sent_at,deleted_at,moderation_state';
   static const _conversationColumns =
       'id,kind,participant_low,participant_high,last_message_at';
+  static const _translationColumns =
+      'id,message_id,target_language_code,translated_text,provider,model,'
+      'prompt_version,translator_version,status,attempt_count,next_attempt_at,'
+      'error_code,created_at,completed_at,updated_at,'
+      'chat_operational_messages!inner(conversation_id)';
+  static const _correctionColumns =
+      'id,message_id,author_id,target_language_code,proposed_text,status,'
+      'accepted_by,accepted_at,rejected_by,rejected_at,created_at,updated_at,'
+      'chat_operational_messages!inner(conversation_id)';
+  static const _annotationColumns =
+      'id,message_id,correction_id,created_by,span_text,span_start,span_end,'
+      'tag_type,normalized_source,annotator_role,status,created_at,'
+      'chat_operational_messages!inner(conversation_id)';
 
   factory OperationalChatSupabaseGateway.staging({
     required ChatOwner owner,
@@ -223,6 +236,169 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
     return result;
   }
 
+  /// Merge-only paged pull. C4F must apply raw history before these rows.
+  @override
+  Future<List<OperationalChatTranslation>> fetchTranslations(
+      String conversationId) async {
+    validateChatUuid(conversationId);
+    final rows = await _pages((cursor) {
+      var query = _client
+          .from('chat_translations')
+          .select(_translationColumns)
+          .inFilter(
+              'translator_version', operationalChatSupportedTranslatorVersions)
+          .eq('chat_operational_messages.conversation_id', conversationId);
+      if (cursor != null) query = query.gt('id', cursor);
+      return query.order('id', ascending: true).limit(100);
+    });
+    return rows.map((row) {
+      final message = row['chat_operational_messages'];
+      if (message is! Map || message['conversation_id'] != conversationId) {
+        throw const FormatException('Translation outside requested chat.');
+      }
+      return OperationalChatTranslation.fromRemote(row);
+    }).toList();
+  }
+
+  @override
+  Future<OperationalChatCorrection> proposeCorrection(
+      OperationalChatCorrection correction) {
+    if (correction.authorId != owner.userId ||
+        correction.syncStatus != ChatCorrectionSyncStatus.proposalPending) {
+      throw const FormatException('Invalid owner correction proposal.');
+    }
+    return _request(() async {
+      Map<String, dynamic>? row;
+      try {
+        row = await _client
+            .from('chat_corrections')
+            .insert(correction.insertPayload)
+            .select(_correctionColumns)
+            .single();
+      } on PostgrestException catch (error) {
+        if (error.code != '23505') rethrow;
+        _checkSession();
+        row = await _client
+            .from('chat_corrections')
+            .select(_correctionColumns)
+            .eq('id', correction.id)
+            .maybeSingle();
+      }
+      if (row == null) {
+        throw const ChatRelayException(ChatRelayFailureKind.denied);
+      }
+      final ack = OperationalChatCorrection.fromRemote(row);
+      if (!ack.hasSameProposal(correction)) {
+        throw const FormatException('Conflicting correction acknowledgement.');
+      }
+      return ack;
+    });
+  }
+
+  @override
+  Future<OperationalChatCorrection> resolveCorrection(
+      String correctionId, ChatCorrectionDecision decision) {
+    validateChatUuid(correctionId);
+    return _request(() async {
+      final raw = await _client.rpc('resolve_chat_correction', params: {
+        'p_correction_id': correctionId,
+        'p_decision': decision.name,
+      });
+      final Map<String, dynamic> row;
+      if (raw is Map<String, dynamic>) {
+        row = raw;
+      } else if (raw is List &&
+          raw.length == 1 &&
+          raw.single is Map<String, dynamic>) {
+        row = raw.single as Map<String, dynamic>;
+      } else {
+        throw const FormatException('Invalid correction RPC result.');
+      }
+      final result = OperationalChatCorrection.fromRemote(row);
+      if (result.id != correctionId || result.status.name != decision.name) {
+        throw const FormatException('Conflicting correction decision.');
+      }
+      return result;
+    });
+  }
+
+  @override
+  Future<List<OperationalChatCorrection>> fetchCorrections(
+      String conversationId) async {
+    validateChatUuid(conversationId);
+    final rows = await _pages((cursor) {
+      var query = _client
+          .from('chat_corrections')
+          .select(_correctionColumns)
+          .eq('chat_operational_messages.conversation_id', conversationId);
+      if (cursor != null) query = query.gt('id', cursor);
+      return query.order('id', ascending: true).limit(100);
+    });
+    return rows.map((row) {
+      final message = row['chat_operational_messages'];
+      if (message is! Map || message['conversation_id'] != conversationId) {
+        throw const FormatException('Correction outside requested chat.');
+      }
+      return OperationalChatCorrection.fromRemote(row);
+    }).toList();
+  }
+
+  @override
+  Future<OperationalChatAnnotation> proposeAnnotation(
+      OperationalChatAnnotation annotation) {
+    if (annotation.createdBy != owner.userId ||
+        annotation.syncStatus != ChatAnnotationSyncStatus.pending) {
+      throw const FormatException('Invalid owner annotation proposal.');
+    }
+    return _request(() async {
+      Map<String, dynamic>? row;
+      try {
+        row = await _client
+            .from('chat_slang_annotations')
+            .insert(annotation.insertPayload)
+            .select(_annotationColumns)
+            .single();
+      } on PostgrestException catch (error) {
+        if (error.code != '23505') rethrow;
+        _checkSession();
+        row = await _client
+            .from('chat_slang_annotations')
+            .select(_annotationColumns)
+            .eq('id', annotation.id)
+            .maybeSingle();
+      }
+      if (row == null) {
+        throw const ChatRelayException(ChatRelayFailureKind.denied);
+      }
+      final ack = OperationalChatAnnotation.fromRemote(row);
+      if (!ack.hasSameTag(annotation)) {
+        throw const FormatException('Conflicting annotation acknowledgement.');
+      }
+      return ack;
+    });
+  }
+
+  @override
+  Future<List<OperationalChatAnnotation>> fetchAnnotations(
+      String conversationId) async {
+    validateChatUuid(conversationId);
+    final rows = await _pages((cursor) {
+      var query = _client
+          .from('chat_slang_annotations')
+          .select(_annotationColumns)
+          .eq('chat_operational_messages.conversation_id', conversationId);
+      if (cursor != null) query = query.gt('id', cursor);
+      return query.order('id', ascending: true).limit(100);
+    });
+    return rows.map((row) {
+      final message = row['chat_operational_messages'];
+      if (message is! Map || message['conversation_id'] != conversationId) {
+        throw const FormatException('Annotation outside requested chat.');
+      }
+      return OperationalChatAnnotation.fromRemote(row);
+    }).toList();
+  }
+
   /// Verify ONLY the cached sent IDs captured before a refresh. The runtime may
   /// prune captured IDs absent here after every chunk succeeds, never newer ACKs.
   @override
@@ -353,7 +529,10 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
       for (final table in [
         'chat_conversations',
         'chat_members',
-        'chat_operational_messages'
+        'chat_operational_messages',
+        'chat_translations',
+        'chat_corrections',
+        'chat_slang_annotations'
       ]) {
         channel.onPostgresChanges(
             event: PostgresChangeEvent.all,

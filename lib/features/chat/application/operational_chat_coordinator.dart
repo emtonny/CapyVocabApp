@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import '../../../core/utils/random_uuid.dart';
 import '../data/operational_chat_store.dart';
 import '../domain/operational_chat.dart';
 import 'operational_chat_relay.dart';
@@ -17,8 +18,10 @@ final class OperationalChatCoordinator {
     required this.networkAvailable,
     required this.cachedSourceLanguageCode,
     DateTime Function()? clock,
+    String Function()? idGenerator,
     this.repairInterval = const Duration(seconds: 30),
-  }) : _clock = clock ?? DateTime.now {
+  })  : _clock = clock ?? DateTime.now,
+        _idGenerator = idGenerator ?? createRandomUuidV4 {
     if (repairInterval <= Duration.zero) {
       throw ArgumentError('Invalid chat repair interval.');
     }
@@ -32,6 +35,7 @@ final class OperationalChatCoordinator {
   final String? Function() cachedSourceLanguageCode;
   final Duration repairInterval;
   final DateTime Function() _clock;
+  final String Function() _idGenerator;
   late OperationalChatRelay _relay;
   StreamSubscription<ChatRemoteSignal>? _subscription;
   Future<ChatSyncOutcome>? _flight;
@@ -142,6 +146,74 @@ final class OperationalChatCoordinator {
     return conversation;
   }
 
+  Future<OperationalChatCorrection> proposeCorrection({
+    required String messageId,
+    required String proposedText,
+    required String targetLanguageCode,
+  }) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final now = _now;
+    final correction = OperationalChatCorrection(
+      id: _idGenerator(),
+      messageId: messageId,
+      authorId: store.owner.userId,
+      targetLanguageCode: targetLanguageCode,
+      proposedText: proposedText,
+      status: ChatCorrectionStatus.proposed,
+      createdAt: now,
+      updatedAt: now,
+      syncStatus: ChatCorrectionSyncStatus.proposalPending,
+      nextAttemptAt: now,
+    );
+    await store.enqueueCorrection(correction, isCurrent: () => _active);
+    _scheduleSafely();
+    return correction;
+  }
+
+  Future<void> decideCorrection(
+      String correctionId, ChatCorrectionDecision decision) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    await store.queueCorrectionDecision(correctionId, decision, _now,
+        isCurrent: () => _active);
+    _scheduleSafely();
+  }
+
+  Future<OperationalChatAnnotation> proposeAnnotation({
+    required String messageId,
+    required String correctionId,
+    required String spanText,
+    required int spanStart,
+    required int spanEnd,
+    required ChatAnnotationType tagType,
+    required String normalizedSource,
+  }) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final now = _now;
+    final annotation = OperationalChatAnnotation(
+      id: _idGenerator(),
+      messageId: messageId,
+      correctionId: correctionId,
+      createdBy: store.owner.userId,
+      spanText: spanText,
+      spanStart: spanStart,
+      spanEnd: spanEnd,
+      tagType: tagType,
+      normalizedSource: normalizedSource,
+      createdAt: now,
+      syncStatus: ChatAnnotationSyncStatus.pending,
+      nextAttemptAt: now,
+    );
+    await store.enqueueAnnotation(annotation, isCurrent: () => _active);
+    _scheduleSafely();
+    return annotation;
+  }
+
   Future<ChatSyncOutcome> synchronize() {
     if (!_active || (_retryAt != null && _now.isBefore(_retryAt!))) {
       return Future.value(ChatSyncOutcome.idle);
@@ -179,6 +251,12 @@ final class OperationalChatCoordinator {
 
       _syncStage = 'outbox';
       await _relay.synchronize(); // raw outbox before potentially slow history
+      if (!_valid(epoch)) return ChatSyncOutcome.idle;
+      _syncStage = 'correction_outbox';
+      await _drainCorrections(epoch);
+      if (!_valid(epoch)) return ChatSyncOutcome.idle;
+      _syncStage = 'annotation_outbox';
+      await _drainAnnotations(epoch);
       if (!_valid(epoch)) return ChatSyncOutcome.idle;
       if (_refreshRequested ||
           _nextRepairAt == null ||
@@ -256,8 +334,90 @@ final class OperationalChatCoordinator {
           visibleIds: visibleIds,
           expectedRevision: revision,
           isCurrent: current);
+      _syncStage = 'translation_fetch';
+      final translations = await remote.fetchTranslations(conversation.id);
+      if (!current()) throw const ChatRefreshSuperseded();
+      if (translations.isNotEmpty) {
+        _syncStage = 'translation_commit';
+        await store.mergeTranslations(
+            conversationId: conversation.id,
+            translations: translations,
+            isCurrent: current);
+      }
+      _syncStage = 'correction_fetch';
+      final corrections = await remote.fetchCorrections(conversation.id);
+      if (!current()) throw const ChatRefreshSuperseded();
+      if (corrections.isNotEmpty) {
+        _syncStage = 'correction_commit';
+        await store.mergeCorrections(
+            conversationId: conversation.id,
+            corrections: corrections,
+            isCurrent: current);
+      }
+      _syncStage = 'annotation_fetch';
+      final annotations = await remote.fetchAnnotations(conversation.id);
+      if (!current()) throw const ChatRefreshSuperseded();
+      if (annotations.isNotEmpty) {
+        _syncStage = 'annotation_commit';
+        await store.mergeAnnotations(
+            conversationId: conversation.id,
+            annotations: annotations,
+            isCurrent: current);
+      }
     }
     if (!current()) throw const ChatRefreshSuperseded();
+  }
+
+  Future<void> _drainCorrections(int epoch) async {
+    final pending = await store.dueCorrections(_now);
+    for (final correction in pending) {
+      if (!_valid(epoch) || !_online) return;
+      try {
+        final OperationalChatCorrection ack;
+        if (correction.syncStatus == ChatCorrectionSyncStatus.proposalPending) {
+          ack = await remote.proposeCorrection(correction);
+        } else {
+          ack = await remote.resolveCorrection(
+              correction.id, correction.pendingDecision!);
+        }
+        if (!_valid(epoch)) return;
+        await store.mergeCorrectionAck(ack, isCurrent: () => _valid(epoch));
+      } catch (error) {
+        if (!_valid(epoch)) return;
+        final blocked = error is FormatException ||
+            (error is ChatRelayException &&
+                error.kind == ChatRelayFailureKind.denied) ||
+            correction.attemptCount >= 3;
+        final seconds = (5 << correction.attemptCount).clamp(5, 120);
+        await store.failCorrection(correction,
+            blocked: blocked,
+            retryAt: _now.add(Duration(seconds: seconds)),
+            isCurrent: () => _valid(epoch));
+      }
+    }
+  }
+
+  Future<void> _drainAnnotations(int epoch) async {
+    final pending = await store.dueAnnotations(_now);
+    for (final annotation in pending) {
+      if (!_valid(epoch) || !_online) return;
+      try {
+        final ack = await remote.proposeAnnotation(annotation);
+        if (!_valid(epoch)) return;
+        await store.mergeAnnotationAck(ack, isCurrent: () => _valid(epoch));
+      } catch (error) {
+        if (!_valid(epoch)) return;
+        final blocked = error is FormatException ||
+            (error is ChatRelayException &&
+                error.kind == ChatRelayFailureKind.denied) ||
+            annotation.attemptCount >= 3;
+        final seconds = (5 << annotation.attemptCount).clamp(5, 120);
+        await store.failAnnotation(annotation,
+            blocked: blocked,
+            retryAt: _now.add(Duration(seconds: seconds)),
+            isCurrent: () => _valid(epoch));
+      }
+    }
   }
 
   void _onSignal(ChatRemoteSignal signal) {
@@ -311,6 +471,14 @@ final class OperationalChatCoordinator {
       final pending =
           await store.nextPendingAt(now, sourceLanguageCode: source);
       if (pending != null && pending.isBefore(deadline)) deadline = pending;
+      final correctionPending = await store.nextCorrectionPendingAt(now);
+      if (correctionPending != null && correctionPending.isBefore(deadline)) {
+        deadline = correctionPending;
+      }
+      final annotationPending = await store.nextAnnotationPendingAt(now);
+      if (annotationPending != null && annotationPending.isBefore(deadline)) {
+        deadline = annotationPending;
+      }
     }
     if (generation != _scheduleGeneration ||
         !_started ||

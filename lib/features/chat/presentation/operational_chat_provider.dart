@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/supabase_service.dart';
+import '../../../core/services/tts_service.dart';
 import '../../language_profile/presentation/language_profile_provider.dart';
 import '../application/operational_chat_coordinator.dart';
 import '../data/chat_network_status_native.dart'
@@ -34,6 +35,11 @@ final operationalChatForegroundProvider = StateProvider<bool>((_) {
 });
 final operationalChatNetworkProvider =
     Provider<Future<bool> Function()>((_) => network.chatNetworkAvailable);
+final operationalChatTtsProvider = Provider<TtsService>((ref) {
+  final service = TtsService();
+  ref.onDispose(() => unawaited(service.stop()));
+  return service;
+});
 
 final operationalChatSessionProvider = StreamProvider<Session?>((ref) {
   final client = ref.watch(operationalChatClientProvider);
@@ -178,6 +184,39 @@ final operationalChatMessagesProvider = StreamProvider.autoDispose
     return;
   }
   yield* store.watchMessages(key.$2);
+});
+
+final operationalChatTranslationsProvider = StreamProvider.autoDispose
+    .family<List<OperationalChatTranslation>, (ChatOwner, String)>(
+        (ref, key) async* {
+  final store = await ref.watch(operationalChatStoreProvider(key.$1).future);
+  if (store == null) {
+    yield [];
+    return;
+  }
+  yield* store.watchTranslations(key.$2);
+});
+
+final operationalChatCorrectionsProvider = StreamProvider.autoDispose
+    .family<List<OperationalChatCorrection>, (ChatOwner, String)>(
+        (ref, key) async* {
+  final store = await ref.watch(operationalChatStoreProvider(key.$1).future);
+  if (store == null) {
+    yield [];
+    return;
+  }
+  yield* store.watchCorrections(key.$2);
+});
+
+final operationalChatAnnotationsProvider = StreamProvider.autoDispose
+    .family<List<OperationalChatAnnotation>, (ChatOwner, String)>(
+        (ref, key) async* {
+  final store = await ref.watch(operationalChatStoreProvider(key.$1).future);
+  if (store == null) {
+    yield [];
+    return;
+  }
+  yield* store.watchAnnotations(key.$2);
 });
 
 final operationalChatPeerProfilesProvider = StreamProvider.autoDispose

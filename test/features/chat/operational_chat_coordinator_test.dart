@@ -9,18 +9,56 @@ import 'package:capy_vocab/features/chat/data/operational_chat_store.dart';
 import 'package:capy_vocab/features/chat/domain/operational_chat.dart';
 import 'operational_chat_relay_test.dart' as f;
 
+OperationalChatTranslation translationFor(
+  OperationalChatMessage message, {
+  int id = 9000,
+  ChatTranslationStatus status = ChatTranslationStatus.succeeded,
+  DateTime? updatedAt,
+}) =>
+    OperationalChatTranslation(
+      id: f.uuid(id),
+      messageId: message.id,
+      targetLanguageCode: message.sourceLanguageCode == 'vi' ? 'en' : 'vi',
+      translatedText:
+          status == ChatTranslationStatus.succeeded ? 'Party tonight?' : null,
+      provider: operationalChatTranslationProvider,
+      model: operationalChatTranslationModel,
+      promptVersion: operationalChatPromptVersion,
+      translatorVersion: operationalChatTranslatorVersion,
+      status: status,
+      attemptCount: status == ChatTranslationStatus.queued ? 0 : 1,
+      errorCode:
+          status == ChatTranslationStatus.failed ? 'PROVIDER_TIMEOUT' : null,
+      createdAt: f.instant,
+      completedAt: status == ChatTranslationStatus.succeeded ? f.instant : null,
+      updatedAt: updatedAt ?? f.instant,
+    );
+
 final class Gateway implements OperationalChatGateway {
   final rows = <String, OperationalChatMessage>{};
+  final translations = <String, List<OperationalChatTranslation>>{};
+  final corrections = <String, OperationalChatCorrection>{};
+  final annotations = <String, OperationalChatAnnotation>{};
   final conversations = <String, ChatConversation>{
     f.conversation: ChatConversation(id: f.conversation, peerId: f.b)
   };
   late final events = StreamController<ChatRemoteSignal>.broadcast(
       onListen: () => attaches++, onCancel: () => detaches++);
-  int sends = 0, pulls = 0, histories = 0, verifies = 0;
+  final calls = <String>[];
+  int sends = 0, pulls = 0, histories = 0, translationPulls = 0, verifies = 0;
   int attaches = 0, detaches = 0, restarts = 0, disposals = 0, opens = 0;
-  bool failSend = false, failHistory = false, failVerification = false;
-  Completer<void>? sendBarrier, historyBarrier, inventoryBarrier;
-  Completer<void>? historyStarted, inventoryStarted, sendStarted;
+  bool failSend = false,
+      failHistory = false,
+      failTranslations = false,
+      failVerification = false;
+  Completer<void>? sendBarrier,
+      historyBarrier,
+      translationBarrier,
+      inventoryBarrier;
+  Completer<void>? historyStarted,
+      translationStarted,
+      inventoryStarted,
+      sendStarted;
   Completer<void>? allSent;
   int? expectedSends;
   @override
@@ -51,6 +89,7 @@ final class Gateway implements OperationalChatGateway {
   Future<List<OperationalChatMessage>> fetchHistory(
       String conversationId) async {
     histories++;
+    calls.add('history:$conversationId');
     final snapshot =
         rows.values.where((m) => m.conversationId == conversationId).toList();
     historyStarted?.complete();
@@ -60,6 +99,96 @@ final class Gateway implements OperationalChatGateway {
     }
     return snapshot;
   }
+
+  @override
+  Future<List<OperationalChatTranslation>> fetchTranslations(
+      String conversationId) async {
+    translationPulls++;
+    calls.add('translations:$conversationId');
+    final snapshot = List<OperationalChatTranslation>.of(
+        translations[conversationId] ?? const []);
+    translationStarted?.complete();
+    if (translationBarrier != null) await translationBarrier!.future;
+    if (failTranslations) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    return snapshot;
+  }
+
+  @override
+  Future<List<OperationalChatCorrection>> fetchCorrections(
+          String conversationId) async =>
+      corrections.values
+          .where((row) => rows[row.messageId]?.conversationId == conversationId)
+          .toList();
+
+  @override
+  Future<OperationalChatCorrection> proposeCorrection(
+      OperationalChatCorrection correction) async {
+    final ack = OperationalChatCorrection(
+      id: correction.id,
+      messageId: correction.messageId,
+      authorId: correction.authorId,
+      targetLanguageCode: correction.targetLanguageCode,
+      proposedText: correction.proposedText,
+      status: ChatCorrectionStatus.proposed,
+      createdAt: correction.createdAt,
+      updatedAt: correction.createdAt,
+    );
+    corrections[ack.id] = ack;
+    return ack;
+  }
+
+  @override
+  Future<OperationalChatCorrection> resolveCorrection(
+      String correctionId, ChatCorrectionDecision decision) async {
+    final old = corrections[correctionId]!;
+    final decidedAt = old.updatedAt.add(const Duration(seconds: 1));
+    final result = OperationalChatCorrection(
+      id: old.id,
+      messageId: old.messageId,
+      authorId: old.authorId,
+      targetLanguageCode: old.targetLanguageCode,
+      proposedText: old.proposedText,
+      status: ChatCorrectionStatus.values.byName(decision.name),
+      acceptedBy: decision == ChatCorrectionDecision.accepted ? f.a : null,
+      acceptedAt:
+          decision == ChatCorrectionDecision.accepted ? decidedAt : null,
+      rejectedBy: decision == ChatCorrectionDecision.rejected ? f.a : null,
+      rejectedAt:
+          decision == ChatCorrectionDecision.rejected ? decidedAt : null,
+      createdAt: old.createdAt,
+      updatedAt: decidedAt,
+    );
+    corrections[result.id] = result;
+    return result;
+  }
+
+  @override
+  Future<OperationalChatAnnotation> proposeAnnotation(
+      OperationalChatAnnotation annotation) async {
+    final ack = OperationalChatAnnotation(
+      id: annotation.id,
+      messageId: annotation.messageId,
+      correctionId: annotation.correctionId,
+      createdBy: annotation.createdBy,
+      spanText: annotation.spanText,
+      spanStart: annotation.spanStart,
+      spanEnd: annotation.spanEnd,
+      tagType: annotation.tagType,
+      normalizedSource: annotation.normalizedSource,
+      createdAt: annotation.createdAt,
+    );
+    annotations[ack.id] = ack;
+    return ack;
+  }
+
+  @override
+  Future<List<OperationalChatAnnotation>> fetchAnnotations(
+          String conversationId) async =>
+      annotations.values
+          .where((row) => rows[row.messageId]?.conversationId == conversationId)
+          .toList();
 
   @override
   Future<Set<String>> visibleConversationIds(Set<String> ids) async =>
@@ -264,6 +393,110 @@ void main() {
     expect(remote.histories, 1);
     expect((await store.messages(f.conversation)).single.id, f.uuid(1));
   });
+  test('raw history commits before its translation cache', () async {
+    final raw = f.ack(f.message(1));
+    remote.rows[raw.id] = raw;
+    remote.translations[f.conversation] = [translationFor(raw)];
+
+    expect(await coordinator.synchronize(), ChatSyncOutcome.synchronized);
+
+    expect(remote.calls, [
+      'history:${f.conversation}',
+      'translations:${f.conversation}',
+    ]);
+    expect((await store.messages(f.conversation)).single.id, raw.id);
+    final cached = (await store.translations(f.conversation)).single;
+    expect(cached.messageId, raw.id);
+    expect(cached.translatedText, 'Party tonight?');
+  });
+  test('translation fetch failure preserves sent raw and drained outbox',
+      () async {
+    await store.enqueue(f.message(1));
+    remote.failTranslations = true;
+
+    expect(await coordinator.synchronize(), ChatSyncOutcome.failed);
+
+    expect(remote.sends, 1);
+    expect((await store.messages(f.conversation)).single.sendStatus,
+        ChatSendStatus.sent);
+    expect(await store.due(now), isEmpty);
+    expect(await store.translations(f.conversation), isEmpty);
+  });
+  test('provider failure state is cached without blocking raw history',
+      () async {
+    final raw = f.ack(f.message(1));
+    remote.rows[raw.id] = raw;
+    remote.translations[f.conversation] = [
+      translationFor(raw, status: ChatTranslationStatus.failed),
+    ];
+
+    expect(await coordinator.synchronize(), ChatSyncOutcome.synchronized);
+
+    expect((await store.messages(f.conversation)).single.rawText, raw.rawText);
+    final cached = (await store.translations(f.conversation)).single;
+    expect(cached.status, ChatTranslationStatus.failed);
+    expect(cached.errorCode, 'PROVIDER_TIMEOUT');
+    expect(cached.translatedText, isNull);
+  });
+  test('duplicate invalidations and reconnect keep one translation entity',
+      () async {
+    final raw = f.ack(f.message(1));
+    final translated = translationFor(raw);
+    remote.rows[raw.id] = raw;
+    remote.translations[f.conversation] = [translated];
+    await coordinator.synchronize();
+
+    remote.events
+      ..add(ChatRemoteSignal.changed)
+      ..add(ChatRemoteSignal.changed);
+    await Future<void>.delayed(Duration.zero);
+    await coordinator.synchronize();
+    expect(remote.translationPulls, 2);
+    expect((await store.translations(f.conversation)), hasLength(1));
+
+    remote.events.add(ChatRemoteSignal.disconnected);
+    await Future<void>.delayed(Duration.zero);
+    now = now.add(const Duration(seconds: 2));
+    await coordinator.synchronize();
+    expect(remote.restarts, 1);
+    expect(remote.translationPulls, 3);
+    expect((await store.translations(f.conversation)).single.id, translated.id);
+  });
+  test('logout during translation fetch rejects the stale result', () async {
+    final raw = f.ack(f.message(1));
+    remote.rows[raw.id] = raw;
+    remote.translations[f.conversation] = [translationFor(raw)];
+    remote.translationBarrier = Completer<void>();
+    remote.translationStarted = Completer<void>();
+
+    final flight = coordinator.synchronize();
+    await remote.translationStarted!.future;
+    active = false;
+    remote.translationBarrier!.complete();
+
+    expect(await flight, ChatSyncOutcome.superseded);
+    expect((await store.messages(f.conversation)).single.id, raw.id);
+    expect(await store.translations(f.conversation), isEmpty);
+  });
+  test('offline keeps cached translation while membership revoke hides it',
+      () async {
+    final raw = f.ack(f.message(1));
+    remote.rows[raw.id] = raw;
+    remote.translations[f.conversation] = [translationFor(raw)];
+    await coordinator.synchronize();
+
+    online = false;
+    coordinator.requestRefresh();
+    expect(await coordinator.synchronize(), ChatSyncOutcome.offline);
+    expect((await store.translations(f.conversation)).single.id, f.uuid(9000));
+
+    online = true;
+    remote.conversations.clear();
+    now = now.add(const Duration(seconds: 2));
+    expect(await coordinator.synchronize(), ChatSyncOutcome.synchronized);
+    expect(await store.conversations(), isEmpty);
+    expect(await store.translations(f.conversation), isEmpty);
+  });
   test(
       'visibility failure cannot delete old sent messages or merge partial history',
       () async {
@@ -456,5 +689,99 @@ void main() {
     final chat = await coordinator.openDirectChat(f.outsider);
     expect(chat.peerId, f.outsider);
     expect((await store.conversations()).length, 2);
+  });
+
+  test('correction proposal stays offline then drains with the same identity',
+      () async {
+    final incoming = f.ack(f.message(1, sender: f.b));
+    remote.rows[incoming.id] = incoming;
+    await coordinator.synchronize();
+
+    online = false;
+    final pending = await coordinator.proposeCorrection(
+      messageId: incoming.id,
+      proposedText: 'Tối nay bạn có đi không?',
+      targetLanguageCode: 'vi',
+    );
+    expect((await store.dueCorrections(now)).single.id, pending.id);
+    expect(await coordinator.synchronize(), ChatSyncOutcome.offline);
+    expect(remote.corrections, isEmpty);
+
+    online = true;
+    now = now.add(const Duration(seconds: 2));
+    expect(await coordinator.synchronize(), ChatSyncOutcome.synchronized);
+    expect(remote.corrections.values.single.id, pending.id);
+    expect((await store.corrections(f.conversation)).single.syncStatus,
+        ChatCorrectionSyncStatus.synced);
+  });
+
+  test('raw sender accepts peer correction through the resolver outbox',
+      () async {
+    final own = f.ack(f.message(1));
+    remote.rows[own.id] = own;
+    final proposed = OperationalChatCorrection(
+      id: f.uuid(7001),
+      messageId: own.id,
+      authorId: f.b,
+      targetLanguageCode: 'en',
+      proposedText: 'Are you going tonight?',
+      status: ChatCorrectionStatus.proposed,
+      createdAt: f.instant,
+      updatedAt: f.instant,
+    );
+    remote.corrections[proposed.id] = proposed;
+    await coordinator.synchronize();
+
+    await coordinator.decideCorrection(
+        proposed.id, ChatCorrectionDecision.accepted);
+    await coordinator.synchronize();
+
+    final cached = (await store.corrections(f.conversation)).single;
+    expect(cached.status, ChatCorrectionStatus.accepted);
+    expect(cached.acceptedBy, f.a);
+    expect((await store.messages(f.conversation)).single.rawText, own.rawText);
+  });
+
+  test('accepted correction annotation stays offline then drains unchanged',
+      () async {
+    final own = f.ack(f.message(1));
+    remote.rows[own.id] = own;
+    final accepted = OperationalChatCorrection(
+      id: f.uuid(7001),
+      messageId: own.id,
+      authorId: f.b,
+      targetLanguageCode: 'en',
+      proposedText: 'Want to hit the club tonight?',
+      status: ChatCorrectionStatus.accepted,
+      acceptedBy: f.a,
+      acceptedAt: f.instant,
+      createdAt: f.instant,
+      updatedAt: f.instant,
+    );
+    remote.corrections[accepted.id] = accepted;
+    await coordinator.synchronize();
+
+    online = false;
+    final pending = await coordinator.proposeAnnotation(
+      messageId: own.id,
+      correctionId: accepted.id,
+      spanText: 'quẩy',
+      spanStart: 11,
+      spanEnd: 15,
+      tagType: ChatAnnotationType.slang,
+      normalizedSource: 'đi chơi hoặc đi bar',
+    );
+    expect((await store.dueAnnotations(now)).single.id, pending.id);
+    expect(await coordinator.synchronize(), ChatSyncOutcome.offline);
+    expect(remote.annotations, isEmpty);
+
+    online = true;
+    now = now.add(const Duration(seconds: 2));
+    expect(await coordinator.synchronize(), ChatSyncOutcome.synchronized);
+    expect(remote.annotations.values.single.id, pending.id);
+    final cached = (await store.annotations(f.conversation)).single;
+    expect(cached.syncStatus, ChatAnnotationSyncStatus.synced);
+    expect(cached.spanText, 'quẩy');
+    expect((await store.messages(f.conversation)).single.rawText, own.rawText);
   });
 }

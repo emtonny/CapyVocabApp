@@ -4,11 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../ai_scan/presentation/widgets/scan_paper_background.dart';
 import '../domain/operational_chat.dart';
+import 'operational_chat_message_body.dart';
+import 'operational_chat_correction_panel.dart';
 import 'operational_chat_provider.dart';
 
 const _bubbleSize = 64.0;
@@ -287,30 +288,30 @@ class _ChatBubble extends StatelessWidget {
               ),
             ),
           ),
-        if (unread > 0)
-          Positioned(
-            right: -3,
-            top: -3,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE94141),
-                border: Border.all(color: AppColors.softWhite, width: 2),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                unread > 99 ? '99+' : '$unread',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900),
+          if (unread > 0)
+            Positioned(
+              right: -3,
+              top: -3,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE94141),
+                  border: Border.all(color: AppColors.softWhite, width: 2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  unread > 99 ? '99+' : '$unread',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900),
+                ),
               ),
             ),
-          ),
-      ]),
-    );
+        ]),
+      );
 }
 
 class _ChatMailbox extends ConsumerStatefulWidget {
@@ -336,7 +337,6 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
   String? _activeConversationId;
   String? _activePeerId;
   String? _openingPeer;
-  bool _showAiNotice = false;
 
   @override
   void dispose() {
@@ -473,8 +473,7 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Tìm kiếm bạn bè...',
-                  prefixIcon:
-                      const Icon(Icons.search, color: AppColors.blue),
+                  prefixIcon: const Icon(Icons.search, color: AppColors.blue),
                   suffixIcon: _search.text.isEmpty
                       ? null
                       : IconButton(
@@ -490,20 +489,15 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(
-                        color: Color(0xFF3E322E), width: 2),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF3E322E), width: 2),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(
-                        color: Color(0xFF3E322E), width: 2),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF3E322E), width: 2),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              _AiCard(
-                showNotice: _showAiNotice,
-                onTap: () => setState(() => _showAiNotice = true),
               ),
               const SizedBox(height: 12),
               const Align(
@@ -531,8 +525,8 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                   onRetry: () {
                     ref.invalidate(
                         operationalChatFriendsProvider(widget.owner));
-                    ref.invalidate(operationalChatProfileRefreshProvider(
-                        widget.owner));
+                    ref.invalidate(
+                        operationalChatProfileRefreshProvider(widget.owner));
                   },
                 ),
               ),
@@ -591,8 +585,8 @@ class _MailboxHeader extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF1C7),
-              border:
-                  Border(bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
+              border: Border(
+                  bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
             ),
             child: Row(children: [
               Container(
@@ -608,36 +602,37 @@ class _MailboxHeader extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child:
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Row(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          'Hộp Thư Chat',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w900),
-                        ),
+                      const Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Hộp Thư Chat',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(Icons.drag_indicator_rounded,
+                              size: 14, color: Color(0xFF9B877D)),
+                        ],
                       ),
-                      SizedBox(width: 4),
-                      Icon(Icons.drag_indicator_rounded,
-                          size: 14, color: Color(0xFF9B877D)),
-                    ],
-                  ),
-                  Text(
-                    unreadCount > 0
-                        ? '$unreadCount chưa đọc · $activeCount bạn'
-                        : '$activeCount bạn bè',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: AppColors.darkGreen,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700),
-                  ),
-                ]),
+                      Text(
+                        unreadCount > 0
+                            ? '$unreadCount chưa đọc · $activeCount bạn'
+                            : '$activeCount bạn bè',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: AppColors.darkGreen,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ]),
               ),
               IconButton(
                 key: const Key('chat-mailbox-close'),
@@ -647,57 +642,6 @@ class _MailboxHeader extends StatelessWidget {
               ),
             ]),
           ),
-        ),
-      );
-}
-
-class _AiCard extends StatelessWidget {
-  const _AiCard({required this.showNotice, required this.onTap});
-  final bool showNotice;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-        key: const Key('chat-ai-card'),
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(11),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF2CC),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.duoOrange, width: 2.5),
-            boxShadow: const [
-              BoxShadow(color: AppColors.duoOrange, offset: Offset(0, 5))
-            ],
-          ),
-          child: Row(children: [
-            const CircleAvatar(
-              radius: 23,
-              backgroundImage:
-                  AssetImage('assets/images/deery-email-avatar.jpg'),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Deery-sensei AI ✨',
-                        style: TextStyle(fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 2),
-                    Text(
-                      showNotice
-                          ? 'Chat với AI chưa mở. Bạn quay lại sau nhé!'
-                          : 'Trợ lý học từ vựng · Sắp ra mắt',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ]),
-            ),
-            const Icon(Icons.lock_clock_outlined, color: AppColors.duoOrange),
-          ]),
         ),
       );
 }
@@ -917,10 +861,7 @@ class _MailboxConversationView extends ConsumerStatefulWidget {
 
 class _MailboxConversationViewState
     extends ConsumerState<_MailboxConversationView> {
-  static final Map<String, Uint8List> _localImageAttachments = {};
   final _text = TextEditingController();
-  Uint8List? _attachedImageBytes;
-  String? _attachedImageName;
   bool _saving = false;
   bool _markingRead = false;
 
@@ -930,65 +871,24 @@ class _MailboxConversationViewState
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-        requestFullMetadata: false,
-      );
-      if (picked == null || !mounted) return;
-      final bytes = await picked.readAsBytes();
-      if (!mounted) return;
-      setState(() {
-        _attachedImageBytes = bytes;
-        _attachedImageName = picked.name;
-      });
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Không thể chọn ảnh từ thư viện thiết bị.'),
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _send() async {
     if (_saving || ref.read(operationalChatOwnerProvider) != widget.owner) {
       return;
     }
-    final imageBytes = _attachedImageBytes;
-    final imageName = _attachedImageName;
-    var raw = _text.text.trim();
-    if (imageBytes != null) {
-      final label = '📷 [Ảnh: ${imageName ?? 'image.jpg'}]';
-      raw = raw.isEmpty ? label : '$label\n$raw';
-    }
+    final raw = _text.text.trim();
     if (raw.isEmpty || raw.runes.length > 4000) return;
     final coordinator =
         ref.read(operationalChatCoordinatorProvider).asData?.value;
     if (coordinator == null) return;
     setState(() => _saving = true);
     try {
-      final sent = await coordinator.enqueue(
+      await coordinator.enqueue(
           conversationId: widget.conversationId, rawText: raw);
       if (!mounted || ref.read(operationalChatOwnerProvider) != widget.owner) {
         return;
       }
-      if (imageBytes != null) {
-        _localImageAttachments[sent.id] = imageBytes;
-        _localImageAttachments[sent.clientGeneratedId] = imageBytes;
-      }
       _text.clear();
-      setState(() {
-        _attachedImageBytes = null;
-        _attachedImageName = null;
-      });
+      setState(() {});
     } catch (_) {
       if (mounted && ref.read(operationalChatOwnerProvider) == widget.owner) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -1034,6 +934,13 @@ class _MailboxConversationViewState
     final ready = source != null && runtime.asData?.value != null && !_saving;
     final messages = ref.watch(
         operationalChatMessagesProvider((widget.owner, widget.conversationId)));
+    final translations = ref.watch(operationalChatTranslationsProvider(
+        (widget.owner, widget.conversationId)));
+    final translationsByMessage = {
+      for (final row
+          in translations.asData?.value ?? <OperationalChatTranslation>[])
+        row.messageId: row,
+    };
 
     final peerName = widget.profile?.label ??
         (widget.peerId.length >= 8
@@ -1069,30 +976,12 @@ class _MailboxConversationViewState
                 : ListView.builder(
                     key: const Key('chat-mailbox-messages-list'),
                     reverse: true,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     itemCount: msgList.length,
                     itemBuilder: (context, index) {
                       final message = msgList[msgList.length - index - 1];
                       final mine = message.senderId == widget.owner.userId;
-                      final localAttachment =
-                          _localImageAttachments[message.id] ??
-                              _localImageAttachments[message.clientGeneratedId];
-                      final hasPhotoTag = message.rawText.contains('📷 [Ảnh:');
-                      String displayText = message.rawText;
-                      String? photoName;
-                      if (hasPhotoTag) {
-                        final match = RegExp(r'📷 \[Ảnh:\s*([^\]]+)\]')
-                            .firstMatch(message.rawText);
-                        photoName = match?.group(1);
-                        final lines = message.rawText.split('\n');
-                        if (lines.length > 1) {
-                          displayText = lines.sublist(1).join('\n').trim();
-                        } else {
-                          displayText = '';
-                        }
-                      }
-
                       final statusText =
                           mine ? _status(message.sendStatus) : null;
                       return Align(
@@ -1124,69 +1013,28 @@ class _MailboxConversationViewState
                                     ),
                                   ],
                                 ),
-                                child: Column(
-                                  crossAxisAlignment: mine
-                                      ? CrossAxisAlignment.end
-                                      : CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (localAttachment != null)
-                                      ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                          child: Image.memory(
-                                            localAttachment,
-                                            width: 220,
-                                            height: 140,
-                                            fit: BoxFit.cover,
-                                          ),
-                                      )
-                                    else if (hasPhotoTag)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: mine
-                                              ? const Color(0xFF56CFA9)
-                                              : const Color(0xFFF3ECE4),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(Icons.image_outlined,
-                                                size: 18,
-                                                color: AppColors.ink),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(
-                                                photoName ?? 'Hình ảnh',
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 12,
-                                                  color: AppColors.ink,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    if (displayText.isNotEmpty) ...[
-                                      if (hasPhotoTag)
-                                        const SizedBox(height: 6),
-                                      SelectableText(
-                                        displayText,
-                                        style: const TextStyle(
-                                          color: AppColors.ink,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
+                                child: OperationalChatMessageBody(
+                                  message: message,
+                                  viewerNativeLanguageCode: source,
+                                  translation:
+                                      translationsByMessage[message.id],
+                                  translationCacheLoading:
+                                      translations.isLoading,
+                                  translationCacheError: translations.hasError,
+                                  primaryStyle: const TextStyle(
+                                    color: AppColors.ink,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 280,
+                                child: OperationalChatCorrectionPanel(
+                                  owner: widget.owner,
+                                  conversationId: widget.conversationId,
+                                  message: message,
+                                  viewerNativeLanguageCode: source,
                                 ),
                               ),
                               const SizedBox(height: 3),
@@ -1196,7 +1044,7 @@ class _MailboxConversationViewState
                                 child: Text(
                                   '${_time(message.sentAt ?? message.clientCreatedAt)}${statusText != null ? ' · $statusText' : ''}',
                                   style: const TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 12,
                                     color: Color(0xFF7A6B63),
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1215,7 +1063,7 @@ class _MailboxConversationViewState
             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Text(
               'Cần cấu hình ngôn ngữ trong Cài đặt trước khi gửi.',
-              style: TextStyle(fontSize: 11, color: Color(0xFFE94141)),
+              style: TextStyle(fontSize: 12, color: Color(0xFFE94141)),
             ),
           ),
         _ConversationInput(
@@ -1224,13 +1072,6 @@ class _MailboxConversationViewState
           ready: ready,
           onSend: _send,
           onChanged: () => setState(() {}),
-          onPickImage: _pickImage,
-          attachedImageBytes: _attachedImageBytes,
-          attachedImageName: _attachedImageName,
-          onRemoveAttachedImage: () => setState(() {
-            _attachedImageBytes = null;
-            _attachedImageName = null;
-          }),
         ),
       ],
     );
@@ -1262,8 +1103,8 @@ class _ConversationHeader extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF1C7),
-              border:
-                  Border(bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
+              border: Border(
+                  bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
             ),
             child: Row(
               children: [
@@ -1300,10 +1141,10 @@ class _ConversationHeader extends StatelessWidget {
                         ],
                       ),
                       const Text(
-                        'Chỉ text gốc, chưa dịch',
+                        'Tin gốc luôn được giữ · bản dịch theo hồ sơ',
                         style: TextStyle(
                           color: Color(0xFF9B877D),
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -1330,10 +1171,6 @@ class _ConversationInput extends StatelessWidget {
     required this.ready,
     required this.onSend,
     required this.onChanged,
-    required this.onPickImage,
-    this.attachedImageBytes,
-    this.attachedImageName,
-    this.onRemoveAttachedImage,
   });
 
   final TextEditingController controller;
@@ -1341,17 +1178,12 @@ class _ConversationInput extends StatelessWidget {
   final bool ready;
   final VoidCallback onSend;
   final VoidCallback onChanged;
-  final VoidCallback onPickImage;
-  final Uint8List? attachedImageBytes;
-  final String? attachedImageName;
-  final VoidCallback? onRemoveAttachedImage;
 
   @override
   Widget build(BuildContext context) {
     final hasText = controller.text.trim().isNotEmpty &&
         controller.text.runes.length <= 4000;
-    final hasImage = attachedImageBytes != null;
-    final canSend = ready && (hasText || hasImage);
+    final canSend = ready && hasText;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -1361,189 +1193,76 @@ class _ConversationInput extends StatelessWidget {
           top: BorderSide(color: Color(0xFF3E322E), width: 2),
         ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (attachedImageBytes != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          Expanded(
+            child: Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF3E322E), width: 1.5),
-                boxShadow: const [
-                  BoxShadow(color: Color(0xFF3E322E), offset: Offset(0, 2)),
-                ],
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFF3E322E), width: 2),
               ),
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: Image.memory(
-                      attachedImageBytes!,
-                      width: 38,
-                      height: 38,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Đã đính kèm ảnh',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        Text(
-                          attachedImageName ?? 'anh_album.jpg',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF9B877D),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Semantics(
-                    button: true,
-                    label: 'Hủy đính kèm ảnh',
-                    child: InkWell(
-                      key: const Key('chat-remove-attached-image'),
-                      onTap: onRemoveAttachedImage,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(0xFFF1EAE4),
-                        ),
-                        child: const Icon(Icons.close,
-                            size: 14, color: AppColors.ink),
-                      ),
-                    ),
-                  ),
-                ],
+              child: TextField(
+                key: const Key('chat-compose'),
+                controller: controller,
+                minLines: 1,
+                maxLines: 4,
+                enabled: !saving,
+                onChanged: (_) => onChanged(),
+                style: const TextStyle(fontSize: 14, color: AppColors.ink),
+                decoration: const InputDecoration(
+                  hintText: 'Tin nhắn gốc (chưa dịch)...',
+                  hintStyle: TextStyle(fontSize: 13, color: Color(0xFF9B877D)),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
               ),
             ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Semantics(
-                button: true,
-                label: 'Chọn ảnh từ album gửi bạn bè',
-                child: InkWell(
-                  key: const Key('chat-pick-image'),
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: saving ? null : onPickImage,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border:
-                          Border.all(color: const Color(0xFF3E322E), width: 2),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0xFF3E322E),
-                          offset: Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.photo_library_rounded,
-                      color: AppColors.ink,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border:
-                        Border.all(color: const Color(0xFF3E322E), width: 2),
-                  ),
-                  child: TextField(
-                    key: const Key('chat-compose'),
-                    controller: controller,
-                    minLines: 1,
-                    maxLines: 4,
-                    enabled: !saving,
-                    onChanged: (_) => onChanged(),
-                    style:
-                        const TextStyle(fontSize: 14, color: AppColors.ink),
-                    decoration: const InputDecoration(
-                      hintText: 'Tin nhắn gốc (chưa dịch)...',
-                      hintStyle:
-                          TextStyle(fontSize: 13, color: Color(0xFF9B877D)),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Semantics(
-                button: true,
-                label: 'Gửi tin nhắn',
-                child: InkWell(
-                  key: const Key('chat-send'),
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: canSend ? onSend : null,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: canSend
-                          ? AppColors.mint
-                          : const Color(0xFFE0D8CE),
-                      shape: BoxShape.circle,
-                      border:
-                          Border.all(color: const Color(0xFF3E322E), width: 2),
-                      boxShadow: canSend
-                          ? const [
-                              BoxShadow(
-                                color: Color(0xFF3E322E),
-                                offset: Offset(0, 3),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: saving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFF3E322E),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.send_rounded,
-                            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Semantics(
+            button: true,
+            label: 'Gửi tin nhắn',
+            child: InkWell(
+              key: const Key('chat-send'),
+              borderRadius: BorderRadius.circular(20),
+              onTap: canSend ? onSend : null,
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: canSend ? AppColors.mint : const Color(0xFFE0D8CE),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF3E322E), width: 2),
+                  boxShadow: canSend
+                      ? const [
+                          BoxShadow(
                             color: Color(0xFF3E322E),
+                            offset: Offset(0, 3),
                           ),
-                  ),
+                        ]
+                      : null,
                 ),
+                alignment: Alignment.center,
+                child: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF3E322E),
+                        ),
+                      )
+                    : const Icon(
+                        Icons.send_rounded,
+                        size: 18,
+                        color: Color(0xFF3E322E),
+                      ),
               ),
-            ],
+            ),
           ),
         ],
       ),

@@ -12,6 +12,7 @@ import '../../domain/entities/photo_note.dart';
 import '../../domain/entities/photo_note_snapshot.dart';
 import '../../domain/repositories/album_repository.dart';
 import '../../domain/repositories/library_repository.dart';
+import '../../domain/repositories/local_vocabulary_lookup_repository.dart';
 
 final currentLibraryUserIdProvider = Provider<String?>((ref) {
   ref.watch(authProvider);
@@ -20,6 +21,11 @@ final currentLibraryUserIdProvider = Provider<String?>((ref) {
 
 final libraryRepositoryProvider =
     FutureProvider<LibraryRepository>((ref) async {
+  return ref.watch(libraryStoreProvider.future);
+});
+
+final localVocabularyLookupRepositoryProvider =
+    FutureProvider<LocalVocabularyLookupRepository>((ref) async {
   return ref.watch(libraryStoreProvider.future);
 });
 

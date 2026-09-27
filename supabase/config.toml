@@ -342,11 +342,6 @@ email_optional = false
 [auth.web3.solana]
 enabled = false
 
-# Use Firebase Auth as a third-party provider alongside Supabase Auth.
-[auth.third_party.firebase]
-enabled = false
-# project_id = "my-firebase-project"
-
 # Use Auth0 as a third-party provider alongside Supabase Auth.
 [auth.third_party.auth0]
 enabled = false
@@ -389,6 +384,11 @@ deno_version = 2
 # Supabase Auth. This supports current publishable keys while still making a
 # valid Bearer JWT mandatory before entitlement lookup or Gemini execution.
 [functions.gemini-vision-scan]
+verify_jwt = false
+
+# Internal database webhook/Cron requests use a dedicated trigger secret. The
+# function rejects user JWTs and remains fail-closed until C4D wires a provider.
+[functions.chat-translation-worker]
 verify_jwt = false
 
 # [edge_runtime.secrets]
