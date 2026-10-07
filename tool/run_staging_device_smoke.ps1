@@ -4,6 +4,8 @@ param(
     [int]$StartupSeconds = 10,
     [ValidateSet('windows', 'android-build', 'android-device', 'web-build', 'web-device')]
     [string]$Target = 'windows',
+    [ValidateSet('debug', 'profile', 'release')]
+    [string]$AndroidBuildMode = 'debug',
     [string]$DeviceId = '',
     [ValidateRange(1024, 65535)]
     [int]$WebPort = 3000,
@@ -82,6 +84,7 @@ try {
         SUPABASE_URL = "https://$($linked[0].ref).supabase.co"
         SUPABASE_ANON_KEY = $anonValue
         LIBRARY_SYNC_ENABLED = $true
+        LESSON_RESULT_SYNC_ENABLED = $true
         CHAT_RELAY_ENABLED = [bool]$ChatRelayEnabled
         FRIENDS_ENABLED = $true
     } | ConvertTo-Json
@@ -115,17 +118,17 @@ try {
     }
 
     if ($Target -eq 'android-build') {
-        Write-Host 'Building Android Staging APK with Library sync enabled...'
-        & $FlutterCommand build apk --debug --no-pub `
+        Write-Host "Building Android Staging $AndroidBuildMode APK with Library sync enabled..."
+        & $FlutterCommand build apk "--$AndroidBuildMode" --no-pub `
             "--dart-define-from-file=$defineFile"
         if ($LASTEXITCODE -ne 0) {
             throw 'Android Staging build verification failed.'
         }
-        $apk = Join-Path $repoRoot 'build\app\outputs\flutter-apk\app-debug.apk'
+        $apk = Join-Path $repoRoot "build\app\outputs\flutter-apk\app-$AndroidBuildMode.apk"
         if (-not (Test-Path -LiteralPath $apk)) {
             throw 'Android build completed without the expected APK.'
         }
-        Write-Host 'PASS: Android Staging APK compiled with sync build flag enabled.'
+        Write-Host "PASS: Android Staging $AndroidBuildMode APK compiled with sync build flag enabled."
         return
     }
 
@@ -133,8 +136,8 @@ try {
         if ([string]::IsNullOrWhiteSpace($DeviceId)) {
             throw 'DeviceId is required for an Android device smoke run.'
         }
-        Write-Host "Installing and running Staging on Android device $DeviceId..."
-        & $FlutterCommand run --debug --no-pub `
+        Write-Host "Installing and running Staging $AndroidBuildMode on Android device $DeviceId..."
+        & $FlutterCommand run "--$AndroidBuildMode" --no-pub `
             -d $DeviceId `
             "--dart-define-from-file=$defineFile"
         if ($LASTEXITCODE -ne 0) {

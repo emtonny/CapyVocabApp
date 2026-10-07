@@ -35,7 +35,7 @@ void main() {
     await tempDirectory.delete(recursive: true);
   });
 
-  test('creates the complete v3 schema with foreign keys enabled', () async {
+  test('creates the complete v8 schema with foreign keys enabled', () async {
     libraryDatabase = LibraryDatabase(
       factory: databaseFactoryFfi,
       path: databasePath,
@@ -89,7 +89,7 @@ void main() {
     );
     var database = await libraryDatabase!.open();
 
-    expect(await database.getVersion(), 3);
+    expect(await database.getVersion(), LibraryDatabaseSchema.version);
     expect(await database.query('scan_results', orderBy: 'id'), before);
     expect(
       await database.query(
@@ -116,8 +116,7 @@ void main() {
     );
   });
 
-  test('upgrades v2 by adding only the owner-scoped pull cursor table',
-      () async {
+  test('upgrades v2 through the current owner-scoped schema', () async {
     final v2 = await databaseFactoryFfi.openDatabase(
       databasePath,
       options: OpenDatabaseOptions(
@@ -159,11 +158,234 @@ void main() {
       path: databasePath,
     );
     final upgraded = await libraryDatabase!.open();
-    expect(await upgraded.getVersion(), 3);
+    expect(await upgraded.getVersion(), LibraryDatabaseSchema.version);
     final tables = await upgraded.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table'",
     );
     expect(tables.map((row) => row['name']), contains('library_pull_cursors'));
+    expect(tables.map((row) => row['name']), contains('daily_missions'));
+    expect(tables.map((row) => row['name']), contains('lesson_sessions'));
+  });
+
+  test('upgrades v3 with the daily mission cache and preserves accounts',
+      () async {
+    final v3 = await databaseFactoryFfi.openDatabase(
+      databasePath,
+      options: OpenDatabaseOptions(
+        version: 3,
+        onCreate: (database, version) async {
+          await database.execute('''
+            CREATE TABLE local_accounts (
+              user_id TEXT PRIMARY KEY,
+              account_state TEXT NOT NULL,
+              cloud_backup_enabled INTEGER NOT NULL,
+              local_personalization_enabled INTEGER NOT NULL,
+              federated_contribution_enabled INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
+          await database.execute('''
+            CREATE TABLE scan_results (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              local_path TEXT NOT NULL,
+              vocab_json TEXT NOT NULL,
+              created_at TEXT
+            )
+          ''');
+          await database.execute('''
+            CREATE TABLE legacy_scan_import_queue (
+              legacy_scan_result_id INTEGER PRIMARY KEY,
+              migration_state TEXT NOT NULL,
+              queued_at TEXT NOT NULL
+            )
+          ''');
+          await _insertAccount(database, _userId);
+        },
+      ),
+    );
+    await v3.close();
+
+    libraryDatabase = LibraryDatabase(
+      factory: databaseFactoryFfi,
+      path: databasePath,
+    );
+    final upgraded = await libraryDatabase!.open();
+
+    expect(await upgraded.getVersion(), LibraryDatabaseSchema.version);
+    expect(
+      await upgraded.query(
+        'local_accounts',
+        columns: ['user_id'],
+      ),
+      [
+        {'user_id': _userId},
+      ],
+    );
+    expect(
+      await upgraded.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'daily_missions'",
+      ),
+      isNotEmpty,
+    );
+  });
+
+  test('upgrades v4 with lesson tables and preserves daily missions', () async {
+    final v4 = await databaseFactoryFfi.openDatabase(
+      databasePath,
+      options: OpenDatabaseOptions(
+        version: 4,
+        onCreate: (database, version) async {
+          await database.execute('''
+            CREATE TABLE local_accounts (
+              user_id TEXT PRIMARY KEY,
+              account_state TEXT NOT NULL,
+              cloud_backup_enabled INTEGER NOT NULL,
+              local_personalization_enabled INTEGER NOT NULL,
+              federated_contribution_enabled INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
+          await database.execute('''
+            CREATE TABLE scan_results (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              local_path TEXT NOT NULL,
+              vocab_json TEXT NOT NULL,
+              created_at TEXT
+            )
+          ''');
+          await database.execute('''
+            CREATE TABLE legacy_scan_import_queue (
+              legacy_scan_result_id INTEGER PRIMARY KEY,
+              migration_state TEXT NOT NULL,
+              queued_at TEXT NOT NULL
+            )
+          ''');
+          await database.execute('''
+            CREATE TABLE daily_missions (
+              user_id TEXT NOT NULL,
+              mission_date TEXT NOT NULL,
+              time_zone TEXT NOT NULL,
+              target_words INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              starts_at TEXT NOT NULL,
+              ends_at TEXT NOT NULL,
+              next_day_ends_at TEXT NOT NULL,
+              sync_status TEXT NOT NULL,
+              PRIMARY KEY (user_id, mission_date),
+              FOREIGN KEY (user_id) REFERENCES local_accounts(user_id)
+                ON DELETE CASCADE
+            )
+          ''');
+          await _insertAccount(database, _userId);
+          await _insertDailyMission(database, _userId);
+        },
+      ),
+    );
+    await v4.close();
+
+    libraryDatabase = LibraryDatabase(
+      factory: databaseFactoryFfi,
+      path: databasePath,
+    );
+    final upgraded = await libraryDatabase!.open();
+
+    expect(await upgraded.getVersion(), LibraryDatabaseSchema.version);
+    expect(
+      await upgraded.query(
+        'daily_missions',
+        columns: ['user_id', 'mission_date'],
+      ),
+      [
+        {'user_id': _userId, 'mission_date': '2026-09-02'},
+      ],
+    );
+    final tables = await upgraded.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table'",
+    );
+    expect(
+      tables.map((row) => row['name']),
+      containsAll([
+        'lesson_sessions',
+        'lesson_attempts',
+        'lesson_completion_results',
+      ]),
+    );
+  });
+
+  test('upgrades v5 completion rows through H4/H5 without data loss', () async {
+    final v5 = await databaseFactoryFfi.openDatabase(
+      databasePath,
+      options: OpenDatabaseOptions(
+        version: 5,
+        onCreate: (database, version) async {
+          await _createMinimalVersion5LessonSchema(database);
+        },
+      ),
+    );
+    await _insertAccount(v5, _userId);
+    await _insertDailyMission(v5, _userId);
+    await v5.insert('lesson_sessions', {
+      'id': 'legacy-session',
+      'user_id': _userId,
+      'mission_date': '2026-09-02',
+      'mode': 'daily',
+      'reward_eligible': 1,
+    });
+    await v5.insert('lesson_completion_results', {
+      'id': 'legacy-session:completion',
+      'session_id': 'legacy-session',
+      'user_id': _userId,
+      'mission_date': '2026-09-02',
+      'total_items': 10,
+      'completed_items': 10,
+      'source_revision_hash': _sha256,
+      'completed_at': _timestamp,
+      'created_at': _timestamp,
+    });
+    await v5.close();
+
+    libraryDatabase = LibraryDatabase(
+      factory: databaseFactoryFfi,
+      path: databasePath,
+    );
+    final upgraded = await libraryDatabase!.open();
+    final row = (await upgraded.query('lesson_completion_results')).single;
+
+    expect(await upgraded.getVersion(), LibraryDatabaseSchema.version);
+    expect(row['id'], 'legacy-session:completion');
+    expect(row['sync_status'], 'pending');
+    expect(row['reward_status'], 'pending');
+    expect(row['sync_attempt_count'], 0);
+    expect(row['sync_updated_at'], _timestamp);
+    expect(
+      await upgraded.update(
+        'lesson_completion_results',
+        {
+          'sync_status': 'synced',
+          'server_accepted_at': _timestamp,
+          'reward_status': 'awarded',
+          'reward_yuzu': 100,
+          'weekly_yuzu': 100,
+          'completion_ordinal': 1,
+          'reward_timing': 'on_time',
+          'rewarded_at': _timestamp,
+        },
+        where: 'id = ?',
+        whereArgs: ['legacy-session:completion'],
+      ),
+      1,
+    );
+    await expectLater(
+      upgraded.update(
+        'lesson_completion_results',
+        {'total_items': 11},
+        where: 'id = ?',
+        whereArgs: ['legacy-session:completion'],
+      ),
+      throwsA(isA<DatabaseException>()),
+    );
   });
 
   test('enforces tenant, evidence, event and transaction invariants', () async {
@@ -404,6 +626,78 @@ void main() {
   });
 }
 
+Future<void> _createMinimalVersion5LessonSchema(Database database) async {
+  await database.execute('''
+    CREATE TABLE scan_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      local_path TEXT NOT NULL,
+      vocab_json TEXT NOT NULL,
+      created_at TEXT
+    )
+  ''');
+  await database.execute('''
+    CREATE TABLE legacy_scan_import_queue (
+      legacy_scan_result_id INTEGER PRIMARY KEY,
+      migration_state TEXT NOT NULL,
+      queued_at TEXT NOT NULL
+    )
+  ''');
+  await database.execute('''
+    CREATE TABLE local_accounts (
+      user_id TEXT PRIMARY KEY,
+      account_state TEXT NOT NULL,
+      cloud_backup_enabled INTEGER NOT NULL,
+      local_personalization_enabled INTEGER NOT NULL,
+      federated_contribution_enabled INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+  await database.execute('''
+    CREATE TABLE daily_missions (
+      user_id TEXT NOT NULL,
+      mission_date TEXT NOT NULL,
+      time_zone TEXT NOT NULL,
+      target_words INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      starts_at TEXT NOT NULL,
+      ends_at TEXT NOT NULL,
+      next_day_ends_at TEXT NOT NULL,
+      sync_status TEXT NOT NULL,
+      PRIMARY KEY (user_id, mission_date)
+    )
+  ''');
+  await database.execute('''
+    CREATE TABLE lesson_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      mission_date TEXT,
+      mode TEXT NOT NULL,
+      reward_eligible INTEGER NOT NULL
+    )
+  ''');
+  await database.execute('''
+    CREATE TABLE lesson_completion_results (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL UNIQUE,
+      user_id TEXT NOT NULL,
+      mission_date TEXT,
+      total_items INTEGER NOT NULL,
+      completed_items INTEGER NOT NULL,
+      source_revision_hash TEXT NOT NULL,
+      completed_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  ''');
+  await database.execute('''
+    CREATE TRIGGER trg_lesson_results_no_update
+    BEFORE UPDATE ON lesson_completion_results
+    BEGIN
+      SELECT RAISE(ABORT, 'lesson completion results are immutable');
+    END
+  ''');
+}
+
 Future<void> _insertAccount(DatabaseExecutor database, String userId) {
   return database.insert('local_accounts', {
     'user_id': userId,
@@ -413,6 +707,23 @@ Future<void> _insertAccount(DatabaseExecutor database, String userId) {
     'federated_contribution_enabled': 0,
     'created_at': _timestamp,
     'updated_at': _timestamp,
+  });
+}
+
+Future<void> _insertDailyMission(
+  DatabaseExecutor database,
+  String userId,
+) {
+  return database.insert('daily_missions', {
+    'user_id': userId,
+    'mission_date': '2026-09-02',
+    'time_zone': 'Asia/Bangkok',
+    'target_words': 2,
+    'created_at': _timestamp,
+    'starts_at': '2026-09-01T17:00:00.000Z',
+    'ends_at': '2026-09-02T17:00:00.000Z',
+    'next_day_ends_at': '2026-09-03T17:00:00.000Z',
+    'sync_status': 'local_only',
   });
 }
 

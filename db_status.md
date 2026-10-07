@@ -2,7 +2,109 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-09-27 — EXACT-STAGING WEB BUILT / ANDROID INSTALLED**
+> Cập nhật gần nhất: **2026-10-06 — HOME H5 RELEASE CANDIDATE VERIFIED; GIT PREP READY**
+> Final gate chạy lại trên exact Staging `nxteaznowkfennxpqjmt`: migration
+> dry-run `upToDate=true`, synthetic hai-account smoke pass 9 nhóm và cleanup
+> còn 0 fixture. PostgreSQL cô lập pass 58/58, full Flutter pass 763 + 1 skip,
+> analyzer sạch, Web release và APK release 70,7 MB build pass. Quét secret
+> không thấy private key, personal access token hay JWT thật. ADB không thấy
+> thiết bị ở lần kiểm tra 06/10, nên smoke Android vật lý gần nhất vẫn là lần
+> pass 04/10. Production không bị thay đổi; chưa commit hoặc push.
+>
+> Trạng thái trước: **2026-10-04 — HOME H5A–H5D COMPLETE; EXACT-STAGING + ANDROID VERIFIED**
+> H5A settlement server-authoritative đã áp dụng bảng thưởng đúng hạn/muộn,
+> replay một phần ba chỉ vào ví, streak không phục hồi khi muộn và ledger
+> owner-readable/không client-mutable. SQLite nâng additive v7→v8 bằng bảng
+> `rewarded_replay_sessions`; snapshot gameplay đầu tiên được tái sử dụng và
+> outbox vẫn owner-scoped/idempotent. H5C thêm RPC weekly leaderboard chỉ cho
+> self + mutual accepted friends, lấy duy nhất `weekly_yuzu` đã xác nhận; Home
+> có cache owner-scoped và offline timestamp. Exact Staging backup DPAPI
+> 385.711 byte tại `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261004T082658Z-adba54ec`;
+> hai migration `20261004120000`/`20261004130000` apply pass, post-dry-run sạch.
+> Synthetic hai-account smoke pass 9 nhóm, cleanup còn 0 fixture. SQL isolated
+> pass 58/58, Home pass 49/49, full Flutter pass 763 + 1 skip, analyzer sạch,
+> Web release và APK release exact-Staging build pass. APK được cài đè giữ dữ
+> liệu trên CPH2375; cold-start online, cache offline, reconnect cùng tiến trình
+> và điều hướng Library/Shop/Friends/Camera/Chat đều pass. Home profile stream
+> retry backoff 2/5/15/30 giây sau lỗi tạm thời nên không còn kẹt offline đến
+> lần restart kế tiếp. Wi-Fi và mobile data đã khôi phục đúng trạng thái ban đầu.
+> Production không bị thay đổi.
+>
+> Trạng thái trước: **2026-10-01 — HOME H4 EXACT-STAGING VERIFIED; ANDROID INSTALL PENDING**
+> SQLite được nâng additive từ v5 lên v6 với trạng thái sync riêng cho
+> `lesson_completion_results`; gameplay payload vẫn immutable, review result
+> không vào queue. Worker/coordinator owner-scoped xử lý sign-in, resume, local
+> change, reconnect, exponential backoff và manual retry; restart không mất
+> completion hoặc tạo result thứ hai. Home/màn kết quả hiển thị `Chờ đồng bộ`,
+> `Đã đồng bộ`, `Đồng bộ lỗi` và tách Yuzu dự kiến khỏi số dư chi tiêu.
+> Migration `20260930160000_add_lesson_completion_sync.sql` tạo receipt immutable
+> và RPC authenticated/RLS idempotent; H4 không ghi Yuzu, streak hoặc leaderboard.
+> PostgreSQL isolated pass 35/35, Home + mini-game + SQLite pass 92/92, full
+> Flutter pass 756 + 1 skip và analyzer sạch. Exact Staging
+> `nxteaznowkfennxpqjmt` đã backup DPAPI 371.127 byte tại
+> `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261001T054525Z-2723e4d2`;
+> dry-run chỉ có H4, apply pass, hậu kiểm `upToDate=true`. Synthetic REST/RPC
+> smoke pass 6 nhóm, cleanup còn 0 fixture và reward writes bằng 0. APK release
+> exact-Staging với `LESSON_RESULT_SYNC_ENABLED=true` build pass; chưa cài lại vì
+> `adb devices` đang rỗng. Production không bị truy cập.
+>
+> Trạng thái trước: **2026-09-30 — H3 MARKER VISIBILITY/PERFORMANCE VERIFIED**
+> Badge marker đã tách khỏi constraint bbox, giữ 36 dp với contrast vàng/đen;
+> ảnh local decode theo kích thước render và được cô lập repaint. Mini-game pass
+> 34/34, analyzer toàn dự án sạch; không đổi file media, schema hoặc sync.
+>
+> Library SQLite được nâng additive từ v4 lên v5 với ba bảng owner-scoped:
+> `lesson_sessions`, `lesson_attempts` và `lesson_completion_results`.
+> Snapshot/rule/source của session được đóng băng; attempt append-only; chỉ
+> mastery 100% mới tạo đúng một immutable completion result. Store transaction
+> đã qua test pause/khôi phục draft sau reopen, requeue, retry idempotent,
+> payload conflict rollback, account isolation và bỏ bài giữ tiến trình nhưng
+> tắt quyền thưởng. Migration v4→v5 giữ nguyên daily mission; targeted SQLite
+> pass 12/12. H3C/H3D đã nối source builder, controller, hai game UI, Home và
+> Library review vào cùng store v5; review result không có mission date và
+> không đủ điều kiện nhận thưởng. Full Flutter suite pass 748, skip 1; analyzer
+> sạch; Web release và APK debug build thành công. APK exact-Staging đã cài trên
+> CPH2375: session auth được khôi phục, online/offline/reconnect Home pass và
+> mạng được trả về `wifi=1/mobile_data=1`. Tài khoản có `0/10` từ hợp lệ và
+> Library trống nên gameplay background/force-stop chưa thể smoke trên device.
+> Đây vẫn chỉ là local
+> persistence: chưa thêm outbox/Supabase sync, chưa apply remote, deploy hoặc
+> push.
+>
+> Trạng thái trước: **2026-09-28 — HOME H2A–H2D COMPLETE ON STAGING; ONLINE/OFFLINE/RECONNECT PASS**
+> Ba migration `20260928120000`, `20260928130000` và `20260928140000` đã apply
+> đúng Staging `nxteaznowkfennxpqjmt`; history khớp và dry-run hậu apply
+> `upToDate=true`. Migration cuối thêm `public.users` idempotently vào
+> `supabase_realtime`; authenticated SELECT và owner RLS không đổi. SQL isolated
+> gate pass 23/23. APK exact-Staging trên CPH2375: online không còn banner
+> offline, offline thật `wifi=0/mobile_data=0` vẫn render mission cache, và
+> reconnect online bỏ banner trở lại; không có Auth/PostgREST/Realtime/crash
+> error. Mission vẫn đúng 1 row/1 owner-day, publication đúng 1 entry. Mạng đã
+> khôi phục `1/1`. Production không bị truy cập; chưa deploy hoặc push.
+>
+> Mốc Home H2 ngày 27/09 đã thêm lớp đọc owner-scoped trên Library SQLite, gom Photo Note
+> theo `media_assets.captured_at`, khử trùng từ hợp lệ và dựng node tuần/tháng.
+> Khi đó chưa đổi schema/version/write path/outbox/sync. Mục tiêu ngày đọc
+> `user_settings.daily_target_words` và cache SharedPreferences theo user.
+> Boundary 23:59/00:00 cùng delayed recognition đã qua test; Android offline
+> smoke xác nhận thẻ nhiệm vụ/bản đồ thoát loading, đổi Tuần/Tháng và không có
+> crash/overflow. Các giới hạn account timezone/per-day immutable target của
+> mốc này đã được H2A/H2B xử lý cục bộ như trạng thái mới nhất ở trên.
+> Web release build pass nhưng Chrome test runner riêng bị treo và đã dừng.
+> Không apply migration, deploy hay push.
+>
+> Home H1 đọc `users.total_coins` như số dư Yuzu đã xác nhận và lưu snapshot
+> SharedPreferences theo từng user. Cache chỉ chứa display name, số dư, streak,
+> Yuzu chờ và thời gian cập nhật; tài khoản khác không đọc chung key. Lỗi cache
+> không chặn dữ liệu Supabase mới. Không đổi schema, migration, RLS, outbox hay
+> contract Library sync. Badge thông báo đọc stream hiện có; leaderboard tuần
+> không dùng `study_points` giả thay point ledger. Analyzer sạch, targeted
+> Home/navigation 13/13 và full Flutter 675 pass + 1 live skip; Web release và
+> APK debug build pass. Chrome widget runner riêng bị timeout, nhưng Web release
+> build pass. APK Staging được cài đè giữ data lên CPH2375 Android 13; Home render
+> đúng và PID-scoped startup log không có crash/Flutter error/overflow. Không
+> deploy/push.
+>
 > Friends F1–F6: **IMPLEMENTED / EXACT-STAGING VERIFIED** — migration additive cho exact
 > username/email/phone discovery, private opt-in/audit/rate limit, atomic friend
 > request/response và keyset list đã qua PostgreSQL 18 **68/68**; C2 regression
@@ -1272,6 +1374,395 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-10-06 — Home H5 final gate and Git preparation
+
+- Chuẩn hóa tên test/runner và comment milestone về H5; không tạo milestone
+  H6/H7 mới. SQL executable của migration đã apply không thay đổi.
+- Exact Staging `nxteaznowkfennxpqjmt` được xác nhận healthy và migration
+  dry-run sạch. Synthetic hai-account smoke pass đủ 9 nhóm, ghi 3 reward test
+  và cleanup còn 0 fixture; Production không bị truy cập hoặc thay đổi.
+- PostgreSQL 18 isolated pass 58/58; `flutter analyze` sạch; full Flutter pass
+  763 + 1 skip; 65 file Dart trong change set đúng formatter; `git diff
+  --check` sạch.
+- Web release exact-Staging build pass. Android release exact-Staging build
+  pass tại `build/app/outputs/flutter-apk/app-release.apk` (70,7 MB).
+- Quét credential không thấy private key, Supabase personal token, GitHub PAT,
+  JWT hay Google API key thật. Đã loại 23 ảnh/XML chẩn đoán trong `.tmp` khỏi
+  worktree và thêm ignore cho `.tmp/` cùng `devtools_options.yaml`.
+- ADB daemon chạy nhưng danh sách thiết bị trống, nên không cài lại APK trong
+  final gate này. Bằng chứng physical smoke gần nhất vẫn là CPH2375 pass ngày
+  04/10/2026. Chưa commit, push hoặc deploy Production.
+
+### 2026-10-04 — Home H5A–H5D exact-Staging + Android verified
+
+- Thêm settlement H5 theo receipt ordinal: lần đầu 100/130/150 hoặc mức muộn
+  67/87/100; lần hai `floor(first/3)` chỉ vào ví; lượt ba 0; lượt bốn bị từ
+  chối. Replay quá cửa sổ `next_day_ends_at` 24 giờ nhận 0.
+- Thêm `yuzu_reward_ledger`, `lesson_streak_days`, wallet/streak update atomic,
+  RLS owner-read và chặn client mutation. Trigger immutable chỉ chặn UPDATE để
+  account deletion vẫn cascade đúng quy trình retention.
+- SQLite nâng additive lên v8 với `rewarded_replay_sessions`; client tái sử dụng
+  snapshot bài đầu, tạo outbox replay idempotent và ước tính Yuzu chờ bằng một
+  phần ba. Home mở đúng replay từ node completed.
+- Thêm H5C RPC leaderboard self + mutual accepted friends, chỉ tổng hợp
+  `weekly_yuzu`; client validate owner, cache riêng theo account/week, fallback
+  offline có timestamp và giải thích điểm tuần khác thưởng replay.
+- PostgreSQL 18 isolated pass 58/58; analyzer sạch; full Flutter pass 763 + 1
+  skip; Web release build pass. Backup exact Staging DPAPI 385.711 byte tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261004T082658Z-adba54ec`.
+- Apply đúng hai migration H5A/H5C; post-dry-run `upToDate=true`. Synthetic live
+  smoke hai fixture accepted hai chiều xác nhận ví 133, tuần 100, streak 1,
+  leaderboard hai phía cùng ordering/rank, idempotency/RLS/conflict và cleanup
+  còn 0 fixture.
+- Sửa race cold-start của Home: cache vẫn render tức thời nhưng profile stream
+  lỗi tạm thời nay retry backoff 2/5/15/30 giây. Regression test xác nhận lần
+  đầu lỗi và lần hai online tự thay cache; nhóm Home pass 49/49.
+- APK release exact-Staging build pass tại
+  `build/app/outputs/flutter-apk/app-release.apk` (70,7 MB), cài đè bằng
+  `adb install -r` trên CPH2375 nên giữ nguyên session/dữ liệu. Cold-start online
+  pass; cold-start offline hiện đúng cache/timestamp; bật lại mạng thì banner
+  offline tự biến mất trên cùng PID. Wi-Fi/mobile data được khôi phục 1/1.
+- Smoke thiết bị mở đúng Library (2 ảnh local), Shop, Friends, Camera sheet và
+  Chat inbox (1 bạn); focus vẫn thuộc CapyVocab, không ghi nhận crash/Flutter/
+  SQLite exception. Production không đổi.
+
+### 2026-10-01 — Home H4 completion sync exact-Staging verified
+
+- Library SQLite v6 bổ sung metadata vận hành sync cho completion result và
+  migration v5→v6 additive. Daily completion cũ đủ điều kiện chuyển `pending`;
+  review giữ `not_applicable`. Trigger chỉ khóa payload nghiệp vụ, cho worker
+  cập nhật trạng thái/attempt/backoff/server accepted time.
+- Thêm typed gateway, worker và lifecycle coordinator. Queue phục hồi row bị
+  kẹt ở `syncing`, tự drain khi sign-in/resume/local change/reconnect, dùng
+  backoff 5 giây–6 giờ và có manual retry cho `failed`. Account switch hủy stream
+  cũ; evidence không gửi đường dẫn ảnh local hoặc đáp án thô.
+- Home, lesson map và màn completion dùng trạng thái DB thật: `Chờ đồng bộ`,
+  `Đã đồng bộ`, `Đồng bộ lỗi`. Yuzu dự kiến nằm riêng khỏi `total_coins`; H4
+  không settlement thưởng, streak hoặc weekly leaderboard.
+- Migration `20260930160000_add_lesson_completion_sync.sql` tạo
+  `lesson_completion_receipts`, owner SELECT RLS và RPC security-definer. RPC
+  kiểm tra daily mission + evidence 100%, trả cùng receipt cho retry giống hệt,
+  từ chối changed payload và xử lý race insert đồng thời bằng unique constraint
+  + `ON CONFLICT DO NOTHING`.
+- Verification: PostgreSQL 18 isolated 35/35; SQLite schema/store 15/15;
+  coordinator 3/3; Home + mini-game + SQLite 92/92; full Flutter 756 pass +
+  1 skip; analyzer sạch; Android exact-Staging release APK build pass.
+- Backup exact Staging `nxteaznowkfennxpqjmt` dạng custom archive 371.127 byte,
+  `pg_restore --list` + DPAPI round-trip verified tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261001T054525Z-2723e4d2`.
+  Dry-run chỉ liệt kê migration H4; apply pass; post-dry-run `upToDate=true`.
+- Synthetic Staging smoke tự tạo một account/mission, sync receipt hai lần,
+  xác nhận một row/cùng `accepted_at`, conflict 23505, direct/anon rejection,
+  Yuzu và streak không đổi; xóa auth fixture cascade còn 0 receipt. Production
+  không linked/apply. Điện thoại chưa được cài bản H4 vì ADB đang không có device.
+
+### 2026-09-30 — H3 marker visibility and photo rendering optimized
+
+- Ảnh thiết bị xác nhận badge số bị ép theo kích thước bbox, khiến target nhỏ
+  co/cắt marker xuống vài pixel. Badge được tách khỏi frame, giữ 36 dp, clamp
+  trong biên ảnh và dùng nền vàng với viền/chữ đen; frame chuyển sang viền vàng
+  có outline đen để giữ tương phản trên cả nền sáng và tối.
+- Lesson graph-paper là surface sáng cố định nhưng từng kế thừa palette tối của
+  thiết bị, làm AppBar/thẻ/chip số gần trắng trên nền sáng. `LessonSessionScreen`
+  nay áp light theme cục bộ; regression chạy dưới outer dark theme xác nhận chữ
+  câu hỏi vẫn có màu tối.
+- `LessonPhotoView` giới hạn decode ảnh local theo kích thước render nhân device
+  pixel ratio và thêm `RepaintBoundary`; không đổi file gốc, metadata, bbox,
+  gameplay, SQLite schema hoặc sync contract.
+- Regression mới bao phủ bbox rất nhỏ, kích thước/contrast badge và resized
+  image provider. Toàn bộ mini-game pass 34/34; analyzer toàn dự án sạch.
+- Manifest chỉ có Flutter activity và quyền mạng cần thiết, không có
+  service/receiver/tool điều khiển màn hình. APK smoke trước là debug nên chưa
+  dùng làm bằng chứng hiệu năng release; lần device UX tiếp theo phải cài bản
+  release exact-Staging.
+- Staging phát sinh sẵn hai migration remote `20260929143000` và
+  `20260930130000`; đã fetch bản SQL về local, phục hồi nguyên trạng 33 migration
+  tracked vốn sạch và xác nhận dry-run `upToDate=true`. Không push/apply remote.
+- Runner exact-Staging nay nhận build mode có validation, mặc định vẫn `debug`.
+  APK release SHA-256
+  `950AF59CD0B27D59A0EF4C49BA443B652025AEA8D02F343B0D30F1826B055B03`
+  được ký v2, cài đè giữ data và cold-start `3.943 s`. Package không debuggable,
+  không có Dart VM service, giữ auth/Home cùng draft lesson; marker 1–4 và dark
+  theme contrast pass trực quan. Process log có 0 crash/FlutterError.
+- `gfxinfo` trả `0` frame cho Flutter/Impeller nên không được dùng làm bằng chứng
+  hiệu năng. Credential/screenshot tạm đều đã xóa; ADB server đã tắt và hậu kiểm
+  có `0` process `adb`. Không deploy hoặc push Git.
+
+### 2026-09-29 — H3 exact-Staging Android smoke partial
+
+- Xác định APK debug được cài ban đầu đã build thiếu dart-define nên dùng
+  `assets/config/client.config` và trỏ sang project fallback, không phải linked
+  Staging. Vì vậy Supabase trả `invalid_credentials`; UI ánh xạ mã này thành
+  `Mật khẩu không đúng` dù credential Staging hợp lệ.
+- Đối chiếu linked ref đúng Staging `nxteaznowkfennxpqjmt`. Migration fetch chỉ
+  đồng bộ về local migration remote đã tồn tại
+  `20260929132557_add_chat_album_image_shares.sql`; không apply remote trong
+  lượt này. `supabase db push --linked --dry-run` hậu kiểm trả
+  `upToDate=true`, không có migration chờ apply.
+- Runner có guard đã build APK với credential exact-Staging, xóa file define
+  tạm sau build và cài đè giữ app data lên CPH2375. SHA-256 APK là
+  `30B1CF9C623655AB249FA115CACEC7DD9BD3915C9ECDDA037E651CAC38085B79`.
+- Cold-start khôi phục session hợp lệ và mở Home. Online không còn cảnh báo;
+  offline thật với Wi-Fi/mobile data tắt vẫn render cache và hiện cảnh báo;
+  reconnect render Home online và bỏ cảnh báo. Trạng thái mạng được khôi phục
+  chính xác từ `1/1` về `1/1`; log tiến trình không có Auth/PostgREST/Realtime
+  hoặc crash error.
+- Library tài khoản smoke chưa có Photo Note và nhiệm vụ ngày có `0/10` từ hợp
+  lệ, nên không tạo dữ liệu ảnh thay người dùng và chưa tuyên bố device pass cho
+  background/force-stop/current draft/queue. Bằng chứng tự động H3C/H3D vẫn là
+  748 pass, 1 skip và analyzer sạch. Project fallback chỉ nhận một lần đăng nhập
+  thất bại từ APK build sai; không có migration, deploy hoặc data write lên
+  Production và không push Git.
+
+### 2026-09-29 — Home H3C/H3D lesson runtime and Library review verified
+
+- Source builder chỉ nhận Photo Note đúng owner, media local active, scan hợp
+  lệ và target có bounding box; answer/path/kích thước/revision được đóng băng
+  trong session snapshot.
+- Controller phối hợp hai game qua một mastery queue, lưu câu hiện tại/draft,
+  chặn stale submission, khôi phục pause và không mang draft của câu vừa nộp
+  sang câu kế tiếp khi app background tại feedback.
+- Lesson shell hỗ trợ Back/X/background pause, progress `X/Y`, feedback,
+  completion và các trạng thái empty/error/blocked/abandoned/expired. Home mở
+  daily session; Library cho người dùng chọn `Trộn cả hai`, `Ghép từ` hoặc
+  `Điền chữ` để tạo review session mới không thưởng.
+- Không đổi schema sau SQLite v5. Review dùng cùng ba bảng H3B, giữ
+  `mission_date = null` và `reward_eligible = 0`; completion result vẫn chỉ tạo
+  đúng một lần khi mastery đạt 100%.
+- Full Flutter suite pass 748, skip 1; analyzer sạch; Web release và APK debug
+  build thành công. Android device/emulator chưa kết nối nên device smoke
+  online/offline/background/force-stop còn chờ. Không apply remote, deploy hay
+  push Git.
+
+### 2026-09-29 — Home H3A/H3B gameplay contract and local persistence verified
+
+- H3A thêm domain thuần Dart cho hai game dùng ảnh, Unicode NFC + trim +
+  lowercase normalizer, grader theo item ID, mastery queue và idempotent
+  `attempt_id`; đúng được loại khỏi queue, sai quay lại cuối queue.
+- Library SQLite nâng additive từ v4 lên v5. `lesson_sessions` giữ frozen
+  snapshot/current question/draft/queue; `lesson_attempts` append-only;
+  `lesson_completion_results` immutable và unique theo session.
+- Lớp store luôn query theo `user_id`, commit attempt + progress + completion
+  trong một transaction, phát hiện retry cùng ID khác payload, và trả lại kết
+  quả đã commit khi retry sau mất ACK.
+- Pause/đóng mở DB khôi phục current question, draft và queue. `Bỏ bài` giữ
+  snapshot/progress/history nhưng chuyển `abandoned` và `reward_eligible=0`;
+  session terminal không nhận attempt mới.
+- Migration v4→v5 giữ account/daily mission. Domain pass 11/11; schema/store
+  SQLite pass 12/12; targeted analyzer sạch.
+- H3 chưa thêm outbox, Supabase table/migration, Yuzu/XP/streak/SRS/leaderboard
+  write hoặc quảng cáo. Không apply Staging/Production, deploy hay push Git.
+
+### 2026-09-28 — Home H2D Realtime gate fixed and H2 completed on Staging
+
+- Thêm migration idempotent
+  `20260928140000_enable_users_realtime.sql`: chỉ thêm `public.users` vào
+  `supabase_realtime` khi publication tồn tại và table chưa được publish. Không
+  đổi grant, RLS policy hoặc replica identity.
+- Regression test chứng minh đỏ trước migration và xanh sau migration. Native
+  PostgreSQL isolated gate tăng từ 22 lên 23 kiểm tra và pass 23/23.
+- Backup pre-apply mới `VERIFIED`, 351,940 bytes, mã hóa Windows DPAPI. Exact
+  Staging guard `ACTIVE_HEALTHY`; dry-run chỉ có migration `20260928140000`;
+  apply thành công, hậu kiểm `upToDate=true`, publication count đúng 1,
+  authenticated SELECT và RLS vẫn bật.
+- CPH2375 online cold launch 5,554 ms: Home tải profile live và banner offline
+  biến mất. Offline thật `wifi=0/mobile_data=0` cold launch 5,209 ms: banner
+  cache xuất hiện đúng, mission `0/10` vẫn render, không crash. Sau restore
+  mạng `1/1`, reconnect cold launch 5,362 ms và banner biến mất lại.
+- Hậu kiểm giữ `mission_count=1`, `distinct_owner_day=1` và
+  `users_publication_count=1`; không có Auth/PostgREST/Realtime/crash error.
+  H2A–H2D được chốt hoàn thành trên Staging. Production không bị truy cập;
+  không deploy Edge Function hoặc push Git.
+
+### 2026-09-28 — Home H2A/H2B applied Staging; Android online/offline mission pass
+
+- Pre-apply PostgreSQL 18 isolated gate pass 22/22. Exact-project guard xác nhận
+  linked project duy nhất là Staging `nxteaznowkfennxpqjmt`, `ACTIVE_HEALTHY`;
+  dry-run chỉ liệt kê hai migration H2A/H2B.
+- Tạo backup `public/private` 341,957 bytes tại thư mục backup cục bộ của ứng
+  dụng; archive và migration history được mã hóa Windows DPAPI, hash/restore
+  list/round-trip đều `VERIFIED`.
+- Apply `20260928120000_add_daily_mission_contract.sql` và
+  `20260928130000_ensure_daily_mission.sql` thành công. Migration history
+  local/remote khớp; dry-run hậu apply trả `upToDate=true`.
+- APK được build bằng guarded Staging runner và cài đè giữ data lên CPH2375
+  Android 13. Phiên `Demo 1` khôi phục; lỗi đăng nhập do APK trước trỏ Production
+  không còn xuất hiện. Online RPC tạo 1 mission ngày 28/09 và 1 timezone; sau
+  nhiều restart vẫn `mission_count=1`, `distinct_owner_day=1`.
+- Offline smoke tắt thật Wi-Fi/mobile data từ `1/1` xuống `0/0`; cold launch
+  5,500 ms, Home/mission cache `0/10` render và không có crash. Khối cleanup đã
+  khôi phục mạng về `1/1`; reconnect cold launch 5,449 ms, RPC không tạo trùng.
+- Online Home còn một gate lỗi độc lập: banner vẫn ghi `Đang offline` dù Android
+  có `INTERNET/VALIDATED`. `authenticated` có SELECT, RLS policy owner đúng,
+  nhưng `public.users` không nằm trong `supabase_realtime`; client Home dùng
+  `.stream()`. Chưa tự ý thay đổi publication hoặc client.
+- Remote writes được giới hạn ở hai migration đã duyệt, 1 daily mission và 1
+  timezone setting do runtime tạo. Production không bị truy cập; không deploy
+  Edge Function hoặc push Git. H2D/H2 chưa chốt do gate Home Realtime.
+
+### 2026-09-28 — Home H2D automated/Web gate verified; Android device pending
+
+- Sửa coordinator offline rollover: nếu `now` nằm trong đúng biên ngày kế tiếp
+  đã cache, app dùng timezone và biên authoritative của account snapshot, không
+  phụ thuộc timezone thiết bị hiện tại hoặc việc plugin timezone có tải được.
+- Bổ sung regression test cho target đóng băng khi setting đổi giữa ngày,
+  timezone tài khoản thắng sau khi thiết bị đổi vùng, rollover qua 00:00 khi
+  timezone loader lỗi, runtime refresh khi resume và timer tới biên ngày cache.
+- PostgreSQL 18 isolated pass 22/22, gồm hai thiết bị gửi timezone khác nhau vẫn
+  nhận cùng immutable mission row; setting target/timezone chỉ áp dụng ngày sau
+  và DST vẫn giữ đúng biên server.
+- Home pass viewport 320 px với Android text scale 200% sau khi các header và
+  legend được phép wrap. Targeted H2D/Home/Library pass 69/69; full Flutter pass
+  712 + 1 live test opt-in skip; analyzer toàn repo sạch.
+- Web release build và Chrome startup smoke pass; Android debug APK build pass.
+  Chrome widget-test runner riêng bị treo trong môi trường hiện tại. Mobile
+  audit tổng quát tạo false positive khi quét generated Web/Dart và diễn giải
+  icon/font size thành touch target; widget tests cụ thể xác nhận control 48 px
+  và font scale 200% không overflow.
+- Không có Android device, emulator hoặc BlueStacks khả dụng, nên smoke test APK
+  mới trên Android thật còn chờ. H2D/H2 chưa được đánh dấu hoàn tất cuối cùng.
+- Không đổi schema/thêm migration trong H2D. Hai migration H2A/H2B vẫn pending;
+  chưa apply, ghi remote data, deploy hoặc push.
+
+### 2026-09-28 — Home H2C final UX implemented locally
+
+- Thẻ nhiệm vụ Home hiển thị gọn `valid/target`, tiến độ, số còn thiếu, trạng
+  thái, thưởng dự kiến và một CTA chính; lý do ảnh bị loại và trạng thái xử lý
+  vẫn rõ ràng.
+- Thêm điều hướng kỳ trước, kỳ sau và quay về hôm nay cho cả Tuần/Tháng. Dữ liệu
+  kỳ đang xem và nhiệm vụ hôm nay dùng hai stream phản ứng riêng, nên thêm ảnh
+  hôm nay vẫn cập nhật thẻ khi đang duyệt lịch sử mà không mở rộng query qua
+  toàn bộ khoảng thời gian.
+- `Chụp thêm` và `Chụp lại` đi tới Scan; `Chọn ảnh cùng ngày` đi tới Library với
+  query `from/to` lấy từ biên UTC authoritative của mission. Library áp dụng
+  khoảng nửa mở `[from, to)`, gồm đúng ảnh tại đầu khoảng và loại ảnh đúng tại
+  cuối khoảng.
+- Không đổi schema/version/local persistence/write path/outbox/Supabase sync và
+  không thêm migration. Kiểm thử mục tiêu bao phủ vùng chạm 48 px, màn hình hẹp,
+  điều hướng tuần/tháng, thẻ hôm nay realtime khi xem lịch sử và biên UTC của
+  Library.
+- Targeted H2C/Home/Library pass 43/43; analyzer toàn repo sạch; full Flutter
+  pass 707 + 1 live test opt-in skip; Web release và Android debug APK build
+  pass. Web vẫn báo cảnh báo WASM có sẵn từ `flutter_tts`, nhưng JavaScript
+  release build thành công.
+- Chưa apply hai migration H2A/H2B đang pending, chưa ghi remote data, deploy
+  hoặc push. H2 còn H2D device/Web gate.
+
+### 2026-09-28 — Home H2B implicit daily mission implemented locally
+
+- Thêm `20260928130000_ensure_daily_mission.sql`: backfill và khóa ba biên UTC
+  `starts_at/ends_at/next_day_ends_at`; private helper khóa setting owner và
+  public authenticated RPC `ensure_daily_mission` dùng `INSERT ... ON CONFLICT
+  DO NOTHING`. Timezone thiết bị chỉ được nhận cho account chưa có timezone;
+  setting hiện có không bị thiết bị khác ghi đè.
+- RPC tính ngày/biên theo PostgreSQL timezone catalog, nên DST không bị rút gọn
+  thành offset cố định. Mission đã tạo giữ nguyên target/timezone; thay setting
+  chỉ tác động lần ensure ngày sau. Authenticated vẫn không có quyền ghi trực
+  tiếp bảng mission.
+- Flutter thêm `flutter_timezone 3.0.1`, typed gateway, single-flight
+  coordinator và runtime theo auth/open/resume/timer account-midnight. Runtime
+  hủy timer khi đổi account/logout và Home chỉ quan sát snapshot đã publish,
+  không tự tạo RPC theo mỗi rebuild.
+- SQLite v4 giữ biên ngày và `local_only/synced`, bootstrap local account với
+  consent fail-closed, hỗ trợ lookup theo instant/latest và cho snapshot server
+  canonical thay bản offline xung đột. Offline dùng chính xác một biên kế tiếp
+  đã cache; cần reconnect trước rollover DST-sensitive thứ hai.
+- Home dùng target riêng của từng mission, biên server cho query Photo Note và
+  chỉ báo device-timezone fallback khi chưa có snapshot. Owner mismatch từ RPC
+  là lỗi toàn vẹn và không bị hạ thành fallback offline.
+- PostgreSQL 18 isolated pass 21/21; targeted H2B/Home pass 27/27; full Flutter
+  pass 702 + 1 opt-in live skip; analyzer sạch; Web release và Android debug
+  APK build pass. Android build ban đầu bắt được JVM target 1.8/11 không khớp
+  trong `flutter_timezone`; root Gradle giờ chỉ đồng bộ plugin này về JVM 11 và
+  build lại thành công. Mobile audit script vẫn FAIL vì
+  regex gắn kích thước icon/font hiện có thành touch target và đưa cảnh báo UI
+  cũ ngoài scope; H2B không thêm control tương tác mới.
+- Linked Staging dry-run trả `dryRun=true`, chỉ liệt kê H2A
+  `20260928120000_add_daily_mission_contract.sql` và H2B
+  `20260928130000_ensure_daily_mission.sql`. Chưa apply Staging/Production,
+  chưa ghi remote data, deploy hoặc push.
+
+### 2026-09-28 — Home H2A immutable daily contract implemented locally
+
+- Thêm migration `20260928120000_add_daily_mission_contract.sql`: field
+  `user_settings.time_zone` nullable cho rollout tài khoản cũ, validation IANA
+  region dựa trên `pg_timezone_names`, và bảng `daily_missions` có primary key
+  `(user_id, mission_date)`.
+- Nhiệm vụ cloud đóng băng ngày, timezone, mục tiêu và thời điểm tạo bằng trigger
+  chặn update. Authenticated chỉ có SELECT và RLS owner-only; quyền tạo idempotent
+  sẽ đi qua API server-side của H2B, không mở direct insert cho client.
+- Library SQLite nâng schema v3→v4, thêm `daily_missions` FK theo local account,
+  primary key owner/ngày và trigger immutable. `SqliteDailyMissionCache` hỗ trợ
+  put idempotent, get/list owner-scoped và fail khi snapshot cùng ngày xung đột.
+- PostgreSQL 18 isolated fixture pass 11/11 gồm timezone hợp lệ/không hợp lệ,
+  existing-account rollout, authenticated setting update, uniqueness,
+  immutability, table privilege và cross-owner RLS. Không có remote write.
+- Targeted H2A schema/cache pass 14/14; Home + Library local pass 68/68; full
+  Flutter pass 690 + 1 opt-in live skip; analyzer toàn dự án sạch; format và
+  diff whitespace sạch. Exact linked Staging dry-run trả `dryRun=true` và chỉ
+  liệt kê `20260928120000_add_daily_mission_contract.sql` là pending.
+- Chưa apply migration lên Staging/Production, chưa đổi cloud data, deploy hoặc
+  push. H2B còn phải phát hiện/lưu timezone tài khoản, tạo/pull nhiệm vụ ngầm lúc
+  00:00/lần mở và thay device-timezone fallback bằng snapshot đã lưu.
+
+### 2026-09-27 — Home H2 local daily Photo Note map implemented
+
+- Thay placeholder bản đồ bằng thẻ nhiệm vụ ngày và bản đồ responsive theo
+  tuần/tháng; các node dùng Photo Note đúng khoảng ngày dựa trên thời điểm chụp.
+- Thêm pure model cho sáu trạng thái node, mục tiêu/từ hợp lệ/còn thiếu, tiến
+  trình, thưởng dự kiến và các lý do loại. Từ được chuẩn hóa, khử trùng trong
+  ngày; annotation mới nhất được dùng và detection bị reject không được tính.
+- Ảnh pending giữ trạng thái chưa đủ dữ liệu và hiển thị không phạt. Scan lỗi
+  được ánh xạ sang ảnh mờ, sai ngôn ngữ hoặc không nhận diện khi error code có
+  đủ thông tin; không tự tạo kết quả nhận diện giả.
+- Mục tiêu đọc Supabase onboarding repository và có cache owner-scoped. Lỗi
+  Supabase/cache không chặn map; fallback hiện là 10 từ.
+- Sửa vòng tái tạo auto-dispose làm Home offline kẹt loading; regression provider
+  chứng minh repository rỗng vẫn phát bản đồ ngay. Màu card/toggle được đặt rõ
+  để không mất tương phản khi thiết bị bật dark-mode.
+- Home tests pass 14/14; analyzer toàn dự án sạch; full JSON test reporter trả
+  `success=true`. Hai lần full compact từng có một failure chập chờn không lặp
+  lại khi chạy JSON và không tạo error event; không quy kết là pass ổn định tuyệt
+  đối. Web Staging release và APK Staging build pass; Supabase dry-run sạch.
+- APK cài đè trên CPH2375 Android 13 giữ dữ liệu. Offline Home hiển thị mục tiêu
+  10, map tuần/tháng và action chụp ảnh; PID `20790` không có crash, Flutter
+  error, RenderFlex hoặc overflow.
+- Chưa có field múi giờ tài khoản và snapshot mục tiêu theo từng ngày. H2 dùng
+  device timezone fallback có nhãn công khai và chưa được chốt COMPLETE. Chrome
+  test runner H2 bị treo, đã dừng; chưa có Web live smoke. Không đổi database,
+  migration, cloud data, outbox, sync, deploy hoặc Git remote.
+- Tại thời điểm ghi nhận 27/09, quyết định tiếp theo đã được duyệt: account
+  timezone dùng tên vùng IANA;
+  nhiệm vụ ngày được tạo ngầm và đóng băng timezone + target; thay đổi Cài đặt
+  chỉ áp dụng ngày sau; một user/ngày chỉ có một nhiệm vụ. Đây mới là kế hoạch
+  H2A–H2D trong `home.md`; chưa có migration/RPC/local table mới và chưa apply.
+
+### 2026-09-27 — Home H1 cache-first Yuzu shell implemented
+
+- Thay Home placeholder bằng header Yuzu, Yuzu chờ đồng bộ, badge thông báo,
+  lời chào, streak chỉ đọc và thẻ bảng xếp hạng bạn bè rút gọn responsive.
+- Xóa scaffold `streakProvider` dành cho nút Thắp lửa; Home không còn hành động
+  điểm danh hoặc cộng xu riêng. Streak hiện chỉ phản ánh trạng thái đã có.
+- Nối profile Supabase Realtime để đọc `display_name`, legacy `total_coins` như
+  số dư Yuzu và `streak_days`; notification badge dùng stream `notifications`
+  hiện có. Không thêm dependency hoặc schema.
+- Thêm snapshot SharedPreferences versioned, owner-scoped. Cache hợp lệ được
+  hiển thị khi offline; cache hỏng/lỗi ghi không chặn profile online; số âm hoặc
+  dữ liệu sai định dạng bị từ chối.
+- Không dùng `study_points` làm Yuzu tuần vì `friend.md` xác nhận chưa có point
+  ledger. Mini leaderboard giữ empty state trung thực và điều hướng sang Bạn bè;
+  dữ liệu/xếp hạng thật vẫn thuộc H5C.
+- Targeted Home/navigation pass 13/13; full Flutter pass 675 + 1 opt-in live
+  skip; full analyzer sạch; Web release và Android debug APK build pass.
+  Chrome widget runner riêng không trả kết quả và bị timeout sau 188 giây.
+- Runner trực tiếp bị ngắt hai lần do CPH2375 rớt ADB trong lúc preflight. Build
+  được tách khỏi bước cài; sau khi ADB online lại, `adb install -r -t` APK Staging
+  thành công và giữ dữ liệu tài khoản. App foreground PID `3506`; ảnh màn hình
+  xác nhận 100 Yuzu, Demo 1, streak chỉ đọc, leaderboard empty-state và thanh
+  điều hướng đúng. PID-scoped log không có crash, Flutter error, RenderFlex hay
+  overflow. H1 được chốt `HOÀN THÀNH`.
+- Không apply migration, không ghi cloud data, không deploy và không push Git.
 
 ### 2026-09-27 — Supabase Web build and Android exact-Staging install
 

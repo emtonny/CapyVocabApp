@@ -1,8 +1,10 @@
 import 'package:capy_vocab/features/home/presentation/screens/home_screen.dart';
+import 'package:capy_vocab/features/home/presentation/providers/home_provider.dart';
 import 'package:capy_vocab/core/constants/app_colors.dart';
 import 'package:capy_vocab/shared/navigation/bottom_nav_bar.dart';
 import 'package:capy_vocab/shared/widgets/sticker_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -159,7 +161,26 @@ Widget _testApp() {
     ],
   );
 
-  return MaterialApp.router(routerConfig: router);
+  return ProviderScope(
+    overrides: [
+      homeProvider.overrideWith(
+        (ref) => Stream.value(
+          HomeState(
+            userId: 'navigation-test-owner',
+            displayName: 'Navigation Test',
+            yuzuBalance: 100,
+            pendingYuzu: 0,
+            streakDays: 0,
+            updatedAt: DateTime(2026, 9, 27),
+          ),
+        ),
+      ),
+      homeUnreadNotificationsProvider.overrideWith(
+        (ref) => Stream.value(0),
+      ),
+    ],
+    child: MaterialApp.router(routerConfig: router),
+  );
 }
 
 Widget _navOnlyApp() {

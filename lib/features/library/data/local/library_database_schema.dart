@@ -1,7 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 abstract final class LibraryDatabaseSchema {
-  static const version = 3;
+  static const version = 8;
 
   static const tableNames = <String>{
     'scan_results',
@@ -20,6 +20,11 @@ abstract final class LibraryDatabaseSchema {
     'sync_operations',
     'sync_tombstones',
     'library_pull_cursors',
+    'daily_missions',
+    'lesson_sessions',
+    'lesson_attempts',
+    'lesson_completion_results',
+    'rewarded_replay_sessions',
     'training_examples',
     'dataset_manifests',
     'dataset_manifest_examples',
@@ -46,6 +51,31 @@ abstract final class LibraryDatabaseSchema {
     }
     if (oldVersion < 3) {
       await database.execute(_libraryPullCursorsTable);
+    }
+    if (oldVersion < 4) {
+      for (final statement in _dailyMissionStatements) {
+        await database.execute(statement);
+      }
+    }
+    if (oldVersion < 5) {
+      for (final statement in _lessonSessionStatements) {
+        await database.execute(statement);
+      }
+    }
+    if (oldVersion == 5) {
+      for (final statement in _lessonCompletionSyncUpgradeStatements) {
+        await database.execute(statement);
+      }
+    }
+    if (oldVersion == 5 || oldVersion == 6) {
+      for (final statement in _lessonRewardSettlementUpgradeStatements) {
+        await database.execute(statement);
+      }
+    }
+    if (oldVersion < 8) {
+      for (final statement in _rewardedReplayStatements) {
+        await database.execute(statement);
+      }
     }
   }
 
@@ -414,6 +444,9 @@ abstract final class LibraryDatabaseSchema {
       )
     ''',
     _libraryPullCursorsTable,
+    ..._dailyMissionStatements,
+    ..._lessonSessionStatements,
+    ..._rewardedReplayStatements,
     '''
       CREATE TABLE IF NOT EXISTS training_examples (
         id TEXT PRIMARY KEY,
@@ -606,4 +639,368 @@ abstract final class LibraryDatabaseSchema {
           ON DELETE CASCADE
       )
     ''';
+
+  static const _dailyMissionStatements = <String>[
+    '''
+      CREATE TABLE IF NOT EXISTS daily_missions (
+        user_id TEXT NOT NULL,
+        mission_date TEXT NOT NULL CHECK (
+          length(mission_date) = 10 AND date(mission_date) = mission_date
+        ),
+        time_zone TEXT NOT NULL CHECK (
+          instr(time_zone, '/') > 1 AND instr(time_zone, ' ') = 0
+        ),
+        target_words INTEGER NOT NULL CHECK (target_words > 0),
+        created_at TEXT NOT NULL,
+        starts_at TEXT NOT NULL,
+        ends_at TEXT NOT NULL,
+        next_day_ends_at TEXT NOT NULL,
+        sync_status TEXT NOT NULL
+          CHECK (sync_status IN ('local_only', 'synced')),
+        PRIMARY KEY (user_id, mission_date),
+        CHECK (starts_at < ends_at AND ends_at < next_day_ends_at),
+        FOREIGN KEY (user_id) REFERENCES local_accounts(user_id)
+          ON DELETE CASCADE
+      )
+    ''',
+    '''
+      CREATE TRIGGER IF NOT EXISTS trg_daily_missions_immutable
+      BEFORE UPDATE OF
+        user_id,
+        mission_date,
+        time_zone,
+        target_words,
+        created_at,
+        starts_at,
+        ends_at,
+        next_day_ends_at
+      ON daily_missions
+      BEGIN
+        SELECT RAISE(ABORT, 'daily mission snapshots are immutable');
+      END
+    ''',
+  ];
+
+  static const _lessonSessionStatements = <String>[
+    '''
+      CREATE TABLE IF NOT EXISTS lesson_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        mission_date TEXT CHECK (
+          mission_date IS NULL OR (
+            length(mission_date) = 10 AND date(mission_date) = mission_date
+          )
+        ),
+        mode TEXT NOT NULL CHECK (mode IN ('daily', 'review')),
+        status TEXT NOT NULL CHECK (
+          status IN (
+            'active', 'paused', 'blocked', 'completed',
+            'abandoned', 'expired'
+          )
+        ),
+        total_items INTEGER NOT NULL CHECK (total_items > 0),
+        completed_items INTEGER NOT NULL CHECK (
+          completed_items >= 0 AND completed_items <= total_items
+        ),
+        snapshot_json TEXT NOT NULL,
+        pending_queue_json TEXT NOT NULL,
+        mastered_item_ids_json TEXT NOT NULL,
+        current_question_json TEXT,
+        draft_json TEXT,
+        source_revision_hash TEXT NOT NULL,
+        rule_version TEXT NOT NULL,
+        normalizer_version TEXT NOT NULL,
+        reward_eligible INTEGER NOT NULL CHECK (reward_eligible IN (0, 1)),
+        starts_at TEXT NOT NULL,
+        ends_at TEXT NOT NULL,
+        next_day_ends_at TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT,
+        abandoned_at TEXT,
+        UNIQUE (id, user_id),
+        CHECK (
+          (mode = 'daily' AND mission_date IS NOT NULL) OR
+          (mode = 'review' AND mission_date IS NULL)
+        ),
+        CHECK (starts_at < ends_at AND ends_at < next_day_ends_at),
+        CHECK (
+          (status = 'completed' AND completed_at IS NOT NULL AND
+            completed_items = total_items) OR
+          (status != 'completed' AND completed_at IS NULL)
+        ),
+        CHECK (
+          (status = 'abandoned' AND abandoned_at IS NOT NULL AND
+            reward_eligible = 0) OR
+          (status != 'abandoned' AND abandoned_at IS NULL)
+        ),
+        CHECK (mode != 'review' OR reward_eligible = 0),
+        CHECK (status != 'expired' OR reward_eligible = 0),
+        FOREIGN KEY (user_id) REFERENCES local_accounts(user_id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (user_id, mission_date)
+          REFERENCES daily_missions(user_id, mission_date)
+      )
+    ''',
+    '''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_lesson_sessions_one_daily
+      ON lesson_sessions(user_id, mission_date)
+      WHERE mode = 'daily'
+    ''',
+    '''
+      CREATE INDEX IF NOT EXISTS idx_lesson_sessions_user_history
+      ON lesson_sessions(user_id, started_at DESC)
+    ''',
+    '''
+      CREATE TABLE IF NOT EXISTS lesson_attempts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        question_id TEXT NOT NULL,
+        game_type TEXT NOT NULL CHECK (
+          game_type IN ('photo_order_quiz', 'photo_letter_fill')
+        ),
+        payload_fingerprint TEXT NOT NULL,
+        verdict_json TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        UNIQUE (id, user_id),
+        FOREIGN KEY (session_id, user_id)
+          REFERENCES lesson_sessions(id, user_id) ON DELETE CASCADE
+      )
+    ''',
+    '''
+      CREATE INDEX IF NOT EXISTS idx_lesson_attempts_session_time
+      ON lesson_attempts(session_id, occurred_at, id)
+    ''',
+    '''
+      CREATE TABLE IF NOT EXISTS lesson_completion_results (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        mission_date TEXT,
+        total_items INTEGER NOT NULL CHECK (total_items > 0),
+        completed_items INTEGER NOT NULL CHECK (
+          completed_items = total_items
+        ),
+        source_revision_hash TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        sync_status TEXT NOT NULL CHECK (
+          sync_status IN (
+            'not_applicable', 'pending', 'syncing', 'synced', 'failed'
+          )
+        ),
+        sync_attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (
+          sync_attempt_count >= 0
+        ),
+        next_sync_attempt_at TEXT,
+        last_sync_error_code TEXT,
+        sync_updated_at TEXT,
+        server_accepted_at TEXT,
+        reward_status TEXT NOT NULL CHECK (
+          reward_status IN ('not_applicable', 'pending', 'awarded', 'rejected')
+        ),
+        reward_yuzu INTEGER CHECK (reward_yuzu IS NULL OR reward_yuzu >= 0),
+        weekly_yuzu INTEGER CHECK (weekly_yuzu IS NULL OR weekly_yuzu >= 0),
+        completion_ordinal INTEGER CHECK (
+          completion_ordinal IS NULL OR completion_ordinal BETWEEN 1 AND 3
+        ),
+        reward_timing TEXT CHECK (
+          reward_timing IS NULL OR
+          reward_timing IN ('on_time', 'late', 'expired')
+        ),
+        rewarded_at TEXT,
+        UNIQUE (id, user_id),
+        FOREIGN KEY (session_id, user_id)
+          REFERENCES lesson_sessions(id, user_id) ON DELETE CASCADE
+      )
+    ''',
+    '''
+      CREATE INDEX IF NOT EXISTS idx_lesson_results_user_completed
+      ON lesson_completion_results(user_id, completed_at DESC)
+    ''',
+    '''
+      CREATE INDEX IF NOT EXISTS idx_lesson_results_sync_ready
+      ON lesson_completion_results(
+        user_id, sync_status, next_sync_attempt_at, created_at
+      )
+    ''',
+    '''
+      CREATE TRIGGER IF NOT EXISTS trg_lesson_sessions_snapshot_immutable
+      BEFORE UPDATE OF
+        id,
+        user_id,
+        mission_date,
+        mode,
+        total_items,
+        snapshot_json,
+        source_revision_hash,
+        rule_version,
+        normalizer_version,
+        starts_at,
+        ends_at,
+        next_day_ends_at,
+        started_at
+      ON lesson_sessions
+      BEGIN
+        SELECT RAISE(ABORT, 'lesson session snapshot is immutable');
+      END
+    ''',
+    '''
+      CREATE TRIGGER IF NOT EXISTS trg_lesson_attempts_no_update
+      BEFORE UPDATE ON lesson_attempts
+      BEGIN
+        SELECT RAISE(ABORT, 'lesson attempts are append-only');
+      END
+    ''',
+    '''
+      CREATE TRIGGER IF NOT EXISTS trg_lesson_results_payload_immutable
+      BEFORE UPDATE OF
+        id,
+        session_id,
+        user_id,
+        mission_date,
+        total_items,
+        completed_items,
+        source_revision_hash,
+        completed_at,
+        created_at
+      ON lesson_completion_results
+      BEGIN
+        SELECT RAISE(ABORT, 'lesson completion result payload is immutable');
+      END
+    ''',
+  ];
+
+  static const _rewardedReplayStatements = <String>[
+    '''
+      CREATE TABLE IF NOT EXISTS rewarded_replay_sessions (
+        session_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        mission_date TEXT NOT NULL CHECK (
+          length(mission_date) = 10 AND date(mission_date) = mission_date
+        ),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (session_id, user_id),
+        UNIQUE (user_id, mission_date),
+        FOREIGN KEY (session_id, user_id)
+          REFERENCES lesson_sessions(id, user_id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id, mission_date)
+          REFERENCES daily_missions(user_id, mission_date) ON DELETE CASCADE
+      )
+    ''',
+  ];
+
+  static const _lessonCompletionSyncUpgradeStatements = <String>[
+    'DROP TRIGGER IF EXISTS trg_lesson_results_no_update',
+    '''
+      ALTER TABLE lesson_completion_results
+      ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'not_applicable' CHECK (
+        sync_status IN (
+          'not_applicable', 'pending', 'syncing', 'synced', 'failed'
+        )
+      )
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results
+      ADD COLUMN sync_attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (
+        sync_attempt_count >= 0
+      )
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results ADD COLUMN next_sync_attempt_at TEXT
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results ADD COLUMN last_sync_error_code TEXT
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results ADD COLUMN sync_updated_at TEXT
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results ADD COLUMN server_accepted_at TEXT
+    ''',
+    '''
+      UPDATE lesson_completion_results
+      SET
+        sync_status = CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM lesson_sessions AS session
+            WHERE session.id = lesson_completion_results.session_id
+              AND session.user_id = lesson_completion_results.user_id
+              AND session.mode = 'daily'
+              AND session.reward_eligible = 1
+          ) THEN 'pending'
+          ELSE 'not_applicable'
+        END,
+        sync_updated_at = created_at
+    ''',
+    '''
+      CREATE INDEX IF NOT EXISTS idx_lesson_results_sync_ready
+      ON lesson_completion_results(
+        user_id, sync_status, next_sync_attempt_at, created_at
+      )
+    ''',
+    '''
+      CREATE TRIGGER IF NOT EXISTS trg_lesson_results_payload_immutable
+      BEFORE UPDATE OF
+        id,
+        session_id,
+        user_id,
+        mission_date,
+        total_items,
+        completed_items,
+        source_revision_hash,
+        completed_at,
+        created_at
+      ON lesson_completion_results
+      BEGIN
+        SELECT RAISE(ABORT, 'lesson completion result payload is immutable');
+      END
+    ''',
+  ];
+
+  static const _lessonRewardSettlementUpgradeStatements = <String>[
+    '''
+      ALTER TABLE lesson_completion_results
+      ADD COLUMN reward_status TEXT NOT NULL DEFAULT 'pending' CHECK (
+        reward_status IN ('not_applicable', 'pending', 'awarded', 'rejected')
+      )
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results
+      ADD COLUMN reward_yuzu INTEGER CHECK (
+        reward_yuzu IS NULL OR reward_yuzu >= 0
+      )
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results
+      ADD COLUMN weekly_yuzu INTEGER CHECK (
+        weekly_yuzu IS NULL OR weekly_yuzu >= 0
+      )
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results
+      ADD COLUMN completion_ordinal INTEGER CHECK (
+        completion_ordinal IS NULL OR completion_ordinal BETWEEN 1 AND 3
+      )
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results
+      ADD COLUMN reward_timing TEXT CHECK (
+        reward_timing IS NULL OR
+        reward_timing IN ('on_time', 'late', 'expired')
+      )
+    ''',
+    '''
+      ALTER TABLE lesson_completion_results ADD COLUMN rewarded_at TEXT
+    ''',
+    '''
+      UPDATE lesson_completion_results
+      SET reward_status = CASE
+        WHEN sync_status = 'not_applicable' THEN 'not_applicable'
+        ELSE 'pending'
+      END
+    ''',
+  ];
 }

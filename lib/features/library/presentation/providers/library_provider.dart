@@ -87,6 +87,30 @@ final libraryPhotoNotesProvider =
   yield* repository.watchPhotoNotes(PhotoNoteQuery(userId: userId));
 });
 
+typedef LibraryCapturedRange = ({
+  DateTime fromInclusive,
+  DateTime toExclusive,
+});
+
+final libraryPhotoNotesByCapturedRangeProvider = StreamProvider.autoDispose
+    .family<List<PhotoNote>, LibraryCapturedRange>((ref, range) async* {
+  final userId = ref.watch(currentLibraryUserIdProvider);
+  if (userId == null) {
+    yield const <PhotoNote>[];
+    return;
+  }
+
+  final repository = await ref.watch(libraryRepositoryProvider.future);
+  yield* repository.watchPhotoNotes(
+    PhotoNoteQuery(
+      userId: userId,
+      capturedFromInclusive: range.fromInclusive,
+      capturedToExclusive: range.toExclusive,
+      limit: 500,
+    ),
+  );
+});
+
 final libraryTrashPhotoNotesProvider =
     StreamProvider.autoDispose<List<PhotoNote>>((ref) async* {
   final userId = ref.watch(currentLibraryUserIdProvider);

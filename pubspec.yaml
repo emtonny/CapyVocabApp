@@ -12,10 +12,12 @@ dependencies:
   # Supabase SDK & Env Loader
   supabase_flutter: ^2.8.0
   flutter_dotenv: ^5.2.0
+  flutter_timezone: 3.0.1
 
   # HTTP Networking cho Gemini 1.5 Flash API
   http: ^1.2.1
   crypto: ^3.0.7
+  unorm_dart: ^0.3.2
 
   # Nén ảnh JPEG trước khi gửi Gemini (resize tối đa 1024×1024, < 300 KB)
   flutter_image_compress: ^2.3.0

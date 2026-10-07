@@ -124,7 +124,9 @@ class _LibraryDateFilterDialogState extends State<_LibraryDateFilterDialog> {
   void initState() {
     super.initState();
     _preset = widget.initial.preset;
-    final initialDate = widget.initial.date?.toLocal() ?? DateTime.now();
+    final initialDate = widget.initial.date?.toLocal() ??
+        widget.initial.capturedRange?.start.toLocal() ??
+        DateTime.now();
     _selectedDate = DateTime(
       initialDate.year,
       initialDate.month,
@@ -588,7 +590,8 @@ class _AlbumPickerSheet extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.ink, width: 2.2),
+                            border:
+                                Border.all(color: AppColors.ink, width: 2.2),
                             boxShadow: const [
                               BoxShadow(
                                 color: AppColors.ink,
@@ -681,7 +684,8 @@ class _AlbumPickerSheet extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: AppColors.softWhite,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.ink, width: 2),
+                              border:
+                                  Border.all(color: AppColors.ink, width: 2),
                             ),
                             child: Text(
                               album.icon,
@@ -705,7 +709,8 @@ class _AlbumPickerSheet extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: AppColors.softWhite,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.ink, width: 2),
+                              border:
+                                  Border.all(color: AppColors.ink, width: 2),
                             ),
                             child: const Icon(
                               Icons.chevron_right_rounded,

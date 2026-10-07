@@ -808,6 +808,16 @@ class _PhotoNoteDetail extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         _OfflineNotice(mediaAsset: media),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          key: const Key('library-review-photo-note'),
+          onPressed: () => _chooseReviewMode(context, snapshot),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+          ),
+          icon: const Icon(Icons.school_outlined),
+          label: const Text('Ôn lại từ ảnh này'),
+        ),
         const SizedBox(height: 22),
         Text(
           'Từ vựng nhận diện',
@@ -841,6 +851,91 @@ class _PhotoNoteDetail extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+Future<void> _chooseReviewMode(
+  BuildContext context,
+  PhotoNoteSnapshot snapshot,
+) async {
+  final preference = await showModalBottomSheet<LessonGamePreference>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Chọn cách ôn lại',
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            _ReviewModeTile(
+              key: const Key('library-review-mixed'),
+              icon: Icons.shuffle_rounded,
+              title: 'Trộn cả hai',
+              subtitle: 'Tự phối hợp ghép từ và điền chữ.',
+              onTap: () => context.pop(LessonGamePreference.mixed),
+            ),
+            _ReviewModeTile(
+              key: const Key('library-review-order'),
+              icon: Icons.drag_indicator_rounded,
+              title: 'Ghép từ',
+              subtitle: 'Ưu tiên ảnh có từ hai đồ vật trở lên.',
+              onTap: () => context.pop(LessonGamePreference.order),
+            ),
+            _ReviewModeTile(
+              key: const Key('library-review-fill'),
+              icon: Icons.keyboard_alt_outlined,
+              title: 'Điền chữ',
+              subtitle: 'Điền từng từ cho vùng được tô sáng.',
+              onTap: () => context.pop(LessonGamePreference.fill),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  if (preference == null || !context.mounted) return;
+  await context.push(
+    '/lesson',
+    extra: ReviewLessonStartRequest(
+      userId: snapshot.photoNote.userId,
+      photoNoteIds: [snapshot.photoNote.id],
+      preference: preference,
+      now: DateTime.now().toUtc(),
+    ),
+  );
+}
+
+class _ReviewModeTile extends StatelessWidget {
+  const _ReviewModeTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    super.key,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      minTileHeight: 56,
+      leading: Icon(icon),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: onTap,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     );
   }
 }

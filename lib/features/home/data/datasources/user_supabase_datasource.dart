@@ -1,7 +1,9 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/supabase_service.dart';
 
-/// Supabase Data Source cho User Profile, Streak, Study Points, và Capy Coins
+/// Supabase source for the current profile and the confirmed Yuzu balance.
+///
+/// `total_coins` is the legacy database column that now represents Yuzu.
 class UserSupabaseDataSource {
   final SupabaseClient _supabaseClient;
 
@@ -44,7 +46,7 @@ class UserSupabaseDataSource {
     }).eq('id', userId);
   }
 
-  /// Cộng điểm kinh nghiệm (study_points) & Capy Coins (total_coins)
+  /// Legacy XP/Yuzu mutation kept for existing callers.
   Future<void> addXpAndCoins({
     required String userId,
     required int xpGained,
