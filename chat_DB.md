@@ -1,5 +1,60 @@
 # Chat & Training Data Plan
 
+> **Beta exact-Staging note 2026-10-22:** social group lifecycle đã live trên
+> exact Staging: owner đổi tên/đóng nhóm, non-owner rời nhóm, closed group giữ
+> history read-only, member/sender dùng public profile projection bounded và UI
+> không còn hiển thị UUID khi đã có profile. Backup DPAPI verified tại
+> `20261022T125142Z-463f91dc` (572.713 byte), apply đúng hai migration social,
+> live transaction smoke pass 29/29, rollback cleanup 0 và post-dry-run sạch.
+> Production untouched.
+>
+> **Local beta baseline trước rollout 2026-10-22:** social group lifecycle đã hoàn thiện local:
+> owner đổi tên/đóng nhóm, non-owner rời nhóm, closed group giữ history read-only,
+> member/sender dùng public profile projection bounded và UI không còn hiển thị
+> UUID khi đã có profile. Migration
+> `20261022120000_complete_social_group_beta.sql` thêm lifecycle + private audit;
+> SQLite chat nâng additive lên v8 để giữ `social_owner_id`. PostgreSQL isolated
+> pass 29/29, Chat targeted pass 92/92, full Flutter pass 798 + 1 opt-in skip,
+> analyzer sạch, Web release và Android APK release build pass. UI mang nhãn
+> `Beta`; tại checkpoint này hai social migrations còn pending exact Staging.
+> Trạng thái đã được thay thế bởi note exact-Staging phía trên.
+
+> **Gemini Chat translation note 2026-10-21:** Exact Staging đã backup DPAPI,
+> apply riêng `20261021110000_add_gemini_chat_translation_v3.sql`, đổi worker
+> sang provider `gemini`, model `gemini-3-flash-preview`, prompt
+> `chat-translate-p3`, translator `chat-translate-v3` và deploy Edge Function
+> v21. V1/v2 giữ nguyên để đọc lịch sử; tin mới chỉ enqueue v3. Live GT5 smoke
+> pass 19 nhóm với `translation_mode=succeeded`, Realtime ba client và cleanup
+> Auth/database 0. Social migration vẫn pending; Production untouched.
+
+> **Social Group Chat note 2026-10-21:** local migration
+> `20261021120000_add_social_group_chat.sql` thêm `kind='social'` cho nhóm chat
+> thông thường. Cả tài khoản cá nhân và giáo viên đều có thể tạo nhóm tối đa 20
+> người từ quan hệ bạn bè accepted hai chiều; membership MVP cố định sau khi
+> tạo. Social group dùng raw chat, offline cache/outbox, Realtime và shared
+> translation hiện có, nhưng không được dùng correction/manual annotation,
+> Training promotion hoặc bất kỳ RPC nhiệm vụ/tiến độ/ảnh nào của learning
+> group. Flutter có nút `Tạo nhóm chat` riêng và tái sử dụng model/cache group để
+> giữ migration SQLite bằng 0. PostgreSQL cô lập pass 15/15; migration này chưa
+> apply exact Staging hay Production. Chat/onboarding targeted pass 88/88; full
+> Flutter pass 796 + 1 opt-in skip, analyzer sạch và Web release build pass.
+> Client không select cột social mới trong inventory, nên direct/learning chat
+> tương thích khi client chạy trước migration; RPC tạo social group fail-safe
+> cho tới rollout.
+
+> **Group Chat note 2026-10-20:** GT3 đã được triển khai và xác minh trên exact
+> Staging theo
+> contract tại `group.md`. Conversation được mở rộng additive cho learning group,
+> còn C1–C6 direct chat 1–1 giữ tương thích. Group dùng lại raw message, offline
+> outbox, Realtime và shared translation `vi↔en`; correction/manual tagging cùng
+> Training promotion vẫn chỉ dành cho direct chat. Exact-Staging đã backup, apply
+> đúng migration GT3, post-dry-run sạch và live smoke ba client/13 nhóm pass với
+> cleanup 0. Gemini translation v3 hiện đã live-verified với
+> `translation_mode=succeeded`. GT4 dashboard đã
+> exact-Staging verified với owner-only invite metadata/moderation audit, SQLite
+> detail cache offline và archived read-only. Smoke GT3+GT4 pass 16 nhóm, cleanup
+> 0; Production chưa thay đổi.
+
 > Tài liệu nguồn cho kiến trúc chat người-với-người, bản dịch dùng chung và
 > quy trình tạo dữ liệu sạch để huấn luyện SLM on-device trong tương lai.
 >

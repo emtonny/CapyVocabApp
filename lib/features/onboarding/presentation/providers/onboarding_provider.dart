@@ -16,6 +16,7 @@ import 'onboarding_status_provider.dart';
 
 const _usernamePattern = r'^[a-zA-Z0-9_]{3,20}$';
 const _timePattern = r'^(?:[01][0-9]|2[0-3]):[0-5][0-9]$';
+const _supportedAccountRoles = {'personal', 'parent', 'teacher'};
 
 int studyDurationMinutes(String startTime, String endTime) {
   final startMinutes = _minutesSinceMidnight(startTime);
@@ -688,7 +689,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
   bool _validateRoleStep() {
     final role = state.data.accountRole;
-    final isValid = role == 'personal' || role == 'parent';
+    final isValid = _supportedAccountRoles.contains(role);
     state = state.copyWith(
       fieldErrors: isValid
           ? const {}

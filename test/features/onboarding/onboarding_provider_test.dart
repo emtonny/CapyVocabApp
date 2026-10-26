@@ -61,9 +61,14 @@ void main() {
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['accountRole'], isNotNull);
 
-    notifier.updateAccountRole('personal');
+    notifier.updateAccountRole('admin');
+    expect(await notifier.nextStep(), isFalse);
+    expect(notifier.state.currentStep, 3);
+
+    notifier.updateAccountRole('teacher');
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 4);
+    expect(notifier.state.data.accountRole, 'teacher');
 
     notifier.updateReminderTime('25:00');
     expect(await notifier.nextStep(), isFalse);

@@ -2,7 +2,224 @@
 
 > Source of truth cho Database, local media, offline Library, Supabase sync và
 > dữ liệu chuẩn bị cho on-device AI.  
-> Cập nhật gần nhất: **2026-10-06 — HOME H5 RELEASE CANDIDATE VERIFIED; GIT PREP READY**
+> Cập nhật gần nhất: **2026-10-26 — GROUP/CHAT BETA RELEASE GATE VERIFIED**
+> Exact Staging `nxteaznowkfennxpqjmt` được xác nhận đúng project
+> `emtonny's Project`, `ACTIVE_HEALTHY` và migration `upToDate=true`. Live GT5
+> smoke pass 19 luồng, hai Realtime smoke pass, fixture Auth/database về 0;
+> Gemini v3 live E2E pass qua secret chỉ tồn tại trong process và không đọc lại
+> provider key. Ba tài khoản demo đăng nhập thật thành công; giáo viên có
+> `can_manage_groups=true`, hai học sinh có `false`. Full Flutter pass 798 + 1
+> opt-in skip, analyzer sạch, Deno pass 52/52 và PostgreSQL isolated pass
+> 64/64 + 17/17 + 29/29. Production không được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-23 — CHAT TRANSLATION V3 CLIENT RECONCILIATION FIXED**
+> Chẩn đoán read-only trên exact Staging `nxteaznowkfennxpqjmt` xác nhận worker
+> v21 `ACTIVE`, queue v3 không tồn đọng, circuit v3 đóng, cron phục hồi chạy
+> 120/120 lần thành công trong 2 giờ và bản dịch v3 gần nhất hoàn tất trong
+> 1,379 giây. Nguyên nhân UI chờ vô hạn nằm ở Flutter: client chỉ truy vấn/chấp
+> nhận `chat-translate-v1`/`v2` trong khi Staging tạo `v3`, đồng thời SQLite v8
+> chưa cho phép policy v3. Client hiện dùng v3 làm policy hiện tại, vẫn đọc v1/v2
+> lịch sử và SQLite nâng additive lên v9. Chat suite pass 159/159, full Flutter
+> pass 798 + 1 opt-in skip, analyzer toàn dự án sạch và Web exact-Staging build
+> pass. Chẩn đoán không ghi remote; Production không được truy cập hoặc thay
+> đổi.
+>
+> Trạng thái trước: **2026-10-23 — STAGING DEMO STUDENTS VERIFIED**
+> Exact Staging `nxteaznowkfennxpqjmt` đã tạo hai Auth account cố định
+> `demohocsinh1@capyvocab.app` và `demohocsinh2@capyvocab.app`. Cả hai đã hoàn
+> tất onboarding với role `personal`, username tương ứng `demohocsinh1` và
+> `demohocsinh2`; đăng nhập bằng credential do chủ dự án chỉ định pass và
+> `get_my_learning_group_capabilities()` xác nhận `can_manage_groups=false`.
+> Mật khẩu không được ghi vào repo. Production không được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-22 — SOCIAL GROUP CHAT BETA EXACT-STAGING VERIFIED**
+> Exact Staging `nxteaznowkfennxpqjmt` được xác nhận đúng project
+> `emtonny's Project`, `ACTIVE_HEALTHY`. Backup public/private DPAPI verified tại
+> `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261022T125142Z-463f91dc`
+> (572.713 byte), sau đó apply đúng hai migration
+> `20261021120000_add_social_group_chat.sql` và
+> `20261022120000_complete_social_group_beta.sql` với Vault bị bỏ qua. Live
+> transaction smoke pass 29/29, rollback xác nhận còn 0 Auth/public fixture;
+> post-apply dry-run `upToDate=true` và migration history local/remote khớp.
+> Production không được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-22 — GROUP/SOCIAL CHAT BETA BASELINE LOCAL VERIFIED**
+> Beta baseline bổ sung lifecycle social group đầy đủ: owner đổi tên/đóng nhóm,
+> thành viên rời nhóm, nhóm đã đóng chỉ đọc, danh sách thành viên dùng public
+> profile projection bounded và UI hiển thị tên thay vì UUID. SQLite chat nâng
+> additive lên v8 để giữ `social_owner_id`; đồng bộ lesson result/GT5 được bật
+> mặc định cho beta. Migration mới
+> `20261022120000_complete_social_group_beta.sql` có audit riêng và authorization
+> server-side; PostgreSQL 18 isolated pass 29/29, Chat targeted pass 92/92, full
+> Flutter pass 798 + 1 opt-in skip, analyzer sạch, Web release và Android APK
+> release (71,1 MB) build thành công. Đây là code/artifact beta baseline; hai
+> social migrations vẫn chưa apply exact Staging hoặc Production và increment
+> này có 0 remote write.
+>
+> Trạng thái trước: **2026-10-21 — GEMINI CHAT TRANSLATION V3 EXACT-STAGING VERIFIED**
+> Exact Staging `nxteaznowkfennxpqjmt` đã backup DPAPI verified tại
+> `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261021T165043Z-636d46fb`
+> (570.158 byte), rồi apply cô lập duy nhất migration
+> `20261021110000_add_gemini_chat_translation_v3.sql`; social migration vẫn
+> pending. Translation mới dùng provider `gemini`, model
+> `gemini-3-flash-preview`, prompt `chat-translate-p3`, translator
+> `chat-translate-v3`; v1/v2 cũ giữ nguyên để đọc lịch sử. Secret key được đồng
+> bộ từ `.env` local mà không log giá trị, hash remote đã khớp; Edge Function
+> `chat-translation-worker` v21 `ACTIVE`, `verify_jwt=false`. Payload thật trả
+> HTTP 200; live GT5 smoke pass 19 nhóm, `translation_mode=succeeded`, Realtime
+> ba client pass và cleanup Auth/database còn 0 fixture. Deno pass 52/52; năm
+> PostgreSQL isolated suites pass 64+20+10+17+15 = 126/126. Production không
+> được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-21 — GROUP/TEACHER GT5 EXACT-STAGING VERIFIED**
+> Exact Staging `nxteaznowkfennxpqjmt` được xác nhận đúng project
+> `emtonny's Project`, `ACTIVE_HEALTHY`. Backup public/private mới đã được mã
+> hóa Windows DPAPI và verified tại
+> `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261021T145927Z-d636af95`
+> (530.874 byte). Workdir migration cô lập dry-run chỉ liệt kê rồi apply đúng
+> `20261020130000_add_learning_group_assignments.sql` với Vault bị bỏ qua. Live
+> GT5 smoke pass 19 nhóm kiểm tra, gồm task idempotent, student read/server-side
+> mutation denial, lesson receipt đã được chấp nhận, owner aggregate + từ dạng
+> chữ, opt-in/revoke purge, task close, RLS, Realtime ba client và cleanup Auth/
+> database còn 0 fixture. Provider translation vẫn `PROVIDER_UNAVAILABLE`, không
+> ảnh hưởng raw group chat/GT5. Migration history xác nhận GT5 đúng một lần;
+> post-dry-run chỉ còn social migration `20261021120000`. Production không được
+> truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-21 — SOCIAL GROUP CHAT LOCAL VERIFIED; EXACT-STAGING PENDING**
+> Migration additive `20261021120000_add_social_group_chat.sql` thêm
+> conversation `kind='social'` tách biệt hoàn toàn với learning group. Tài khoản
+> `personal` và `teacher` đều có thể tạo nhóm chat từ 1–19 bạn bè accepted hai
+> chiều (tối đa 20 người gồm chủ nhóm); membership MVP cố định sau khi tạo.
+> Thành viên chỉ nhận metadata an toàn, raw chat và bản dịch; social group không
+> có quyền xem nhiệm vụ/tiến độ học, ảnh, Photo Note, Library cá nhân, correction,
+> annotation hoặc Training evidence. Flutter dùng lại cache group hiện có, thêm
+> dialog chọn bạn và tạo nhóm; onboarding chỉ hiển thị `personal`/`teacher` nhưng
+> schema/provider vẫn giữ `parent` để tương thích dữ liệu cũ. PostgreSQL 18 cô
+> lập pass 15/15; Chat/onboarding targeted pass 88/88; full Flutter pass 796 + 1
+> opt-in skip; analyzer sạch và Web release build pass. Migration chưa apply
+> Staging hoặc Production; không có remote write trong increment này. Client
+> inventory không select cột social mới nên direct/learning chat vẫn hoạt động
+> khi app được chạy trước migration; tạo social group sẽ fail-safe cho tới khi
+> RPC được rollout.
+>
+> Trạng thái trước: **2026-10-21 — STAGING DEMO TEACHER VERIFIED**
+> Exact Staging `nxteaznowkfennxpqjmt` được xác nhận `ACTIVE_HEALTHY`; đã tạo
+> duy nhất Auth account `demogiaovien@capyvocab.app`, profile username
+> `demogiaovien`, hoàn tất onboarding role `teacher` và xác minh server-side
+> thành `verified` qua RPC có audit với reason `demo_teacher_bootstrap`. Sign-in
+> bằng credential do chủ dự án chỉ định pass; mật khẩu không được ghi vào repo.
+> `get_my_learning_group_capabilities()` trả đúng `teacher`/`verified` và
+> `can_manage_groups=true`. Hậu kiểm parser-correct xác nhận Staging hiện có 5
+> Auth user + 5 profile, đúng 1 demo account; role profile gồm 1 `teacher`, 3
+> `personal` và 1 chưa chọn role. Bốn account cũ không bị sửa vì account chưa
+> chọn role không phải demo và không được phép suy đoán lựa chọn onboarding.
+> Production không được truy cập hoặc thay đổi. GT5 vẫn chưa apply và tiếp tục
+> chờ phê duyệt rollout riêng như trạng thái trước.
+>
+> Trạng thái trước: **2026-10-20 — GROUP/TEACHER GT5 EXACT-STAGING PREFLIGHT VERIFIED; APPLY APPROVAL PENDING**
+> Migration additive `20261020130000_add_learning_group_assignments.sql` thêm
+> system task “học N từ mới”, opt-in riêng theo group và projection từ dạng chữ
+> từ lesson receipt đã được server chấp nhận. Owner verified chỉ nhận aggregate
+> cùng `word`/thời điểm; RPC không trả receipt/item/Photo Note/media ID, path ảnh,
+> bounding box hoặc raw Vision. Tắt chia sẻ/rời/remove purge projection; tạo task
+> idempotent theo request ID và create/close đều có audit. PostgreSQL 18 isolated
+> pass 17/17; Groups pass 25/25; full Flutter pass 792 + 1 opt-in skip; analyzer
+> sạch và Web release build pass. Exact target được xác nhận là linked Staging
+> `nxteaznowkfennxpqjmt`, tên `emtonny's Project`, `ACTIVE_HEALTHY`; dry-run chỉ
+> liệt kê `20261020130000_add_learning_group_assignments.sql`. Backup DPAPI mới
+> verified tại `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261020T170349Z-5af06bd6`
+> (530.396 byte). Apply bị dừng để chờ phê duyệt rollout riêng, nên GT5 có 0
+> remote write và Staging vẫn ở GT4. Automatic progress cần build bật
+> `LESSON_RESULT_SYNC_ENABLED=true`. Production không được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-20 — GROUP/TEACHER GT3/GT4 EXACT-STAGING VERIFIED**
+> Exact Staging `nxteaznowkfennxpqjmt` đã được backup public/private bằng Windows
+> DPAPI tại `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261020T120651Z-6ad3ed4b`
+> (archive 525.465 byte, `pg_restore --list` và round-trip pass), rồi apply đúng
+> `20261020120000_add_learning_group_management_reads.sql`. Migration history
+> local/remote khớp và post-dry-run `upToDate=true`. Live GT3+GT4 smoke pass 16
+> nhóm với ba WebSocket, RLS/invite metadata/moderation audit/mute/remove/archive
+> và cleanup fixture/database 0;
+> provider translation đang `PROVIDER_UNAVAILABLE`, nên happy path dịch live còn
+> cần chạy lại. Local SQL GT4 pass 10/10; Groups pass 21/21; Direct Chat pass
+> 153/153; full Flutter pass 788 + 1 opt-in skip, analyzer sạch và Web build pass.
+> SQLite Groups v2 có detail cache owner/project/group scoped, offline fallback
+> đúng management scope và purge khi server thu hồi quyền. Production không được
+> truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-20 — GROUP/TEACHER GT3 EXACT-STAGING PREFLIGHT VERIFIED; APPLY APPROVAL PENDING**
+> Exact target, backup, history và dry-run đã được xác minh trước apply; chỉ GT3
+> được đề xuất và chưa có remote write tại checkpoint này.
+>
+> Trạng thái trước: **2026-10-17 — GROUP/TEACHER GT3 LOCAL VERIFIED; EXACT-STAGING PENDING**
+> Migration additive `20261017120000_add_learning_group_chat.sql` mở rộng chat
+> cho learning group với membership mirror, RLS mute/archive, moderation visibility
+> có audit và group translation claim; direct chat vẫn tương thích. Flutter dùng
+> SQLite v7, inbox/detail, offline outbox và Realtime hiện có. PostgreSQL cô lập
+> pass 20/20; Direct Chat pass 153/153; full Flutter pass 779 + 1 opt-in skip;
+> analyzer sạch và Web release build thành công. Exact Staging vẫn ở GT2, chưa
+> nhận migration GT3 hoặc live smoke; increment này có 0 remote write và
+> Production không được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-17 — GROUP/TEACHER GT2 EXACT-STAGING VERIFIED**
+> Backup DPAPI 439.122 byte tại
+> `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261017T044800Z-ae3bdbe5`
+> đã được xác nhận lại ngay trước apply. Migration
+> `20261013140000_add_learning_groups.sql` apply đúng một lần lên exact Staging
+> `nxteaznowkfennxpqjmt`; migration history khớp và post-dry-run
+> `upToDate=true`. Live smoke 5 account pass 9 nhóm, gồm cross-owner RLS,
+> invite/pending/approve/reject, Realtime announcement hai client, mute/remove/
+> leave/archive; Auth cùng group/invite/member/announcement/audit cleanup còn 0.
+> Group chat/GT4 chưa bật và Production không được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-17 — GROUP/TEACHER GT2 EXACT-STAGING PREFLIGHT VERIFIED; APPLY APPROVAL PENDING**
+> Linked target được xác nhận chính xác là Staging `nxteaznowkfennxpqjmt`, tên
+> `emtonny's Project`, trạng thái `ACTIVE_HEALTHY`; organization hiện có hai
+> project active. Migration history chỉ có GT2 `20261013140000` local-only.
+> Backup mới mã hóa Windows DPAPI pass tại
+> `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261017T044800Z-ae3bdbe5`,
+> archive 439.122 byte; parser self-test, `pg_restore --list`, persisted hash và
+> DPAPI round-trip đều verified. `supabase db push --dry-run` chỉ liệt kê
+> `20261013140000_add_learning_groups.sql`; dry-run có 0 remote write.
+> Migration GT2 chưa apply, live smoke chưa chạy và Production không được truy
+> cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-17 — GROUP/TEACHER GT2 LOCAL VERIFIED; EXACT-STAGING APPLY PENDING**
+> Migration additive `20261013140000_add_learning_groups.sql` đã tạo group,
+> membership, invite hash-only, announcement, rate limit và moderation audit;
+> quyền quản trị tiếp tục yêu cầu teacher verified server-side. RPC join không
+> lộ group với token sai và approve dùng transaction lock để giữ cap 50.
+> Flutter đã có domain/gateway, SQLite cache owner + project scoped, session
+> fence, Realtime invalidation, provider cache-first và UX `/groups` nối từ
+> Friends. PostgreSQL 18 cô lập pass 43/43, gồm hai session approve đồng thời;
+> Groups/Friends/navigation pass 74/74, Direct Chat 150/150, full Flutter pass
+> 776 + 1 opt-in skip và analyzer sạch. GT2 chưa apply Staging, chưa bật group
+> chat/GT4 và không ghi Staging hoặc Production trong increment này.
+>
+> Trạng thái trước: **2026-10-13 — GROUP/TEACHER GT1 EXACT-STAGING VERIFIED**
+> GT1 local thêm role `teacher`, `teacher_profiles`, audit private và RPC
+> xác minh khóa kép bằng grant + JWT `service_role`; self-selected teacher chỉ
+> tạo `pending` và không nhận quyền quản trị. Onboarding Flutter có lựa chọn
+> giáo viên và vẫn giữ personal/parent. PostgreSQL isolated pass 32/32,
+> onboarding pass 14/14, full Flutter pass 763 + 1 skip, analyzer sạch. Exact
+> Staging đã backup DPAPI 422.241 byte tại
+> `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261013T072235Z-c32c69d1`.
+> Migration remote `20261008173000_rank_wallet_and_earned_coins.sql` bị thiếu
+> local đã được fetch từ history. Hai migration GT1 `20261013120000` và
+> hardening `20261013130000` đã apply exact Staging; post-dry-run
+> `upToDate=true`. Live smoke hai account pass 7 nhóm, cleanup còn 0 fixture.
+> Production không được truy cập hoặc thay đổi.
+>
+> Trạng thái trước: **2026-10-13 — GROUP/TEACHER GT0 CONTRACT LOCKED; DOCUMENTATION ONLY**
+> `group.md` đã khóa Group là lớp học riêng tư, teacher privilege yêu cầu server
+> verification, membership/invite lifecycle, ma trận RLS, ranh giới dữ liệu học
+> viên và hướng mở rộng direct Chat sang group conversation theo migration
+> additive. GT0 không tạo migration, không đổi runtime/feature flag, không ghi
+> Staging/Production. Schema deploy vẫn chỉ có `account_role` personal/parent
+> và Chat `kind='direct'` đúng hai thành viên.
+>
+> Trạng thái trước: **2026-10-06 — HOME H5 RELEASE CANDIDATE VERIFIED; GIT PREP READY**
 > Final gate chạy lại trên exact Staging `nxteaznowkfennxpqjmt`: migration
 > dry-run `upToDate=true`, synthetic hai-account smoke pass 9 nhóm và cleanup
 > còn 0 fixture. PostgreSQL cô lập pass 58/58, full Flutter pass 763 + 1 skip,
@@ -402,6 +619,7 @@ file, Library repository, sync, consent, retention hoặc ML dataset phải:
 | Chat translation Staging rollout (C4G) | STAGING LIVE VERIFIED / C4 COMPLETE 2026-09-19 | Five approved migrations applied; dry-run up to date; Vault/pg_cron/pg_net verified. Dedicated Chat secrets and Vault entries configured, worker ACTIVE. Live Gemini three-account smoke verified single attempt/shared row/RLS/duplicate idle/cleanup; Production untouched |
 | Personalized dual-language Chat UI (C5) | STAGING WEB↔ANDROID A/B LIVE VERIFIED / C5 COMPLETE 2026-09-19 | Existing mailbox/drag/composer UI preserved. Both Chat surfaces read owner-scoped translation cache, order raw/translation from viewer language, keep raw selectable and expose stable loading/retry/failure semantics. Additive Friends CTA opens the full route on CPH2375; raw→worker→translation, cold-cache restore and opposite personalized ordering on Web/Android pass. Chat 118/118, full Flutter 564 pass + 1 opt-in skip, analyzer clean and Web build pass |
 | Friend management (F1–F6) | DEFAULT ON / EXACT-STAGING GUARDED 2026-09-25 | Friends and Chat source defaults are ON so eligible Staging accounts work without extra build flags. Exact-Staging URL, signed-in owner, accepted relationship and language-profile guards remain authoritative; Production is denied. Public search exposes exact username only; email/phone lookup stays dormant |
+| Learning Group GT5 | EXACT-STAGING PREFLIGHT VERIFIED / APPLY APPROVAL PENDING 2026-10-20 | System task “học N từ mới”, owner dashboard và opt-in text-only vocabulary projection pass SQL 17/17, Groups 25/25, full Flutter 792 + 1 skip, analyzer và Web release; exact dry-run chỉ GT5, backup DPAPI 530.396 byte verified, Staging vẫn ở GT4 và Production không đổi |
 | Account contact verification (A0–A6) | EMAIL-ONLY LOCAL, SMS DORMANT / NOT DEPLOYED 2026-09-25 | Email confirmation remains the onboarding gate. SMS fields/actions, phone sharing and phone change are hidden behind one disabled feature flag; dormant code/data contracts remain. Subscription phone snapshots are optional and the server no longer requires a verified phone. Verification for this increment is recorded in the change log; no push, remote migration, Auth config change or deploy |
 | On-device trainer | PENDING | Chưa có dataset builder, trainer, scheduler hoặc model activation runtime |
 
@@ -1351,6 +1569,18 @@ với hai user trên Staging; Production chưa được apply.
 
 ## Việc tiếp theo an toàn
 
+Sau GT5 local verification:
+
+1. Sau explicit approval, apply đúng migration GT5 đã dry-run lên exact Staging,
+   hậu kiểm history/up-to-date và chạy smoke đa user có cleanup 0; không rollout
+   Production.
+2. Build/smoke client Staging với `LESSON_RESULT_SYNC_ENABLED=true` để receipt
+   mới có canonical word và tự cập nhật task; flag mặc định vẫn OFF.
+3. Chạy lại happy path dịch group khi provider phục hồi; trạng thái hiện tại chỉ
+   xác minh raw/RLS/Realtime và degraded mode `PROVIDER_UNAVAILABLE` an toàn.
+4. Production tiếp tục không đổi. Mọi rollout Production cần backup, exact-target
+   dry-run, phê duyệt riêng, smoke đa user và rollback plan.
+
 Sau Production Gate 3:
 
 1. Quyết định rollout client Production: vẫn giữ sync OFF hoặc build/smoke có
@@ -1374,6 +1604,271 @@ Sau Production Gate 3:
 - `PROJECT_STATUS.md`
 
 ## Change log
+
+### 2026-10-26 — Group/chat beta release gate verified
+
+- Full Flutter pass 798 + 1 opt-in skip và `flutter analyze --no-pub` sạch; sửa
+  duy nhất race trong test SQLite offline bằng cách chờ stream render message,
+  không đổi runtime behavior.
+- Deno worker pass 52/52. PostgreSQL 18 isolated pass Chat queue 64/64, GT5
+  17/17 và Social Group 29/29; social fixture nằm trong transaction rollback.
+- Exact Staging được khóa theo ref `nxteaznowkfennxpqjmt`, tên
+  `emtonny's Project`, trạng thái `ACTIVE_HEALTHY`; migration dry-run trả
+  `upToDate=true`.
+- Live GT5 pass 19 nhóm kiểm tra, raw-message Realtime ba client và announcement
+  Realtime đều pass; translation mode `succeeded`, Auth/database fixture về 0.
+- Gemini v3 live E2E pass bằng trigger secret đọc từ Staging Vault vào process,
+  không log giá trị, không đọc lại provider key và xác nhận cleanup/baseline.
+- Password grant thật pass cho `demogiaovien@capyvocab.app`,
+  `demohocsinh1@capyvocab.app` và `demohocsinh2@capyvocab.app`; capability xác
+  nhận giáo viên quản lý nhóm được, hai tài khoản personal bị từ chối đúng.
+- Không commit secret hoặc mật khẩu. Production không được truy cập hoặc thay
+  đổi.
+
+### 2026-10-23 — Chat translation v3 client reconciliation fixed
+
+- Exact-Staging diagnostics chỉ đọc xác nhận server không chậm: một v3 success
+  gần nhất có tổng latency 1,379 giây, không có queued/processing/failed v3,
+  circuit failure count bằng 0, worker v21 `ACTIVE`, cron 120/120 success và
+  `pg_net` không timeout/error trong cửa sổ 2 giờ.
+- Root cause là policy drift ở client: Flutter filter chỉ lấy v1/v2 và SQLite v8
+  chỉ chấp nhận policy v1/v2, nên row v3 đã `succeeded` không bao giờ vào cache/UI.
+- Chuyển current policy sang Gemini `chat-translate-v3`/
+  `gemini-3-flash-preview`/`chat-translate-p3`, giữ đọc lịch sử v1/v2 và ưu tiên
+  row mới nhất theo thứ tự v1 → v2 → v3.
+- Nâng SQLite operational Chat additive lên v9 để giữ row v1/v2 và cho phép v3;
+  targeted tests pass 46/46, toàn bộ Chat pass 159/159, full Flutter pass
+  798 + 1 opt-in skip, analyzer toàn dự án sạch và Web exact-Staging build pass.
+- Không deploy hoặc ghi dữ liệu remote trong bản sửa; Production không được truy
+  cập hoặc thay đổi.
+
+### 2026-10-23 — Staging demo students verified
+
+- Exact Staging được khóa theo ref `nxteaznowkfennxpqjmt`, project name
+  `emtonny's Project`, trạng thái `ACTIVE_HEALTHY`; migration dry-run xác nhận
+  `upToDate=true` trước khi ghi dữ liệu.
+- Tạo hai account demo cố định `demohocsinh1@capyvocab.app` và
+  `demohocsinh2@capyvocab.app`; hoàn tất onboarding role `personal` với username
+  tương ứng và không ghi mật khẩu vào repo.
+- Đăng nhập thật bằng password grant pass cho cả hai; profile xác nhận
+  `onboarding_completed=true` và capability xác nhận
+  `can_manage_groups=false`.
+- Production không được truy cập hoặc thay đổi.
+
+### 2026-10-20 — Group/Teacher GT5 exact-Staging preflight verified; apply approval pending
+
+- Thêm migration additive `20261020130000_add_learning_group_assignments.sql`
+  với system task “học N từ mới”, consent riêng theo group và text-only
+  vocabulary projection từ completion receipt server-accepted.
+- Owner teacher verified chỉ đọc aggregate và projection `word` bounded; không
+  expose ảnh/path/box/raw Vision hoặc source receipt/item/Photo Note/media ID.
+  Tắt consent hoặc membership kết thúc sẽ purge projection ngay.
+- Flutter thêm domain/gateway/provider/dashboard online-only; teacher giao/đóng
+  nhiệm vụ, xem tổng quan và từ đã học, student tự bật chia sẻ. Không cache local
+  dữ liệu học tập nhạy cảm của giáo viên; controls tối thiểu 48 dp.
+- Completion evidence bổ sung canonical `word` cho item đã mastery; automatic
+  cloud progress vẫn cần `LESSON_RESULT_SYNC_ENABLED=true`, mặc định OFF.
+- PostgreSQL 18 isolated pass 17/17; Groups pass 25/25; full Flutter pass 792 + 1
+  opt-in skip; analyzer sạch; Web release build pass.
+- Exact target `nxteaznowkfennxpqjmt`/`emtonny's Project`/`ACTIVE_HEALTHY` pass;
+  dry-run chỉ đúng migration GT5. Backup DPAPI mới verified tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261020T170349Z-5af06bd6`, archive
+  530.396 byte. Apply chưa chạy vì cần phê duyệt rollout riêng; GT5 có 0 remote
+  write, exact Staging vẫn ở GT4 và Production không đổi.
+
+### 2026-10-20 — Group/Teacher GT4 exact-Staging verified
+
+- Thêm migration additive `20261020120000_add_learning_group_management_reads.sql`
+  với owner-only invite status và bounded moderation audit projection; không lộ
+  token/hash/request ID, student/outsider/suspended teacher bị từ chối server-side.
+- SQLite Groups nâng v2, detail snapshot owner/project/group scoped và atomic;
+  offline fallback chỉ dùng đúng management scope, quyền bị revoke sẽ purge cache.
+- PostgreSQL isolated pass 10/10; Groups pass 21/21; Chat pass 153/153; full
+  Flutter pass 788 + 1 opt-in skip; analyzer sạch; Web release build thành công.
+- Backup verified tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261020T120651Z-6ad3ed4b`, archive
+  525.465 byte. Exact Staging apply đúng GT4; post-dry-run `upToDate=true`.
+- Live GT3+GT4 smoke pass 16 nhóm và cleanup Auth/database 0. Realtime ba client
+  pass sau khi smoke chờ binding subscription ổn định; tiêu chí nhận đủ ba event
+  không bị nới. Translation vẫn `PROVIDER_UNAVAILABLE`, chưa claim happy path.
+- Production không được truy cập hoặc thay đổi. GT5 assignment/progress vẫn là
+  milestone riêng.
+
+### 2026-10-20 — Group/Teacher GT3 exact-Staging verified; GT4 local partial
+
+- Backup public/private mới verified tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261020T112124Z-ba7526a7`, archive
+  510.558 byte. Exact target là Staging `nxteaznowkfennxpqjmt`; Production không
+  được truy cập hoặc thay đổi.
+- Apply đúng `20261017120000_add_learning_group_chat.sql`; migration list khớp
+  local/remote và post-apply dry-run trả `upToDate=true`.
+- GT3 live smoke pass 13 nhóm gồm ba active member/ba raw Realtime client,
+  outsider RLS, moderation audit, mute/remove/archive và cleanup Auth/database 0.
+  Translation worker lặp lại `PROVIDER_UNAVAILABLE`; raw chat không bị chặn nhưng
+  live translation success gate chưa được claim.
+- PostgreSQL GT3 rerun pass 20/20. Direct Chat correction-only live regression
+  pass raw/RLS/Realtime/correction và cleanup; full direct translation smoke cũng
+  bị cùng provider outage, không phải schema regression đã xác nhận.
+- GT4 local thêm dashboard owner/member, pending actions, mute/remove, invite,
+  announcement, archive và deep-link group chat qua contract hiện có. Không có
+  migration/remote write GT4; moderation audit read và detail offline cache còn
+  pending.
+- Groups + Chat regression pass 169/169; full Flutter pass 783 + 1 opt-in skip,
+  analyzer toàn repo sạch và Web release build thành công. Build chỉ còn warning
+  Cupertino font/Wasm từ dependency `flutter_tts` đã biết.
+
+### 2026-10-20 — Group/Teacher GT3 exact-Staging preflight verified
+
+- Exact-target guard xác nhận `nxteaznowkfennxpqjmt` là project
+  `emtonny's Project`, `ACTIVE_HEALTHY` và đang linked; Production không được
+  truy cập hoặc thay đổi.
+- `backup_staging_database.ps1 -SelfTest` pass. Backup public/private mới dùng
+  PostgreSQL custom archive, đọc được bằng `pg_restore --list`, mã hóa DPAPI
+  CurrentUser và xác minh persisted hash/round-trip; archive 510.558 byte tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261019T233809Z-c8e5e739`.
+- Migration history local/remote khớp toàn bộ tới GT2. Supabase dry-run trả
+  `dryRun=true`, chỉ có `20261017120000_add_learning_group_chat.sql`, không seed
+  hoặc role; preflight có 0 remote write.
+- GT3 chưa apply và chưa chạy live multi-user smoke. Bước tiếp theo vẫn cần phê
+  duyệt apply riêng, sau đó post-dry-run, smoke và cleanup fixture về 0.
+
+### 2026-10-17 — Group/Teacher GT3 locally verified; Staging pending
+
+- Thêm migration additive `20261017120000_add_learning_group_chat.sql`: mỗi
+  learning group có một conversation, active membership được mirror vào chat,
+  group không yêu cầu friendship; mute vẫn đọc nhưng không gửi và archive là
+  read-only.
+- Giữ raw message immutable/idempotent. Teacher moderation chỉ thay visibility
+  qua RPC có audit; correction, accept/reject, slang annotation và Training
+  promotion bị khóa cho group cả ở client lẫn server-side guard.
+- Mở rộng translation claim để xử lý conversation có hơn hai member mà không
+  làm đổi điều kiện direct chat. PostgreSQL 18 cô lập pass 20/20, gồm RLS
+  outsider/removal, mute/archive, moderation audit, translation và direct
+  regression.
+- Nâng SQLite chat lên v7 theo migration additive; group conversation được cache
+  owner-scoped, offline outbox bị chặn khi mute/archive, Realtime theo dõi group
+  và membership. Inbox/detail dùng tên nhóm, số thành viên và read-only state;
+  overlay 320 px/text scale 1.3 pass.
+- Direct Chat pass 153/153; full Flutter pass 779 + 1 opt-in skip; analyzer sạch.
+  Web release build thành công; build còn cảnh báo không chặn về Cupertino font
+  và Wasm dry-run trong dependency `flutter_tts` 4.2.5.
+- Exact Staging chưa apply migration GT3 và chưa chạy live smoke. Có 0 remote
+  write trong increment này; Production không được truy cập hoặc thay đổi.
+
+### 2026-10-17 — Group/Teacher GT2 exact-Staging verified
+
+- Sau phê duyệt rõ ràng, guard cuối xác nhận đúng linked Staging, backup DPAPI
+  verified và apply scope chỉ có `20261013140000_add_learning_groups.sql`.
+  `supabase db push` apply đúng migration này; migration history có một local/
+  remote match và post-dry-run trả `upToDate=true`.
+- Thêm runner `run_staging_group_gt2_smoke.ps1` với 2 teacher verified, 3
+  personal student, metadata scope/run ID, exact-target guard và cleanup bắt
+  buộc. Credential chỉ ở biến môi trường tiến trình và được xóa trong `finally`.
+- Thêm smoke Realtime dùng hai Supabase client thật: student active subscribe
+  `learning_group_announcements`, teacher tạo announcement và client nhận được
+  Postgres INSERT. Publication Staging chứa đúng ba bảng GT2, RLS bật và quyền
+  SELECT authenticated đúng contract.
+- Smoke đầu dừng vì test mong pending student nhận danh sách rỗng trong khi RPC
+  đúng contract trả `42501`; cleanup Auth bị FK audit chặn do xóa owner trước
+  group. Audit xác định đúng một group active, hai pending, một announcement và
+  năm event; xóa chính xác group/run fixture rồi xác nhận Auth còn 0.
+- Runner được sửa để pending phải bị từ chối, group bị xóa và kiểm tra database
+  về 0 trước Auth, đồng thời giữ lỗi nghiệp vụ thay vì để cleanup che mất. Smoke
+  thứ hai cleanup sạch nhưng Realtime timeout; publication/RLS live audit đều
+  đúng. Subscription được chỉnh khớp gateway production (không server filter)
+  và thêm chẩn đoán status/phase.
+- Live smoke cuối pass 9 nhóm: capability teacher/student, create idempotent,
+  cross-owner + invite hash bị chặn, wrong token không lộ group, pending join,
+  approve/reject và announcement RLS, Realtime hai client, pin/mute/unmute/
+  remove, rejoin/leave/archive + invite revoke. Cleanup xác nhận 0 Auth fixture
+  và 0 row group/member/invite/announcement/moderation audit.
+- PostgreSQL local vẫn pass 43/43; Flutter full gần nhất pass 776 + 1 opt-in
+  skip và analyzer sạch. Không commit/push; Production có 0 thao tác.
+
+### 2026-10-17 — Group/Teacher GT2 exact-Staging preflight verified
+
+- Xác nhận linked target đúng Staging `nxteaznowkfennxpqjmt`, tên
+  `emtonny's Project`, `ACTIVE_HEALTHY`; chỉ có hai project active và branch
+  làm việc vẫn là `home`.
+- Migration history khớp toàn bộ tới GT1; chỉ migration GT2
+  `20261013140000_add_learning_groups.sql` đang local-only, không có drift khác.
+- `backup_staging_database.ps1 -SelfTest` pass. Backup thật tạo custom archive
+  public/private 439.122 byte, kiểm tra được bằng `pg_restore --list`, mã hóa
+  DPAPI CurrentUser và xác minh hash/round-trip/persisted bytes tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261017T044800Z-ae3bdbe5`.
+- `supabase db push --project-ref nxteaznowkfennxpqjmt --dry-run` pass và chỉ
+  liệt kê migration GT2. Migration chưa apply; Staging/Production có 0 thao tác
+  ghi trong preflight này.
+
+### 2026-10-17 — Group/Teacher GT2 locally verified; Staging pending
+
+- Thêm migration additive `20261013140000_add_learning_groups.sql` cho group,
+  membership, invite hash-only, announcement, join rate limit và moderation
+  audit private. Public tables bật RLS; authenticated client không có direct
+  mutation, không đọc invite hash hoặc audit.
+- RPC kiểm tra teacher verified và ownership server-side, dùng request ID cho
+  idempotency, trả join failure không tiết lộ group và serialize mutation theo
+  group. Invite secret 256-bit chỉ trả một lần, DB chỉ lưu SHA-256.
+- PostgreSQL 18 cô lập pass 43/43. Concurrency smoke thật chạy hai `psql`
+  session tại 49/50: một approve commit, một bị `group_student_limit_reached`;
+  active giữ đúng 50, một applicant còn pending và chỉ một audit được tạo.
+- Thêm Flutter domain/gateway/repository, SQLite `capy_groups.db` v1 owner +
+  project scoped, session fence trước/sau network, cache reconciliation sau
+  snapshot thành công và Realtime chỉ dùng làm invalidation.
+- Thêm provider cache-first và UX `/groups`: verified teacher có create/join,
+  pending/suspended fail-closed không thấy mutation quản trị. Friends có nút
+  Groups 48 dp trên header; route Groups giữ tab Friends được chọn.
+- Regression đầu phát hiện nút Groups dạng block làm Friends overflow 21 px khi
+  bàn phím mở ở 320 px. Điểm vào được chuyển lên header, test cô lập và toàn bộ
+  Friends/Groups/navigation pass 74/74; Direct Chat pass 150/150.
+- Full Flutter pass 776 + 1 opt-in skip; `flutter analyze` không có issue.
+  Group chat, dashboard GT4, Web/Android release build và live exact-Staging
+  smoke chưa thuộc increment này. Migration GT2 chưa apply remote; Staging và
+  Production có 0 thao tác ghi.
+
+### 2026-10-13 — Group/Teacher GT1 exact-Staging verified
+
+- Thêm migration additive `20261013120000_add_teacher_identity_contract.sql`:
+  mở rộng `account_role` với `teacher`, tự tạo `teacher_profiles.pending`, audit
+  private và helper chỉ trả quyền khi role teacher + status verified cùng đúng.
+- Client authenticated chỉ đọc profile của chính mình. Mutation xác minh bị
+  chặn ở cả ACL và kiểm tra JWT role; chỉ `service_role` gọi được RPC với state
+  transition fail-closed. Self-selected teacher không thể tự verify.
+- Live smoke đầu tiên phát hiện Supabase secret API key dùng claims JSON/DB role
+  thay cho GUC role cũ. Migration hardening `20261013130000` hỗ trợ cả contract
+  hiện hành và revoke DML trực tiếp của service role trên profile/audit, giữ RPC
+  là mutation path duy nhất.
+- Onboarding Flutter thêm card `Giáo viên / Quản lý lớp`, validator nhận teacher
+  nhưng giữ nguyên personal/parent. Chưa tạo group, membership hoặc `/groups`.
+- Backup exact Staging DPAPI pass: 422.241 byte tại
+  `%LOCALAPPDATA%\CapyVocabApp\staging_backups\20261013T072235Z-c32c69d1`.
+  Dry-run đầu tiên phát hiện remote có migration `20261008173000` thiếu local;
+  fetch đúng file từ migration history, khôi phục mọi overwrite ngoài ý muốn,
+  rồi dry-run lại chỉ liệt kê migration GT1. Không repair history.
+- Hai migration `20261013120000` và `20261013130000` đã apply đúng exact
+  Staging. Migration history local/remote khớp và post-dry-run `upToDate=true`.
+- Live smoke hai account pass 7 nhóm: pending fail-closed, self/direct mutation
+  bị chặn, outsider không đọc profile, service RPC verify, direct service DML
+  bị chặn, suspension revoke quyền và Auth/profile cleanup còn 0 fixture.
+- Verification: PostgreSQL 18 isolated 32/32; onboarding target 14/14; full
+  Flutter 763 pass + 1 skip; `flutter analyze` không có issue. Production không
+  được truy cập hoặc thay đổi.
+
+### 2026-10-13 — Group/Teacher GT0 contract locked
+
+- Thêm `group.md` làm nguồn luật cho nhóm học riêng tư, group chat và không gian
+  giáo viên; milestone mới dùng GT0–GT6, không kéo dài Home H6/H7.
+- Khóa quyền: self-selected `account_role='teacher'` chỉ phục vụ UX; tạo/quản lý
+  nhóm bắt buộc teacher verification server-side. MVP một owner teacher, tối đa
+  50 student active, join bằng invite secret rồi teacher approve.
+- Khóa privacy: teacher không được đọc direct chat, Friends, contact, ví Yuzu,
+  Library/ảnh/raw scan hoặc lịch sử Home riêng tư. GT5 chỉ chia sẻ progress của
+  assignment trong group.
+- Chọn mở rộng Operational Chat hiện có theo hướng additive thay vì tạo message
+  stack thứ hai. Direct chat giữ nguyên; group correction/tagging tạm tắt trong
+  MVP vì contract hiện giả định đúng hai member.
+- Ghi ma trận SQL/RLS, Flutter/offline và live Exact-Staging cho GT1–GT6. Không
+  có code/schema/remote write, không apply/deploy và Production không đổi.
 
 ### 2026-10-06 — Home H5 final gate and Git preparation
 

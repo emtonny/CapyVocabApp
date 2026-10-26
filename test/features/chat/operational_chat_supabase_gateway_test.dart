@@ -52,6 +52,29 @@ Map<String, dynamic> chatRow(
       'participant_high': high,
       'last_message_at': null
     };
+Map<String, dynamic> groupChatRow() => {
+      'id': uuid(900),
+      'kind': 'group',
+      'participant_low': null,
+      'participant_high': null,
+      'learning_group_id': uuid(901),
+      'last_message_at': instant.toIso8601String(),
+    };
+Map<String, dynamic> socialChatRow({String title = 'Nhóm cuối tuần'}) => {
+      'id': uuid(902),
+      'kind': 'social',
+      'participant_low': null,
+      'participant_high': null,
+      'learning_group_id': null,
+      'last_message_at': instant.toIso8601String(),
+    };
+Map<String, dynamic> socialChatMetadata({String title = 'Nhóm cuối tuần'}) => {
+      'conversation_id': uuid(902),
+      'title': title,
+      'owner_user_id': a,
+      'member_count': 2,
+      'status': 'active',
+    };
 Map<String, dynamic> translationRow(int n,
         {String conversationId = conversation,
         String translatorVersion = operationalChatTranslatorVersion}) =>
@@ -317,7 +340,7 @@ void main() {
       expect(request.url.path, '/rest/v1/chat_translations');
       expect(request.url.queryParameters['order'], 'id.asc.nullslast');
       expect(request.url.queryParameters['translator_version'],
-          'in.("$operationalChatLegacyTranslatorVersion","$operationalChatTranslatorVersion")');
+          'in.("$operationalChatLegacyTranslatorVersion","$operationalChatPreviousTranslatorVersion","$operationalChatTranslatorVersion")');
       expect(
           request
               .url.queryParameters['chat_operational_messages.conversation_id'],
@@ -445,6 +468,39 @@ void main() {
         relayFailure(ChatRelayFailureKind.retryable));
     expect(requests.length, 2);
   });
+  test('group inventory joins authoritative group metadata once', () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/list_my_learning_groups') {
+        return jsonResponse([
+          {
+            'group_id': uuid(901),
+            'title': 'Lớp Anh văn',
+            'group_status': 'active',
+            'membership_status': 'active',
+            'is_muted': false,
+            'active_student_count': 3,
+          }
+        ]);
+      }
+      return jsonResponse(
+          request.url.queryParameters['id'] == null ? [groupChatRow()] : []);
+    };
+
+    final group = (await gateway.fetchConversations()).single;
+
+    expect(group.isGroup, isTrue);
+    expect(group.isSocialGroup, isFalse);
+    expect(group.socialOwnerId, isNull);
+    expect(group.groupId, uuid(901));
+    expect(group.title, 'Lớp Anh văn');
+    expect(group.memberCount, 4);
+    expect(group.canSend, isTrue);
+    expect(
+        requests
+            .where((r) => r.url.path == '/rest/v1/rpc/list_my_learning_groups')
+            .length,
+        1);
+  });
   test('repeated cursor, malformed or foreign conversation fails closed',
       () async {
     handler = (_) => jsonResponse([remote(1)]);
@@ -459,6 +515,70 @@ void main() {
           {'id': 42}
         ]);
     await expectLater(gateway.fetchConversations(), throwsFormatException);
+  });
+  test('social group lifecycle and member projection use bounded RPCs',
+      () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/rename_social_chat_group' ||
+          request.url.path == '/rest/v1/rpc/close_social_chat_group' ||
+          request.url.path == '/rest/v1/rpc/leave_social_chat_group') {
+        return jsonResponse(uuid(902));
+      }
+      if (request.url.path == '/rest/v1/rpc/list_my_social_chat_groups') {
+        final closed = requests.any(
+            (row) => row.url.path == '/rest/v1/rpc/close_social_chat_group');
+        return jsonResponse([
+          {
+            ...socialChatMetadata(title: 'Tên mới'),
+            'status': closed ? 'closed' : 'active',
+          }
+        ]);
+      }
+      if (request.url.path == '/rest/v1/rpc/list_social_chat_group_members') {
+        return jsonResponse([
+          {
+            'conversation_id': uuid(902),
+            'user_id': a,
+            'display_name': 'Owner',
+            'username': 'owner',
+            'avatar_url': '',
+            'is_owner': true,
+          },
+          {
+            'conversation_id': uuid(902),
+            'user_id': b,
+            'display_name': 'Friend',
+            'username': 'friend',
+            'avatar_url': '',
+            'is_owner': false,
+          },
+        ]);
+      }
+      return jsonResponse(socialChatRow());
+    };
+
+    final renamed = await gateway.renameSocialChatGroup(uuid(902), ' Tên mới ');
+    expect(renamed.title, 'Tên mới');
+    expect(jsonDecode(requests.first.body), {
+      'p_conversation_id': uuid(902),
+      'p_title': 'Tên mới',
+    });
+
+    requests.clear();
+    final members = await gateway.fetchSocialChatGroupMembers({uuid(902)});
+    expect(members.map((row) => row.profile.label), ['Owner', 'Friend']);
+    expect(members.first.isOwner, isTrue);
+    expect(jsonDecode(requests.single.body), {
+      'p_conversation_ids': [uuid(902)],
+    });
+
+    requests.clear();
+    final closed = await gateway.closeSocialChatGroup(uuid(902));
+    expect(closed.groupArchived, isTrue);
+
+    requests.clear();
+    await gateway.leaveSocialChatGroup(uuid(902));
+    expect(requests.single.url.path, '/rest/v1/rpc/leave_social_chat_group');
   });
   test('hidden row or history for another chat rejected', () async {
     for (final row in [
@@ -478,10 +598,70 @@ void main() {
     expect((await gateway.openDirectChat(b)).peerId, b);
     expect(requests.first.url.path, '/rest/v1/rpc/open_direct_chat');
     expect(jsonDecode(requests.first.body), {'p_peer_id': b});
+    expect(
+      requests.last.url.queryParameters['select'],
+      isNot(contains('social_owner_id')),
+    );
     handler = (request) => request.method == 'POST'
         ? jsonResponse(conversation)
         : jsonResponse(chatRow(high: uuid(3)));
     await expectLater(gateway.openDirectChat(b), throwsFormatException);
+  });
+  test('social group creation uses RPC and validates canonical metadata',
+      () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/create_social_chat_group') {
+        return jsonResponse(uuid(902));
+      }
+      if (request.url.path == '/rest/v1/rpc/list_my_social_chat_groups') {
+        return jsonResponse([socialChatMetadata()]);
+      }
+      return jsonResponse(socialChatRow());
+    };
+
+    final group = await gateway.createSocialChatGroup(
+      title: ' Nhóm cuối tuần ',
+      memberIds: [b],
+      requestId: uuid(903),
+    );
+
+    expect(group.isGroup, isTrue);
+    expect(group.groupId, uuid(902));
+    expect(group.title, 'Nhóm cuối tuần');
+    expect(group.memberCount, 2);
+    expect(requests.map((request) => request.url.path), [
+      '/rest/v1/rpc/create_social_chat_group',
+      '/rest/v1/rpc/list_my_social_chat_groups',
+      '/rest/v1/chat_conversations',
+    ]);
+    expect(jsonDecode(requests.first.body), {
+      'p_title': 'Nhóm cuối tuần',
+      'p_member_ids': [b],
+      'p_request_id': uuid(903),
+    });
+  });
+  test('social group inventory joins safe metadata and rejects missing rows',
+      () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/list_my_social_chat_groups') {
+        return jsonResponse([socialChatMetadata()]);
+      }
+      return jsonResponse(
+        request.url.queryParameters['id'] == null ? [socialChatRow()] : [],
+      );
+    };
+
+    final group = (await gateway.fetchConversations()).single;
+    expect(group.title, 'Nhóm cuối tuần');
+    expect(group.memberCount, 2);
+
+    handler = (request) => request.url.path ==
+            '/rest/v1/rpc/list_my_social_chat_groups'
+        ? jsonResponse([])
+        : jsonResponse(
+            request.url.queryParameters['id'] == null ? [socialChatRow()] : [],
+          );
+    await expectLater(gateway.fetchConversations(), throwsFormatException);
   });
   test(
       'visibility checks chunk/paginate cached IDs only, no broad delete snapshot',
@@ -679,7 +859,9 @@ void main() {
             'chat_operational_messages',
             'chat_translations',
             'chat_corrections',
-            'chat_slang_annotations'
+            'chat_slang_annotations',
+            'learning_groups',
+            'learning_group_members'
           });
       final payload = {
         'ids': [3],

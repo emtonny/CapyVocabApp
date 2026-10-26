@@ -35,16 +35,16 @@ class FriendsLeaderboardScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
                 children: [
-                  Text(
+                  const Text(
                     '👥',
                     style: TextStyle(fontSize: 28),
                   ),
-                  SizedBox(width: 10),
-                  Expanded(
+                  const SizedBox(width: 10),
+                  const Expanded(
                     child: Text(
                       'Bạn bè',
                       maxLines: 2,
@@ -57,10 +57,18 @@ class FriendsLeaderboardScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  SizedBox.square(
+                    dimension: 48,
+                    child: IconButton.filledTonal(
+                      key: const Key('friends-open-groups'),
+                      tooltip: 'Mở nhóm học',
+                      onPressed: () => context.go('/groups'),
+                      icon: const Icon(Icons.school_outlined),
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
             if (friendOwner != null) ...[
               const SizedBox(height: 12),
               Padding(

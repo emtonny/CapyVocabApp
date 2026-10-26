@@ -256,7 +256,7 @@ void main() {
     expect(payloads, hasLength(1));
     final evidenceText = payloads.single.evidence.toString();
     expect(evidenceText, isNot(contains('capy_scans')));
-    expect(evidenceText, isNot(contains('Apple')));
+    expect(evidenceText, contains('word: Apple'));
     expect(evidenceText, isNot(contains('item-apple-true')));
 
     final gateway = _FakeGateway(userId: _userId);

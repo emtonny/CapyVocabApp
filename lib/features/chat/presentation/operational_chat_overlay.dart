@@ -11,6 +11,7 @@ import '../domain/operational_chat.dart';
 import 'operational_chat_message_body.dart';
 import 'operational_chat_correction_panel.dart';
 import 'operational_chat_provider.dart';
+import 'operational_social_group_sheet.dart';
 
 const _bubbleSize = 64.0;
 const _edgeInset = 8.0;
@@ -335,7 +336,6 @@ class _ChatMailbox extends ConsumerStatefulWidget {
 class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
   final _search = TextEditingController();
   String? _activeConversationId;
-  String? _activePeerId;
   String? _openingPeer;
 
   @override
@@ -351,7 +351,6 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
       widget.onOpenConversation?.call(conversation.id);
       setState(() {
         _activeConversationId = conversation.id;
-        _activePeerId = conversation.peerId;
       });
       return;
     }
@@ -365,7 +364,6 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
         widget.onOpenConversation?.call(opened.id);
         setState(() {
           _activeConversationId = opened.id;
-          _activePeerId = peerId;
         });
       }
     } catch (_) {
@@ -393,9 +391,18 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
     final profileById = {for (final profile in profiles) profile.id: profile};
     final conversations = inbox.asData?.value ?? const <ChatConversation>[];
     final conversationByPeer = {
-      for (final conversation in conversations)
+      for (final conversation in conversations.where((row) => row.isDirect))
         conversation.peerId: conversation
     };
+    final groupConversations = conversations
+        .where((row) => row.isGroup)
+        .where((row) =>
+            _search.text.trim().isEmpty ||
+            row.title!.toLowerCase().contains(
+                  _search.text.trim().toLowerCase(),
+                ))
+        .toList()
+      ..sort(_conversationOrder);
     final peerIds = <String>{
       ...conversationByPeer.keys,
       ...?friends.asData?.value,
@@ -427,30 +434,24 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
       });
     final totalUnread = conversations.fold<int>(
         0, (total, conversation) => total + conversation.unreadCount);
+    ChatConversation? activeConversation;
+    for (final row in conversations) {
+      if (row.id == _activeConversationId) activeConversation = row;
+    }
 
     Widget content;
-    if (_activeConversationId != null) {
-      final activePeerId = _activePeerId ??
-          conversationByPeer.entries
-              .firstWhere(
-                (e) => e.value.id == _activeConversationId,
-                orElse: () => MapEntry(
-                  '',
-                  ChatConversation(id: _activeConversationId!, peerId: ''),
-                ),
-              )
-              .value
-              .peerId;
-      final activeProfile = profileById[activePeerId];
+    if (activeConversation != null) {
+      final activeProfile = activeConversation.isDirect
+          ? profileById[activeConversation.peerId]
+          : null;
       content = _MailboxConversationView(
         key: ValueKey('mailbox-conv-$_activeConversationId'),
         owner: widget.owner,
-        conversationId: _activeConversationId!,
-        peerId: activePeerId,
+        conversation: activeConversation,
         profile: activeProfile,
+        profileById: profileById,
         onBack: () => setState(() {
           _activeConversationId = null;
-          _activePeerId = null;
         }),
         onClose: widget.onClose,
         onDragUpdate: widget.onDragUpdate,
@@ -458,7 +459,7 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
     } else {
       content = Column(children: [
         _MailboxHeader(
-          activeCount: peerIds.length,
+          activeCount: peerIds.length + groupConversations.length,
           unreadCount: totalUnread,
           onClose: widget.onClose,
           onDragUpdate: widget.onDragUpdate,
@@ -472,7 +473,7 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                 controller: _search,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  hintText: 'Tìm kiếm bạn bè...',
+                  hintText: 'Tìm nhóm hoặc bạn bè...',
                   prefixIcon: const Icon(Icons.search, color: AppColors.blue),
                   suffixIcon: _search.text.isEmpty
                       ? null
@@ -503,7 +504,7 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'TRÒ CHUYỆN BẠN BÈ',
+                  'NHÓM VÀ BẠN BÈ',
                   style: TextStyle(
                     color: Color(0xFF9B877D),
                     fontSize: 12,
@@ -518,6 +519,7 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                   loading: inbox.isLoading && friends.isLoading,
                   hasError: inbox.hasError && friends.hasError,
                   peerIds: entries,
+                  groupConversations: groupConversations,
                   profileById: profileById,
                   conversationByPeer: conversationByPeer,
                   openingPeer: _openingPeer,
@@ -651,6 +653,7 @@ class _MailboxList extends StatelessWidget {
     required this.loading,
     required this.hasError,
     required this.peerIds,
+    required this.groupConversations,
     required this.profileById,
     required this.conversationByPeer,
     required this.openingPeer,
@@ -661,6 +664,7 @@ class _MailboxList extends StatelessWidget {
   final bool loading;
   final bool hasError;
   final List<String> peerIds;
+  final List<ChatConversation> groupConversations;
   final Map<String, ChatPeerProfile> profileById;
   final Map<String, ChatConversation> conversationByPeer;
   final String? openingPeer;
@@ -669,10 +673,10 @@ class _MailboxList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && peerIds.isEmpty) {
+    if (loading && peerIds.isEmpty && groupConversations.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (hasError && peerIds.isEmpty) {
+    if (hasError && peerIds.isEmpty && groupConversations.isEmpty) {
       return Center(
         child: TextButton.icon(
           onPressed: onRetry,
@@ -681,7 +685,7 @@ class _MailboxList extends StatelessWidget {
         ),
       );
     }
-    if (peerIds.isEmpty) {
+    if (peerIds.isEmpty && groupConversations.isEmpty) {
       return const Center(
         child: Text('Không tìm thấy bạn bè hoặc cuộc trò chuyện.',
             textAlign: TextAlign.center),
@@ -690,9 +694,17 @@ class _MailboxList extends StatelessWidget {
     return ListView.builder(
       key: const Key('chat-mailbox-friends'),
       padding: const EdgeInsets.only(bottom: 16),
-      itemCount: peerIds.length,
+      itemCount: groupConversations.length + peerIds.length,
       itemBuilder: (context, index) {
-        final peerId = peerIds[index];
+        if (index < groupConversations.length) {
+          final conversation = groupConversations[index];
+          return _GroupRow(
+            key: ValueKey('chat-mailbox-group-${conversation.groupId}'),
+            conversation: conversation,
+            onTap: () => onOpen('', conversation),
+          );
+        }
+        final peerId = peerIds[index - groupConversations.length];
         final profile = profileById[peerId];
         final conversation = conversationByPeer[peerId];
         return _FriendRow(
@@ -704,6 +716,63 @@ class _MailboxList extends StatelessWidget {
           onTap: () => onOpen(peerId, conversation),
         );
       },
+    );
+  }
+}
+
+class _GroupRow extends StatelessWidget {
+  const _GroupRow({
+    required this.conversation,
+    required this.onTap,
+    super.key,
+  });
+
+  final ChatConversation conversation;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = conversation.lastMessageText?.trim();
+    final access = conversation.groupArchived
+        ? 'Đã lưu trữ'
+        : conversation.groupMuted
+            ? 'Chỉ đọc'
+            : '${conversation.memberCount} thành viên';
+    final subtitle = text?.isNotEmpty == true ? text! : access;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF3E322E), width: 2),
+        boxShadow: const [
+          BoxShadow(color: Color(0xFF3E322E), offset: Offset(0, 4))
+        ],
+      ),
+      child: ListTile(
+        minVerticalPadding: 10,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        leading: const CircleAvatar(
+          backgroundColor: AppColors.mint,
+          child: Icon(Icons.groups_outlined, color: AppColors.ink),
+        ),
+        title: Text(
+          conversation.title!,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        subtitle: Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Color(0xFF9B877D), fontSize: 12),
+        ),
+        trailing: conversation.unreadCount == 0
+            ? const Icon(Icons.chevron_right)
+            : Badge(label: Text('${conversation.unreadCount}')),
+        onTap: onTap,
+      ),
     );
   }
 }
@@ -834,22 +903,36 @@ String _relativeTime(DateTime value) {
   return '${local.day}/${local.month}';
 }
 
+int _conversationOrder(ChatConversation left, ChatConversation right) {
+  final unread = right.unreadCount.compareTo(left.unreadCount);
+  if (unread != 0) return unread;
+  final leftAt = left.lastMessageAt;
+  final rightAt = right.lastMessageAt;
+  if (leftAt != null || rightAt != null) {
+    if (leftAt == null) return 1;
+    if (rightAt == null) return -1;
+    final recent = rightAt.compareTo(leftAt);
+    if (recent != 0) return recent;
+  }
+  return (left.title ?? '').compareTo(right.title ?? '');
+}
+
 class _MailboxConversationView extends ConsumerStatefulWidget {
   const _MailboxConversationView({
     super.key,
     required this.owner,
-    required this.conversationId,
-    required this.peerId,
+    required this.conversation,
     required this.profile,
+    required this.profileById,
     required this.onBack,
     required this.onClose,
     this.onDragUpdate,
   });
 
   final ChatOwner owner;
-  final String conversationId;
-  final String peerId;
+  final ChatConversation conversation;
   final ChatPeerProfile? profile;
+  final Map<String, ChatPeerProfile> profileById;
   final VoidCallback onBack;
   final VoidCallback onClose;
   final GestureDragUpdateCallback? onDragUpdate;
@@ -883,7 +966,7 @@ class _MailboxConversationViewState
     setState(() => _saving = true);
     try {
       await coordinator.enqueue(
-          conversationId: widget.conversationId, rawText: raw);
+          conversationId: widget.conversation.id, rawText: raw);
       if (!mounted || ref.read(operationalChatOwnerProvider) != widget.owner) {
         return;
       }
@@ -909,7 +992,7 @@ class _MailboxConversationViewState
     try {
       final store =
           await ref.read(operationalChatStoreProvider(widget.owner).future);
-      await store?.markConversationRead(widget.conversationId);
+      await store?.markConversationRead(widget.conversation.id);
     } finally {
       _markingRead = false;
     }
@@ -921,37 +1004,57 @@ class _MailboxConversationViewState
     final rows = inbox.asData?.value;
     ChatConversation? conversation;
     for (final row in rows ?? <ChatConversation>[]) {
-      if (row.id == widget.conversationId) conversation = row;
+      if (row.id == widget.conversation.id) conversation = row;
+    }
+    final current = conversation;
+
+    if (current == null) {
+      return const Center(
+        child: Text('Bạn không còn quyền truy cập cuộc trò chuyện này.'),
+      );
     }
 
-    if (conversation != null && conversation.unreadCount > 0 && !_markingRead) {
+    if (current.unreadCount > 0 && !_markingRead) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
     }
 
     final source =
         ref.watch(operationalChatSourceProvider(widget.owner)).asData?.value;
     final runtime = ref.watch(operationalChatCoordinatorProvider);
-    final ready = source != null && runtime.asData?.value != null && !_saving;
-    final messages = ref.watch(
-        operationalChatMessagesProvider((widget.owner, widget.conversationId)));
-    final translations = ref.watch(operationalChatTranslationsProvider(
-        (widget.owner, widget.conversationId)));
+    final ready = source != null &&
+        runtime.asData?.value != null &&
+        current.canSend &&
+        !_saving;
+    final messages =
+        ref.watch(operationalChatMessagesProvider((widget.owner, current.id)));
+    final translations = ref
+        .watch(operationalChatTranslationsProvider((widget.owner, current.id)));
     final translationsByMessage = {
       for (final row
           in translations.asData?.value ?? <OperationalChatTranslation>[])
         row.messageId: row,
     };
 
-    final peerName = widget.profile?.label ??
-        (widget.peerId.length >= 8
-            ? 'Bạn · ${widget.peerId.substring(widget.peerId.length - 8)}'
-            : (widget.peerId.isNotEmpty ? widget.peerId : 'Bạn'));
+    final peerId = current.directPeerId;
+    final peerName = current.isGroup
+        ? current.title!
+        : widget.profile?.label ??
+            'Bạn · ${peerId!.substring(peerId.length - 8)}';
 
     return Column(
       children: [
         _ConversationHeader(
           profile: widget.profile,
           peerName: peerName,
+          isGroup: current.isGroup,
+          memberCount: current.memberCount,
+          onGroupInfo: current.isSocialGroup
+              ? () => showOperationalSocialGroupSheet(
+                    context,
+                    owner: widget.owner,
+                    conversation: current,
+                  )
+              : null,
           onBack: widget.onBack,
           onClose: widget.onClose,
           onDragUpdate: widget.onDragUpdate,
@@ -964,10 +1067,12 @@ class _MailboxConversationViewState
             error: (_, __) =>
                 const Center(child: Text('Không đọc được tin nhắn trên máy.')),
             data: (msgList) => msgList.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'Bắt đầu trò chuyện với bạn.',
-                      style: TextStyle(
+                      current.isGroup
+                          ? 'Chưa có tin nhắn trong nhóm.'
+                          : 'Bắt đầu trò chuyện với bạn.',
+                      style: const TextStyle(
                         color: Color(0xFF9B877D),
                         fontWeight: FontWeight.w700,
                       ),
@@ -995,6 +1100,21 @@ class _MailboxConversationViewState
                                 : CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (current.isGroup && !mine)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.only(left: 4, bottom: 3),
+                                  child: Text(
+                                    widget.profileById[message.senderId]
+                                            ?.label ??
+                                        'Thành viên · ${message.senderId.substring(message.senderId.length - 8)}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.darkGreen,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
                               Container(
                                 key: ValueKey(message.id),
                                 constraints:
@@ -1028,15 +1148,16 @@ class _MailboxConversationViewState
                                   ),
                                 ),
                               ),
-                              SizedBox(
-                                width: 280,
-                                child: OperationalChatCorrectionPanel(
-                                  owner: widget.owner,
-                                  conversationId: widget.conversationId,
-                                  message: message,
-                                  viewerNativeLanguageCode: source,
+                              if (current.isDirect)
+                                SizedBox(
+                                  width: 280,
+                                  child: OperationalChatCorrectionPanel(
+                                    owner: widget.owner,
+                                    conversationId: current.id,
+                                    message: message,
+                                    viewerNativeLanguageCode: source,
+                                  ),
                                 ),
-                              ),
                               const SizedBox(height: 3),
                               Padding(
                                 padding:
@@ -1066,10 +1187,24 @@ class _MailboxConversationViewState
               style: TextStyle(fontSize: 12, color: Color(0xFFE94141)),
             ),
           ),
+        if (!current.canSend)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Text(
+              current.groupArchived
+                  ? current.isSocialGroup
+                      ? 'Nhóm đã đóng · lịch sử chỉ đọc.'
+                      : 'Nhóm đã lưu trữ · lịch sử chỉ đọc.'
+                  : 'Bạn đang bị tắt quyền gửi trong nhóm này.',
+              key: const Key('chat-mailbox-group-read-only'),
+              style: const TextStyle(fontSize: 12, color: Color(0xFFE94141)),
+            ),
+          ),
         _ConversationInput(
           controller: _text,
           saving: _saving,
           ready: ready,
+          enabled: current.canSend,
           onSend: _send,
           onChanged: () => setState(() {}),
         ),
@@ -1082,6 +1217,9 @@ class _ConversationHeader extends StatelessWidget {
   const _ConversationHeader({
     required this.profile,
     required this.peerName,
+    required this.isGroup,
+    required this.memberCount,
+    this.onGroupInfo,
     required this.onBack,
     required this.onClose,
     this.onDragUpdate,
@@ -1089,6 +1227,9 @@ class _ConversationHeader extends StatelessWidget {
 
   final ChatPeerProfile? profile;
   final String peerName;
+  final bool isGroup;
+  final int memberCount;
+  final VoidCallback? onGroupInfo;
   final VoidCallback onBack;
   final VoidCallback onClose;
   final GestureDragUpdateCallback? onDragUpdate;
@@ -1114,7 +1255,13 @@ class _ConversationHeader extends StatelessWidget {
                   icon: const Icon(Icons.arrow_back, color: AppColors.ink),
                   onPressed: onBack,
                 ),
-                _PeerAvatar(profile: profile, label: peerName),
+                if (isGroup)
+                  const CircleAvatar(
+                    backgroundColor: AppColors.mint,
+                    child: Icon(Icons.groups_outlined, color: AppColors.ink),
+                  )
+                else
+                  _PeerAvatar(profile: profile, label: peerName),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -1140,9 +1287,11 @@ class _ConversationHeader extends StatelessWidget {
                               size: 14, color: Color(0xFF9B877D)),
                         ],
                       ),
-                      const Text(
-                        'Tin gốc luôn được giữ · bản dịch theo hồ sơ',
-                        style: TextStyle(
+                      Text(
+                        isGroup
+                            ? '$memberCount thành viên · bản dịch theo hồ sơ'
+                            : 'Tin gốc luôn được giữ · bản dịch theo hồ sơ',
+                        style: const TextStyle(
                           color: Color(0xFF9B877D),
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -1151,6 +1300,13 @@ class _ConversationHeader extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (onGroupInfo != null)
+                  IconButton(
+                    key: const Key('chat-mailbox-social-group-manage'),
+                    tooltip: 'Thông tin và quản lý nhóm',
+                    onPressed: onGroupInfo,
+                    icon: const Icon(Icons.info_outline, color: AppColors.ink),
+                  ),
                 IconButton(
                   key: const Key('chat-mailbox-close-conv'),
                   tooltip: 'Đóng hộp thư',
@@ -1169,6 +1325,7 @@ class _ConversationInput extends StatelessWidget {
     required this.controller,
     required this.saving,
     required this.ready,
+    required this.enabled,
     required this.onSend,
     required this.onChanged,
   });
@@ -1176,6 +1333,7 @@ class _ConversationInput extends StatelessWidget {
   final TextEditingController controller;
   final bool saving;
   final bool ready;
+  final bool enabled;
   final VoidCallback onSend;
   final VoidCallback onChanged;
 
@@ -1208,7 +1366,7 @@ class _ConversationInput extends StatelessWidget {
                 controller: controller,
                 minLines: 1,
                 maxLines: 4,
-                enabled: !saving,
+                enabled: enabled && !saving,
                 onChanged: (_) => onChanged(),
                 style: const TextStyle(fontSize: 14, color: AppColors.ink),
                 decoration: const InputDecoration(

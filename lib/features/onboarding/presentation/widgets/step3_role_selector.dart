@@ -46,16 +46,16 @@ class Step3RoleSelector extends ConsumerWidget {
 
         const SizedBox(height: 14),
 
-        // Role Option 2: Parent
+        // Role Option 2: Teacher
         _RoleOptionCard(
-          key: const Key('role-parent-card'),
-          title: 'Phụ huynh / Giám sát',
-          subtitle: 'Theo dõi tiến độ học & nhận báo cáo',
-          icon: Icons.groups_rounded,
-          iconBadgeColor: AppColors.yellow,
-          selected: state.data.accountRole == 'parent',
+          key: const Key('role-teacher-card'),
+          title: 'Giáo viên / Quản lý lớp',
+          subtitle: 'Tạo lớp sau khi tài khoản được xác minh',
+          icon: Icons.school_rounded,
+          iconBadgeColor: AppColors.mint,
+          selected: state.data.accountRole == 'teacher',
           enabled: !state.isBusy,
-          onTap: () => notifier.updateAccountRole('parent'),
+          onTap: () => notifier.updateAccountRole('teacher'),
         ),
 
         if (state.fieldErrors['accountRole'] case final error?) ...[

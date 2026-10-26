@@ -46,6 +46,12 @@ final class OperationalChatStore {
           await _conversation(tx, conversation);
         }
       }
+      await tx.rawUpdate('''UPDATE chat_messages
+        SET send_status='blocked',next_attempt_at=NULL
+        WHERE owner_scope=? AND send_status='pending' AND conversation_id IN
+        (SELECT id FROM chat_conversations WHERE owner_scope=? AND active=1
+         AND kind='group' AND (group_status='archived' OR group_is_muted=1))''',
+          [owner.scope, owner.scope]);
       for (final id in capturedIds.difference(visibleIds)) {
         await tx.update('chat_conversations', {'active': 0},
             where: 'owner_scope=? AND id=?', whereArgs: [owner.scope, id]);
@@ -117,10 +123,17 @@ final class OperationalChatStore {
   }
 
   Future<void> _conversation(DatabaseExecutor tx, ChatConversation c) async {
-    if (c.peerId == owner.userId) throw const FormatException('Invalid peer.');
+    final identity = c.isDirect ? c.peerId : 'group:${c.groupId}';
+    if (c.isDirect && identity == owner.userId) {
+      throw const FormatException('Invalid peer.');
+    }
     final existing = await tx.query('chat_conversations',
         where: 'owner_scope=? AND id=?', whereArgs: [owner.scope, c.id]);
-    if (existing.isNotEmpty && existing.single['peer_id'] != c.peerId) {
+    if (existing.isNotEmpty &&
+        (existing.single['peer_id'] != identity ||
+            existing.single['kind'] != c.kind.name ||
+            existing.single['group_id'] != c.groupId ||
+            existing.single['social_owner_id'] != c.socialOwnerId)) {
       throw const FormatException('Conversation identity changed.');
     }
     final previousAt =
@@ -134,7 +147,15 @@ final class OperationalChatStore {
     final row = {
       'owner_scope': owner.scope,
       'id': c.id,
-      'peer_id': c.peerId,
+      'peer_id': identity,
+      'kind': c.kind.name,
+      'group_id': c.groupId,
+      'social_owner_id': c.socialOwnerId,
+      'group_title': c.title,
+      'group_avatar_url': c.avatarUrl,
+      'group_member_count': c.memberCount,
+      'group_status': c.groupArchived ? 'archived' : 'active',
+      'group_is_muted': c.groupMuted ? 1 : 0,
       'last_message_at': lastAt,
       'active': 1
     };
@@ -158,6 +179,12 @@ final class OperationalChatStore {
       for (final c in conversations) {
         await _conversation(tx, c);
       }
+      await tx.rawUpdate('''UPDATE chat_messages
+        SET send_status='blocked',next_attempt_at=NULL
+        WHERE owner_scope=? AND send_status='pending' AND conversation_id IN
+        (SELECT id FROM chat_conversations WHERE owner_scope=? AND active=1
+         AND kind='group' AND (group_status='archived' OR group_is_muted=1))''',
+          [owner.scope, owner.scope]);
       await tx.rawUpdate(
           '''UPDATE chat_messages SET send_status='blocked',next_attempt_at=NULL
         WHERE owner_scope=? AND send_status='pending' AND conversation_id IN
@@ -197,14 +224,36 @@ final class OperationalChatStore {
       WHERE c.owner_scope=? AND c.active=1
       ORDER BY unread_count DESC,c.last_message_at DESC,c.id''',
         [owner.userId, owner.scope]);
-    return rows
-        .map((row) => ChatConversation(
-            id: row['id'] as String,
-            peerId: row['peer_id'] as String,
-            lastMessageAt: _time(row['last_message_at']),
-            lastMessageText: row['last_message_text'] as String?,
-            unreadCount: row['unread_count'] as int))
-        .toList();
+    return rows.map((row) {
+      final common = (
+        id: row['id'] as String,
+        at: _time(row['last_message_at']),
+        text: row['last_message_text'] as String?,
+        unread: row['unread_count'] as int,
+      );
+      if (row['kind'] == ChatConversationKind.group.name) {
+        return ChatConversation.group(
+          id: common.id,
+          groupId: row['group_id'] as String,
+          title: row['group_title'] as String,
+          socialOwnerId: row['social_owner_id'] as String?,
+          avatarUrl: row['group_avatar_url'] as String,
+          memberCount: row['group_member_count'] as int,
+          groupMuted: row['group_is_muted'] == 1,
+          groupArchived: row['group_status'] == 'archived',
+          lastMessageAt: common.at,
+          lastMessageText: common.text,
+          unreadCount: common.unread,
+        );
+      }
+      return ChatConversation(
+        id: common.id,
+        peerId: row['peer_id'] as String,
+        lastMessageAt: common.at,
+        lastMessageText: common.text,
+        unreadCount: common.unread,
+      );
+    }).toList();
   }
 
   Future<void> markConversationRead(String conversationId) async {
@@ -342,21 +391,25 @@ final class OperationalChatStore {
   Future<List<OperationalChatTranslation>> translations(
       String conversationId) async {
     validateChatUuid(conversationId);
-    final rows = await database.rawQuery('''SELECT t.*
+    final rows = await database.rawQuery(
+        '''SELECT t.*
       FROM chat_translations t JOIN chat_messages m
       ON m.owner_scope=t.owner_scope AND m.id=t.message_id
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
       WHERE t.owner_scope=? AND m.conversation_id=? AND c.active=1
-      AND t.translator_version IN (?,?)
+      AND t.translator_version IN (?,?,?)
       ORDER BY coalesce(m.sent_at,m.client_created_at),m.id,
-        CASE t.translator_version WHEN ? THEN 0 ELSE 1 END,t.id''', [
-      owner.scope,
-      conversationId,
-      operationalChatLegacyTranslatorVersion,
-      operationalChatTranslatorVersion,
-      operationalChatLegacyTranslatorVersion,
-    ]);
+        CASE t.translator_version WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END,t.id''',
+        [
+          owner.scope,
+          conversationId,
+          operationalChatLegacyTranslatorVersion,
+          operationalChatPreviousTranslatorVersion,
+          operationalChatTranslatorVersion,
+          operationalChatLegacyTranslatorVersion,
+          operationalChatPreviousTranslatorVersion,
+        ]);
     final preferred = <String, OperationalChatTranslation>{};
     for (final row in rows.map(_decodeTranslation)) {
       preferred['${row.messageId}:${row.targetLanguageCode}'] = row;
@@ -466,7 +519,7 @@ final class OperationalChatStore {
       DatabaseExecutor tx, OperationalChatCorrection correction,
       [String? conversationId]) async {
     final rows = await tx.rawQuery('''SELECT m.sender_id,m.source_language_code,
-      m.conversation_id,c.peer_id FROM chat_messages m
+      m.conversation_id,c.peer_id,c.kind FROM chat_messages m
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
       WHERE m.owner_scope=? AND m.id=? AND m.send_status='sent' AND c.active=1
@@ -481,7 +534,8 @@ final class OperationalChatStore {
     final row = rows.single;
     final sender = row['sender_id'];
     final source = row['source_language_code'];
-    if (correction.authorId == sender ||
+    if (row['kind'] != ChatConversationKind.direct.name ||
+        correction.authorId == sender ||
         !{owner.userId, row['peer_id']}.contains(correction.authorId) ||
         (source == 'vi'
             ? correction.targetLanguageCode != 'en'
@@ -546,6 +600,7 @@ final class OperationalChatStore {
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
       WHERE x.owner_scope=? AND m.conversation_id=? AND c.active=1
+      AND c.kind='direct'
       ORDER BY coalesce(m.sent_at,m.client_created_at),m.id,x.created_at,x.id''',
         [owner.scope, conversationId]);
     return rows.map(_decodeCorrection).toList();
@@ -560,7 +615,7 @@ final class OperationalChatStore {
       JOIN chat_messages m ON m.owner_scope=x.owner_scope AND m.id=x.message_id
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
-      WHERE x.owner_scope=? AND c.active=1
+      WHERE x.owner_scope=? AND c.active=1 AND c.kind='direct'
       AND x.sync_status IN ('proposalPending','decisionPending')
       AND x.next_attempt_at<=? ORDER BY x.next_attempt_at,x.created_at,x.id LIMIT 100''',
         [owner.scope, now.toUtc().microsecondsSinceEpoch]);
@@ -574,7 +629,7 @@ final class OperationalChatStore {
       ON m.owner_scope=x.owner_scope AND m.id=x.message_id
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
-      WHERE x.owner_scope=? AND c.active=1
+      WHERE x.owner_scope=? AND c.active=1 AND c.kind='direct'
       AND x.sync_status IN ('proposalPending','decisionPending')''',
         [owner.scope]);
     return _time(rows.single['deadline']);
@@ -678,7 +733,7 @@ final class OperationalChatStore {
       [String? conversationId]) async {
     final rows = await tx.rawQuery('''SELECT m.raw_text,m.sender_id,
       m.conversation_id,x.message_id correction_message,x.status correction_status,
-      x.accepted_by,x.sync_status correction_sync,c.active
+      x.accepted_by,x.sync_status correction_sync,c.active,c.kind
       FROM chat_messages m JOIN chat_corrections x
       ON x.owner_scope=m.owner_scope AND x.id=?
       JOIN chat_conversations c
@@ -692,6 +747,7 @@ final class OperationalChatStore {
     ]);
     if (rows.length != 1 ||
         rows.single['active'] != 1 ||
+        rows.single['kind'] != ChatConversationKind.direct.name ||
         rows.single['sender_id'] != annotation.createdBy ||
         rows.single['correction_message'] != annotation.messageId ||
         rows.single['correction_status'] !=
@@ -745,6 +801,7 @@ final class OperationalChatStore {
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
       WHERE a.owner_scope=? AND m.conversation_id=? AND c.active=1
+      AND c.kind='direct'
       ORDER BY coalesce(m.sent_at,m.client_created_at),m.id,a.created_at,a.id''',
         [owner.scope, conversationId]);
     return rows.map(_decodeAnnotation).toList();
@@ -760,7 +817,8 @@ final class OperationalChatStore {
       ON m.owner_scope=a.owner_scope AND m.id=a.message_id
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
-      WHERE a.owner_scope=? AND c.active=1 AND a.sync_status='pending'
+      WHERE a.owner_scope=? AND c.active=1 AND c.kind='direct'
+      AND a.sync_status='pending'
       AND a.next_attempt_at<=?
       ORDER BY a.next_attempt_at,a.created_at,a.id LIMIT 100''',
         [owner.scope, now.toUtc().microsecondsSinceEpoch]);
@@ -768,14 +826,14 @@ final class OperationalChatStore {
   }
 
   Future<DateTime?> nextAnnotationPendingAt(DateTime now) async {
-    final rows = await database.rawQuery(
-        '''SELECT min(a.next_attempt_at) deadline
+    final rows =
+        await database.rawQuery('''SELECT min(a.next_attempt_at) deadline
       FROM chat_slang_annotations a JOIN chat_messages m
       ON m.owner_scope=a.owner_scope AND m.id=a.message_id
       JOIN chat_conversations c
       ON c.owner_scope=m.owner_scope AND c.id=m.conversation_id
-      WHERE a.owner_scope=? AND c.active=1 AND a.sync_status='pending' ''',
-        [owner.scope]);
+      WHERE a.owner_scope=? AND c.active=1 AND c.kind='direct'
+      AND a.sync_status='pending' ''', [owner.scope]);
     return _time(rows.single['deadline']);
   }
 
@@ -806,15 +864,30 @@ final class OperationalChatStore {
     _notify();
   }
 
-  Future<void> _member(
-      DatabaseExecutor tx, OperationalChatMessage message) async {
+  Future<void> _member(DatabaseExecutor tx, OperationalChatMessage message,
+      {bool requireOwnerCanSend = false}) async {
     final rows = await tx.query('chat_conversations',
         where: 'owner_scope=? AND id=? AND active=1',
         whereArgs: [owner.scope, message.conversationId]);
-    if (rows.length != 1 ||
-        !{owner.userId, rows.single['peer_id']}.contains(message.senderId)) {
+    if (rows.length != 1) {
       throw const FormatException(
           'Message is not in an active owner conversation.');
+    }
+    final row = rows.single;
+    if (row['kind'] == ChatConversationKind.direct.name) {
+      if (!{owner.userId, row['peer_id']}.contains(message.senderId)) {
+        throw const FormatException(
+            'Message is not in an active owner conversation.');
+      }
+    } else if (row['kind'] == ChatConversationKind.group.name) {
+      if (requireOwnerCanSend &&
+          (message.senderId != owner.userId ||
+              row['group_status'] == 'archived' ||
+              row['group_is_muted'] == 1)) {
+        throw const FormatException('Group conversation is read-only.');
+      }
+    } else {
+      throw const FormatException('Unknown conversation kind.');
     }
   }
 
@@ -828,7 +901,7 @@ final class OperationalChatStore {
     }
     await database.transaction((tx) async {
       _guardCurrent(isCurrent);
-      await _member(tx, message);
+      await _member(tx, message, requireOwnerCanSend: true);
       await tx.insert('chat_messages', _row(message));
       _guardCurrent(isCurrent);
     });

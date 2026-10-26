@@ -183,7 +183,7 @@ void main() {
         ChatAnnotationSyncStatus.blocked);
   });
 
-  test('SQLite v4 upgrades additively to v5 annotation cache', () async {
+  test('SQLite v4 upgrades additively through v9 annotation cache', () async {
     await store.dispose();
     await local.close();
     final legacyPath = '${directory.path}/legacy_v4.db';
@@ -206,7 +206,7 @@ void main() {
     final upgraded =
         OperationalChatDatabase(factory: databaseFactoryFfi, path: legacyPath);
     final db = await upgraded.open();
-    expect(await db.getVersion(), 6);
+    expect(await db.getVersion(), 9);
     expect(
         (await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'"))
             .map((row) => row['name']),

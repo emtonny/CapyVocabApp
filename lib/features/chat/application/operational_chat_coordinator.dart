@@ -146,6 +146,121 @@ final class OperationalChatCoordinator {
     return conversation;
   }
 
+  Future<ChatConversation> createSocialChatGroup({
+    required String title,
+    required List<String> memberIds,
+  }) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final conversation = await remote.createSocialChatGroup(
+      title: title,
+      memberIds: memberIds,
+      requestId: _idGenerator(),
+    );
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: [conversation],
+      capturedIds: const {},
+      visibleIds: {conversation.id},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+    return conversation;
+  }
+
+  Future<List<SocialChatMember>> socialChatGroupMembers(
+      Set<String> conversationIds) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final members = await remote.fetchSocialChatGroupMembers(conversationIds);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    return members;
+  }
+
+  Future<ChatConversation> renameSocialChatGroup(
+      String conversationId, String title) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final conversation =
+        await remote.renameSocialChatGroup(conversationId, title);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: [conversation],
+      capturedIds: const {},
+      visibleIds: {conversation.id},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+    return conversation;
+  }
+
+  Future<ChatConversation> closeSocialChatGroup(String conversationId) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final conversation = await remote.closeSocialChatGroup(conversationId);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: [conversation],
+      capturedIds: const {},
+      visibleIds: {conversation.id},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+    return conversation;
+  }
+
+  Future<void> leaveSocialChatGroup(String conversationId) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    await remote.leaveSocialChatGroup(conversationId);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: const [],
+      capturedIds: {conversationId},
+      visibleIds: const {},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+  }
+
   Future<OperationalChatCorrection> proposeCorrection({
     required String messageId,
     required String proposedText,
@@ -344,25 +459,27 @@ final class OperationalChatCoordinator {
             translations: translations,
             isCurrent: current);
       }
-      _syncStage = 'correction_fetch';
-      final corrections = await remote.fetchCorrections(conversation.id);
-      if (!current()) throw const ChatRefreshSuperseded();
-      if (corrections.isNotEmpty) {
-        _syncStage = 'correction_commit';
-        await store.mergeCorrections(
-            conversationId: conversation.id,
-            corrections: corrections,
-            isCurrent: current);
-      }
-      _syncStage = 'annotation_fetch';
-      final annotations = await remote.fetchAnnotations(conversation.id);
-      if (!current()) throw const ChatRefreshSuperseded();
-      if (annotations.isNotEmpty) {
-        _syncStage = 'annotation_commit';
-        await store.mergeAnnotations(
-            conversationId: conversation.id,
-            annotations: annotations,
-            isCurrent: current);
+      if (conversation.isDirect) {
+        _syncStage = 'correction_fetch';
+        final corrections = await remote.fetchCorrections(conversation.id);
+        if (!current()) throw const ChatRefreshSuperseded();
+        if (corrections.isNotEmpty) {
+          _syncStage = 'correction_commit';
+          await store.mergeCorrections(
+              conversationId: conversation.id,
+              corrections: corrections,
+              isCurrent: current);
+        }
+        _syncStage = 'annotation_fetch';
+        final annotations = await remote.fetchAnnotations(conversation.id);
+        if (!current()) throw const ChatRefreshSuperseded();
+        if (annotations.isNotEmpty) {
+          _syncStage = 'annotation_commit';
+          await store.mergeAnnotations(
+              conversationId: conversation.id,
+              annotations: annotations,
+              isCurrent: current);
+        }
       }
     }
     if (!current()) throw const ChatRefreshSuperseded();

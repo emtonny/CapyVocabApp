@@ -1,14 +1,17 @@
 /// <reference types="edge-runtime" />
 
 import { createChatTranslationHandler } from "./handler.ts";
-import { createVilaoTranslationProvider } from "./gemini_provider.ts";
+import {
+  createGeminiTranslationProvider,
+  createVilaoTranslationProvider,
+} from "./gemini_provider.ts";
 import { createSupabaseTranslationQueue } from "./supabase_translation_queue.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ?? "";
 const triggerSecret = Deno.env.get("CHAT_TRANSLATION_TRIGGER_SECRET")?.trim() ??
   "";
-const vilaoApiKey = Deno.env.get("CHAT_TRANSLATION_API_KEY")?.trim() ?? "";
+const providerApiKey = Deno.env.get("CHAT_TRANSLATION_API_KEY")?.trim() ?? "";
 const vilaoBaseUrl = Deno.env.get("CHAT_TRANSLATION_BASE_URL")?.trim();
 const providerMode = Deno.env.get("CHAT_TRANSLATION_PROVIDER")?.trim()
   .toLowerCase() ?? "";
@@ -16,10 +19,14 @@ const providerMode = Deno.env.get("CHAT_TRANSLATION_PROVIDER")?.trim()
 const queue = supabaseUrl && serviceRoleKey
   ? createSupabaseTranslationQueue({ supabaseUrl, serviceRoleKey })
   : undefined;
-const provider = providerMode === "vilao"
-  ? vilaoApiKey
+const provider = providerMode === "gemini"
+  ? providerApiKey
+    ? createGeminiTranslationProvider({ apiKey: providerApiKey })
+    : undefined
+  : providerMode === "vilao"
+  ? providerApiKey
     ? createVilaoTranslationProvider({
-      apiKey: vilaoApiKey,
+      apiKey: providerApiKey,
       baseUrl: vilaoBaseUrl,
     })
     : undefined

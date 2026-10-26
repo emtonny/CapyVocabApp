@@ -46,7 +46,17 @@ final class Gateway implements OperationalChatGateway {
       onListen: () => attaches++, onCancel: () => detaches++);
   final calls = <String>[];
   int sends = 0, pulls = 0, histories = 0, translationPulls = 0, verifies = 0;
-  int attaches = 0, detaches = 0, restarts = 0, disposals = 0, opens = 0;
+  int attaches = 0,
+      detaches = 0,
+      restarts = 0,
+      disposals = 0,
+      opens = 0,
+      socialCreates = 0,
+      socialRenames = 0,
+      socialCloses = 0,
+      socialLeaves = 0;
+  String? lastSocialTitle;
+  List<String>? lastSocialMembers;
   bool failSend = false,
       failHistory = false,
       failTranslations = false,
@@ -216,6 +226,95 @@ final class Gateway implements OperationalChatGateway {
   Future<ChatConversation> openDirectChat(String peerId) async {
     opens++;
     return ChatConversation(id: f.uuid(500), peerId: peerId);
+  }
+
+  @override
+  Future<ChatConversation> createSocialChatGroup({
+    required String title,
+    required List<String> memberIds,
+    required String requestId,
+  }) async {
+    socialCreates++;
+    lastSocialTitle = title;
+    lastSocialMembers = List.of(memberIds);
+    final conversation = ChatConversation.group(
+      id: f.uuid(501),
+      groupId: f.uuid(501),
+      title: title,
+      socialOwnerId: f.a,
+      memberCount: memberIds.length + 1,
+    );
+    conversations[conversation.id] = conversation;
+    return conversation;
+  }
+
+  @override
+  Future<ChatConversation> renameSocialChatGroup(
+      String conversationId, String title) async {
+    socialRenames++;
+    final previous = conversations[conversationId]!;
+    final conversation = ChatConversation.group(
+      id: previous.id,
+      groupId: previous.groupId!,
+      title: title,
+      socialOwnerId: previous.socialOwnerId,
+      memberCount: previous.memberCount,
+      groupArchived: previous.groupArchived,
+    );
+    conversations[conversationId] = conversation;
+    return conversation;
+  }
+
+  @override
+  Future<ChatConversation> closeSocialChatGroup(String conversationId) async {
+    socialCloses++;
+    final previous = conversations[conversationId]!;
+    final conversation = ChatConversation.group(
+      id: previous.id,
+      groupId: previous.groupId!,
+      title: previous.title!,
+      socialOwnerId: previous.socialOwnerId,
+      memberCount: previous.memberCount,
+      groupArchived: true,
+    );
+    conversations[conversationId] = conversation;
+    return conversation;
+  }
+
+  @override
+  Future<void> leaveSocialChatGroup(String conversationId) async {
+    socialLeaves++;
+    conversations.remove(conversationId);
+  }
+
+  @override
+  Future<List<SocialChatMember>> fetchSocialChatGroupMembers(
+      Set<String> conversationIds) async {
+    return conversationIds
+        .where(conversations.containsKey)
+        .expand((conversationId) => [
+              SocialChatMember(
+                conversationId: conversationId,
+                profile: ChatPeerProfile(
+                  id: f.a,
+                  displayName: 'Owner',
+                  username: 'owner',
+                  avatarUrl: '',
+                ),
+                isOwner: true,
+              ),
+              SocialChatMember(
+                conversationId: conversationId,
+                profile: ChatPeerProfile(
+                  id: f.b,
+                  displayName: 'Friend',
+                  username: 'friend',
+                  avatarUrl: '',
+                ),
+                isOwner: false,
+              ),
+            ])
+        .toList();
   }
 
   @override
@@ -689,6 +788,76 @@ void main() {
     final chat = await coordinator.openDirectChat(f.outsider);
     expect(chat.peerId, f.outsider);
     expect((await store.conversations()).length, 2);
+  });
+
+  test('social group requires online and commits canonical group to cache',
+      () async {
+    online = false;
+    await expectLater(
+      coordinator.createSocialChatGroup(
+        title: 'Nhóm cuối tuần',
+        memberIds: [f.b, f.outsider],
+      ),
+      throwsA(isA<ChatRelayException>()),
+    );
+    expect(remote.socialCreates, 0);
+
+    online = true;
+    final group = await coordinator.createSocialChatGroup(
+      title: 'Nhóm cuối tuần',
+      memberIds: [f.b, f.outsider],
+    );
+
+    expect(remote.socialCreates, 1);
+    expect(remote.lastSocialTitle, 'Nhóm cuối tuần');
+    expect(remote.lastSocialMembers, [f.b, f.outsider]);
+    expect(group.isGroup, isTrue);
+    expect(group.memberCount, 3);
+    expect(
+      (await store.conversations()).map((row) => row.id),
+      contains(group.id),
+    );
+  });
+
+  test('social group rename close members and leave update guarded cache',
+      () async {
+    final owned = await coordinator.createSocialChatGroup(
+      title: 'Nhóm cũ',
+      memberIds: [f.b],
+    );
+    final members = await coordinator.socialChatGroupMembers({owned.id});
+    expect(members.map((row) => row.profile.label), ['Owner', 'Friend']);
+
+    final renamed =
+        await coordinator.renameSocialChatGroup(owned.id, 'Nhóm mới');
+    expect(renamed.title, 'Nhóm mới');
+    expect(
+        (await store.conversations())
+            .singleWhere((row) => row.id == owned.id)
+            .title,
+        'Nhóm mới');
+
+    final closed = await coordinator.closeSocialChatGroup(owned.id);
+    expect(closed.canSend, isFalse);
+    expect(
+        (await store.conversations())
+            .singleWhere((row) => row.id == owned.id)
+            .groupArchived,
+        isTrue);
+
+    final memberConversation = ChatConversation.group(
+      id: f.uuid(502),
+      groupId: f.uuid(502),
+      title: 'Nhóm thành viên',
+      socialOwnerId: f.b,
+      memberCount: 2,
+    );
+    remote.conversations[memberConversation.id] = memberConversation;
+    await store.cacheConversation(memberConversation);
+    await coordinator.leaveSocialChatGroup(memberConversation.id);
+    expect(remote.socialLeaves, 1);
+    expect((await store.conversations()).map((row) => row.id),
+        isNot(contains(memberConversation.id)));
   });
 
   test('correction proposal stays offline then drains with the same identity',

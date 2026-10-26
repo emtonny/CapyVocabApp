@@ -1,6 +1,7 @@
 import 'package:capy_vocab/features/chat/data/operational_chat_supabase_gateway.dart';
 import 'package:capy_vocab/features/chat/domain/operational_chat.dart';
 import 'package:capy_vocab/features/chat/presentation/operational_chat_overlay.dart';
+import 'package:capy_vocab/features/chat/presentation/operational_chat_correction_panel.dart';
 import 'package:capy_vocab/features/chat/presentation/operational_chat_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -145,9 +146,11 @@ void main() {
       (tester) async {
     tester.view.physicalSize = const Size(320, 740);
     tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
     addTearDown(() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
     final semantics = tester.ensureSemantics();
 
@@ -173,6 +176,83 @@ void main() {
         find.bySemanticsLabel(RegExp('Dòng chính, Tin gốc')), findsOneWidget);
     expect(tester.getRect(find.byKey(const Key('chat-send'))).right,
         lessThanOrEqualTo(320));
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'archived group is listed and opens as read-only without correction',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+    });
+    final semantics = tester.ensureSemantics();
+    const groupId = '60000000-0000-0000-0000-000000000001';
+    final groupConversation = ChatConversation.group(
+      id: '60000000-0000-0000-0000-000000000002',
+      groupId: groupId,
+      title: 'Lớp Anh văn A',
+      memberCount: 4,
+      groupArchived: true,
+      unreadCount: 1,
+    );
+    final groupMessage = OperationalChatMessage(
+      id: '60000000-0000-0000-0000-000000000003',
+      conversationId: groupConversation.id,
+      senderId: _friend,
+      clientGeneratedId: '60000000-0000-0000-0000-000000000004',
+      sourceLanguageCode: 'vi',
+      clientCreatedAt: DateTime.utc(2026, 10, 17),
+      sentAt: DateTime.utc(2026, 10, 17),
+      rawText: 'Chào cả lớp',
+      sendStatus: ChatSendStatus.sent,
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        operationalChatEnabledProvider.overrideWithValue(true),
+        operationalChatOwnerProvider.overrideWithValue(owner),
+        operationalChatInboxProvider(owner)
+            .overrideWith((_) => Stream.value([groupConversation])),
+        operationalChatFriendsProvider(owner).overrideWith((_) async => []),
+        operationalChatPeerProfilesProvider(owner)
+            .overrideWith((_) => Stream.value([profile])),
+        operationalChatMessagesProvider((owner, groupConversation.id))
+            .overrideWith((_) => Stream.value([groupMessage])),
+        operationalChatTranslationsProvider((owner, groupConversation.id))
+            .overrideWith((_) => Stream.value([])),
+        operationalChatSourceProvider(owner)
+            .overrideWith((_) => Stream.value('vi')),
+        operationalChatStoreProvider(owner).overrideWith((_) async => null),
+        operationalChatProfileRefreshProvider(owner).overrideWith((_) async {}),
+      ],
+      child: const MaterialApp(
+        home: OperationalChatOverlay(
+          child: Scaffold(body: Text('Trang chủ')),
+        ),
+      ),
+    ));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('operational-chat-bubble')));
+    await tester.pumpAndSettle();
+    expect(find.text('Lớp Anh văn A'), findsOneWidget);
+
+    await tester.tap(find.text('Lớp Anh văn A'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('4 thành viên · bản dịch theo hồ sơ'), findsOneWidget);
+    expect(find.text('Capy Mây'), findsOneWidget);
+    expect(
+        find.byKey(const Key('chat-mailbox-group-read-only')), findsOneWidget);
+    expect(find.byType(OperationalChatCorrectionPanel), findsNothing);
+    expect(
+        tester.widget<TextField>(find.byKey(const Key('chat-compose'))).enabled,
+        isFalse);
+    expect(find.bySemanticsLabel('Gửi tin nhắn'), findsOneWidget);
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });

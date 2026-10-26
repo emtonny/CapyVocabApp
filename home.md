@@ -675,8 +675,10 @@ không có result; 100% chỉ có một result; không có Yuzu/streak/leaderboa
 - Coordinator chạy khi đăng nhập, app resume, có thay đổi local hoặc mạng trở
   lại. Retry dùng backoff 5 giây đến 6 giờ; conflict payload là lỗi chặn và chỉ
   retry khi người dùng bấm rõ ràng.
-- Evidence gửi server không chứa đường dẫn ảnh local, đáp án thô hay fingerprint
-  ngoài contract cần thiết.
+- Evidence gửi server không chứa đường dẫn ảnh local, Photo Note/media ID,
+  bounding box, raw Vision hay fingerprint ngoài contract cần thiết. GT5 bổ sung
+  canonical `word` cho từng item đã mastery để tạo projection chữ opt-in trong
+  learning group; attempt input thô và ảnh vẫn không được gửi cho giáo viên.
 
 #### H4.2. Backend idempotent và ranh giới H5
 
@@ -687,6 +689,9 @@ không có result; 100% chỉ có một result; không có Yuzu/streak/leaderboa
   Retry giống hệt trả lại cùng receipt; payload khác dùng cùng result/session/day
   bị từ chối. Race giữa hai request đồng thời được serialize bằng unique indexes
   và `ON CONFLICT DO NOTHING` rồi đọc lại receipt thắng cuộc.
+- Projection GT5 chỉ chạy sau khi receipt được server chấp nhận và chỉ cho group
+  mà học viên đang active đã bật chia sẻ. Build phải bật
+  `LESSON_RESULT_SYNC_ENABLED=true`; mặc định OFF không tự tạo dữ liệu cloud.
 - H4 tuyệt đối không cộng `total_coins`, không đổi streak và không ghi điểm tuần
   hay leaderboard. Receipt giữ `reward_status=pending`; H5 mới quyết định mức
   100/130/150, phạt muộn và settlement server-authoritative.

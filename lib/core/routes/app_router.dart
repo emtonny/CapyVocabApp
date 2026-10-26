@@ -13,6 +13,7 @@ import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/chat/presentation/operational_chat_screen.dart';
 import '../../features/chat/presentation/operational_chat_overlay.dart';
 import '../../features/friends/presentation/screens/friends_leaderboard_screen.dart';
+import '../../features/groups/presentation/groups_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/library/presentation/screens/storage_album_screen.dart';
 import '../../features/library/domain/entities/photo_note.dart';
@@ -250,6 +251,13 @@ List<RouteBase> _buildAppRoutes(
           pageBuilder: (context, state) => _softPage(
             state,
             child: const FriendsLeaderboardScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/groups',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const GroupsScreen(),
           ),
         ),
         GoRoute(

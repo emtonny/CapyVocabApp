@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:capy_vocab/features/home/presentation/screens/home_screen.dart';
 import 'package:capy_vocab/features/home/presentation/providers/home_provider.dart';
 import 'package:capy_vocab/core/constants/app_colors.dart';
@@ -108,6 +110,34 @@ void main() {
     expect(
       tester.getSize(find.byKey(const Key('bottom-nav-responsive-frame'))),
       const Size(720, 110),
+    );
+  });
+
+  testWidgets('route Groups keeps the Friends tab selected', (tester) async {
+    final router = GoRouter(
+      initialLocation: '/groups',
+      routes: [
+        GoRoute(
+          path: '/groups',
+          builder: (_, __) => const Scaffold(
+            body: SizedBox.expand(),
+            bottomNavigationBar: BottomNavBar(),
+          ),
+        ),
+        GoRoute(path: '/friends', builder: (_, __) => const SizedBox.shrink()),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+
+    final semantics = tester.getSemantics(find.byTooltip('Bạn bè'));
+    expect(semantics.flagsCollection.isSelected, Tristate.isTrue);
+    expect(
+      tester
+          .getSemantics(find.byTooltip('Trang chủ'))
+          .flagsCollection
+          .isSelected,
+      Tristate.isFalse,
     );
   });
 

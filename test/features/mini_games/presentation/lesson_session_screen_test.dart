@@ -17,6 +17,7 @@ import 'package:capy_vocab/features/mini_games/application/lesson_completion_syn
 import 'package:capy_vocab/features/mini_games/application/lesson_session_controller.dart';
 import 'package:capy_vocab/features/mini_games/data/local/sqlite_lesson_session_store.dart';
 import 'package:capy_vocab/features/mini_games/domain/lesson_session.dart';
+import 'package:capy_vocab/features/mini_games/presentation/providers/lesson_completion_sync_provider.dart';
 import 'package:capy_vocab/features/mini_games/presentation/providers/lesson_session_provider.dart';
 import 'package:capy_vocab/features/mini_games/presentation/screens/lesson_session_screen.dart';
 import 'package:flutter/material.dart';
@@ -76,6 +77,8 @@ void main() {
             const _MemoryMediaLoader(),
           ),
           lessonSessionStoreProvider.overrideWith((ref) async => store),
+          lessonCompletionSyncCoordinatorProvider
+              .overrideWith((ref) async => null),
         ],
         child: MaterialApp(
           theme: AppTheme.dark,

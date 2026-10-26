@@ -13,10 +13,10 @@ const CLAIM_ROW = {
   raw_text: "Synthetic raw text",
   source_language_code: "vi",
   target_language_code: "en",
-  provider: "vilao",
-  model: "gemini-3.8-flash",
-  prompt_version: "chat-translate-p2",
-  translator_version: "chat-translate-v2",
+  provider: "gemini",
+  model: "gemini-3-flash-preview",
+  prompt_version: "chat-translate-p3",
+  translator_version: "chat-translate-v3",
   attempt_count: 1,
   lease_expires_at: "2026-09-18T12:01:00.000Z",
 };
@@ -34,7 +34,7 @@ test("claim calls the service-only RPC and parses one typed row", async () => {
     },
   });
 
-  const claim = await queue.claim("chat-translate-v2");
+  const claim = await queue.claim("chat-translate-v3");
 
   assert.equal(
     new URL(requestedUrl).pathname,
@@ -46,7 +46,7 @@ test("claim calls the service-only RPC and parses one typed row", async () => {
     "Bearer synthetic-service-key",
   );
   assert.deepEqual(JSON.parse(String(requestedInit?.body)), {
-    p_translator_version: "chat-translate-v2",
+    p_translator_version: "chat-translate-v3",
   });
   assert.deepEqual(claim, {
     translationId: CLAIM_ROW.translation_id,
@@ -54,10 +54,10 @@ test("claim calls the service-only RPC and parses one typed row", async () => {
     rawText: CLAIM_ROW.raw_text,
     sourceLanguageCode: "vi",
     targetLanguageCode: "en",
-    provider: "vilao",
-    model: "gemini-3.8-flash",
-    promptVersion: "chat-translate-p2",
-    translatorVersion: "chat-translate-v2",
+    provider: "gemini",
+    model: "gemini-3-flash-preview",
+    promptVersion: "chat-translate-p3",
+    translatorVersion: "chat-translate-v3",
     attemptCount: 1,
     leaseExpiresAt: CLAIM_ROW.lease_expires_at,
   });
@@ -69,7 +69,7 @@ test("empty claim response is idle", async () => {
     serviceRoleKey: "synthetic-service-key",
     fetcher: () => Promise.resolve(Response.json([])),
   });
-  assert.equal(await queue.claim("chat-translate-v2"), null);
+  assert.equal(await queue.claim("chat-translate-v3"), null);
 });
 
 test("claim parser rejects multiple, malformed, and same-language rows", () => {
@@ -168,7 +168,7 @@ test("non-success RPC response never exposes its body", async () => {
   });
 
   await assert.rejects(
-    () => queue.claim("chat-translate-v2"),
+    () => queue.claim("chat-translate-v3"),
     (error: unknown) => {
       assert.ok(error instanceof TranslationQueueUnavailableError);
       assert.equal(error.message.includes("sensitive database detail"), false);
@@ -185,7 +185,7 @@ test("network and invalid scalar responses fail closed", async () => {
     fetcher: () => Promise.reject(new Error("network detail")),
   });
   await assert.rejects(
-    () => networkQueue.claim("chat-translate-v2"),
+    () => networkQueue.claim("chat-translate-v3"),
     TranslationQueueUnavailableError,
   );
 

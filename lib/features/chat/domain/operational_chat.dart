@@ -1,15 +1,22 @@
 /// Operational text only. Never a Training/export contract.
 enum ChatSendStatus { pending, sent, blocked }
 
-const operationalChatTranslatorVersion = 'chat-translate-v2';
-const operationalChatPromptVersion = 'chat-translate-p2';
-const operationalChatTranslationModel = 'gemini-3.8-flash';
-const operationalChatTranslationProvider = 'vilao';
+enum ChatConversationKind { direct, group }
+
+const operationalChatTranslatorVersion = 'chat-translate-v3';
+const operationalChatPromptVersion = 'chat-translate-p3';
+const operationalChatTranslationModel = 'gemini-3-flash-preview';
+const operationalChatTranslationProvider = 'gemini';
+const operationalChatPreviousTranslatorVersion = 'chat-translate-v2';
+const operationalChatPreviousPromptVersion = 'chat-translate-p2';
+const operationalChatPreviousTranslationModel = 'gemini-3.8-flash';
+const operationalChatPreviousTranslationProvider = 'vilao';
 const operationalChatLegacyTranslatorVersion = 'chat-translate-v1';
 const operationalChatLegacyPromptVersion = 'chat-translate-p1';
 const operationalChatLegacyTranslationModel = 'gemini-3.5-flash-lite';
 const operationalChatSupportedTranslatorVersions = <String>[
   operationalChatLegacyTranslatorVersion,
+  operationalChatPreviousTranslatorVersion,
   operationalChatTranslatorVersion,
 ];
 
@@ -23,6 +30,10 @@ bool isSupportedOperationalChatTranslation({
         model == operationalChatTranslationModel &&
         promptVersion == operationalChatPromptVersion &&
         translatorVersion == operationalChatTranslatorVersion) ||
+    (provider == operationalChatPreviousTranslationProvider &&
+        model == operationalChatPreviousTranslationModel &&
+        promptVersion == operationalChatPreviousPromptVersion &&
+        translatorVersion == operationalChatPreviousTranslatorVersion) ||
     (provider == 'gemini' &&
         model == operationalChatLegacyTranslationModel &&
         promptVersion == operationalChatLegacyPromptVersion &&
@@ -56,10 +67,19 @@ final class ChatOwner {
 final class ChatConversation {
   ChatConversation(
       {required this.id,
-      required this.peerId,
+      required String peerId,
       this.lastMessageAt,
       this.lastMessageText,
-      this.unreadCount = 0}) {
+      this.unreadCount = 0})
+      : kind = ChatConversationKind.direct,
+        _peerId = peerId,
+        _groupId = null,
+        _title = null,
+        socialOwnerId = null,
+        avatarUrl = '',
+        memberCount = 2,
+        groupMuted = false,
+        groupArchived = false {
     validateChatUuid(id);
     validateChatUuid(peerId);
     if (unreadCount < 0) {
@@ -67,11 +87,90 @@ final class ChatConversation {
     }
   }
 
+  ChatConversation.group({
+    required this.id,
+    required String groupId,
+    required String title,
+    this.socialOwnerId,
+    this.avatarUrl = '',
+    required this.memberCount,
+    this.groupMuted = false,
+    this.groupArchived = false,
+    this.lastMessageAt,
+    this.lastMessageText,
+    this.unreadCount = 0,
+  })  : kind = ChatConversationKind.group,
+        _peerId = null,
+        _groupId = groupId,
+        _title = title {
+    validateChatUuid(id);
+    validateChatUuid(groupId);
+    if (socialOwnerId != null) validateChatUuid(socialOwnerId!);
+    if (title.trim().isEmpty ||
+        title.runes.length > 80 ||
+        memberCount < 1 ||
+        (socialOwnerId != null && (groupId != id || memberCount < 2)) ||
+        unreadCount < 0) {
+      throw const FormatException('Invalid group conversation.');
+    }
+  }
+
   final String id;
-  final String peerId;
+  final ChatConversationKind kind;
+  final String? _peerId;
+  final String? _groupId;
+  final String? _title;
+  final String? socialOwnerId;
+  final String avatarUrl;
+  final int memberCount;
+  final bool groupMuted;
+  final bool groupArchived;
   final DateTime? lastMessageAt;
   final String? lastMessageText;
   final int unreadCount;
+
+  bool get isDirect => kind == ChatConversationKind.direct;
+  bool get isGroup => kind == ChatConversationKind.group;
+  bool get isSocialGroup => isGroup && socialOwnerId != null;
+  bool isSocialOwner(String userId) => socialOwnerId == userId;
+  String? get directPeerId => _peerId;
+  String? get groupId => _groupId;
+  String? get title => _title;
+  String get peerId {
+    final value = _peerId;
+    if (value == null) throw StateError('Group conversation has no peer.');
+    return value;
+  }
+
+  bool get canSend => isDirect || (!groupMuted && !groupArchived);
+}
+
+final class SocialChatMember {
+  SocialChatMember({
+    required this.conversationId,
+    required this.profile,
+    required this.isOwner,
+  }) {
+    validateChatUuid(conversationId);
+  }
+
+  final String conversationId;
+  final ChatPeerProfile profile;
+  final bool isOwner;
+
+  factory SocialChatMember.fromRemote(Map<String, dynamic> row) {
+    final conversationId = row['conversation_id'];
+    final userId = row['user_id'];
+    final isOwner = row['is_owner'];
+    if (conversationId is! String || userId is! String || isOwner is! bool) {
+      throw const FormatException('Invalid social chat member.');
+    }
+    return SocialChatMember(
+      conversationId: conversationId,
+      profile: ChatPeerProfile.fromRemote({...row, 'id': userId}),
+      isOwner: isOwner,
+    );
+  }
 }
 
 final class ChatPeerProfile {
@@ -711,6 +810,17 @@ enum ChatRemoteSignal { connected, changed, disconnected }
 abstract interface class OperationalChatGateway
     implements OperationalChatTransport {
   Future<ChatConversation> openDirectChat(String peerId);
+  Future<ChatConversation> createSocialChatGroup({
+    required String title,
+    required List<String> memberIds,
+    required String requestId,
+  });
+  Future<ChatConversation> renameSocialChatGroup(
+      String conversationId, String title);
+  Future<ChatConversation> closeSocialChatGroup(String conversationId);
+  Future<void> leaveSocialChatGroup(String conversationId);
+  Future<List<SocialChatMember>> fetchSocialChatGroupMembers(
+      Set<String> conversationIds);
   Future<List<ChatConversation>> fetchConversations();
   Future<List<OperationalChatMessage>> fetchHistory(String conversationId);
   Future<List<OperationalChatTranslation>> fetchTranslations(

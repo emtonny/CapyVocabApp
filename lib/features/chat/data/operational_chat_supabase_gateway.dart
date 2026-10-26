@@ -16,7 +16,9 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
       'id,conversation_id,sender_id,raw_text,source_language_code,'
       'client_generated_id,client_created_at,sent_at,deleted_at,moderation_state';
   static const _conversationColumns =
-      'id,kind,participant_low,participant_high,last_message_at';
+      'id,kind,participant_low,participant_high,learning_group_id,'
+      'last_message_at';
+  static const _socialKind = 'social';
   static const _translationColumns =
       'id,message_id,target_language_code,translated_text,provider,model,'
       'prompt_version,translator_version,status,attempt_count,next_attempt_at,'
@@ -146,33 +148,98 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
     });
   }
 
-  ChatConversation _conversation(Map<String, dynamic> row) {
+  DateTime? _conversationTime(Object? rawAt) {
+    if (rawAt == null) return null;
+    DateTime? at;
+    if (rawAt is! String ||
+        !RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(rawAt) ||
+        (at = DateTime.tryParse(rawAt)) == null) {
+      throw const FormatException('Invalid conversation timestamp.');
+    }
+    return at!.toUtc();
+  }
+
+  ChatConversation _conversation(
+    Map<String, dynamic> row, [
+    Map<String, dynamic>? group,
+    Map<String, dynamic>? socialGroup,
+  ]) {
     final id = row['id'];
+    final kind = row['kind'];
     final low = row['participant_low'];
     final high = row['participant_high'];
-    final rawAt = row['last_message_at'];
-    if (id is! String ||
+    if (id is! String) {
+      throw const FormatException('Invalid owner conversation.');
+    }
+    final at = _conversationTime(row['last_message_at']);
+    if (kind == ChatConversationKind.group.name) {
+      final groupId = row['learning_group_id'];
+      if (groupId is! String ||
+          low != null ||
+          high != null ||
+          group == null ||
+          group['group_id'] != groupId ||
+          group['membership_status'] != 'active' ||
+          group['title'] is! String ||
+          group['is_muted'] is! bool ||
+          group['active_student_count'] is! int ||
+          !{'active', 'archived'}.contains(group['group_status'])) {
+        throw const FormatException('Invalid group conversation.');
+      }
+      return ChatConversation.group(
+        id: id,
+        groupId: groupId,
+        title: group['title'] as String,
+        memberCount: (group['active_student_count'] as int) + 1,
+        groupMuted: group['is_muted'] as bool,
+        groupArchived: group['group_status'] == 'archived',
+        lastMessageAt: at,
+      );
+    }
+    if (kind == _socialKind) {
+      final title = socialGroup?['title'];
+      final socialOwnerId = socialGroup?['owner_user_id'];
+      final memberCount = socialGroup?['member_count'];
+      final status = socialGroup?['status'];
+      if (row['learning_group_id'] != null ||
+          low != null ||
+          high != null ||
+          socialGroup == null ||
+          socialGroup['conversation_id'] != id ||
+          title is! String ||
+          title != title.trim() ||
+          title.runes.isEmpty ||
+          title.runes.length > 80 ||
+          socialOwnerId is! String ||
+          !{'active', 'closed'}.contains(status) ||
+          memberCount is! int ||
+          memberCount < 2 ||
+          memberCount > 20) {
+        throw const FormatException('Invalid social group conversation.');
+      }
+      validateChatUuid(socialOwnerId);
+      return ChatConversation.group(
+        id: id,
+        groupId: id,
+        title: title,
+        socialOwnerId: socialOwnerId,
+        memberCount: memberCount,
+        groupArchived: status == 'closed',
+        lastMessageAt: at,
+      );
+    }
+    if (kind != ChatConversationKind.direct.name ||
         low is! String ||
         high is! String ||
-        row['kind'] != 'direct' ||
+        row['learning_group_id'] != null ||
         low.compareTo(high) >= 0 ||
         !{low, high}.contains(owner.userId)) {
       throw const FormatException('Invalid owner conversation.');
     }
     validateChatUuid(low);
     validateChatUuid(high);
-    DateTime? at;
-    if (rawAt != null) {
-      if (rawAt is! String ||
-          !RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(rawAt) ||
-          (at = DateTime.tryParse(rawAt)) == null) {
-        throw const FormatException('Invalid conversation timestamp.');
-      }
-    }
     return ChatConversation(
-        id: id,
-        peerId: low == owner.userId ? high : low,
-        lastMessageAt: at?.toUtc());
+        id: id, peerId: low == owner.userId ? high : low, lastMessageAt: at);
   }
 
   @override
@@ -200,6 +267,145 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
     });
   }
 
+  @override
+  Future<ChatConversation> createSocialChatGroup({
+    required String title,
+    required List<String> memberIds,
+    required String requestId,
+  }) {
+    final normalizedTitle = title.trim();
+    validateChatUuid(requestId);
+    for (final id in memberIds) {
+      validateChatUuid(id);
+    }
+    if (normalizedTitle.isEmpty ||
+        normalizedTitle.runes.length > 80 ||
+        memberIds.isEmpty ||
+        memberIds.length > 19 ||
+        memberIds.toSet().length != memberIds.length ||
+        memberIds.contains(owner.userId)) {
+      throw const FormatException('Invalid social group request.');
+    }
+    return _request(() async {
+      final id = await _client.rpc('create_social_chat_group', params: {
+        'p_title': normalizedTitle,
+        'p_member_ids': memberIds,
+        'p_request_id': requestId,
+      });
+      if (id is! String) {
+        throw const FormatException('Invalid social group RPC result.');
+      }
+      validateChatUuid(id);
+      final metadata = await _socialGroups({id});
+      final result = _conversation(
+        await _client
+            .from('chat_conversations')
+            .select(_conversationColumns)
+            .eq('id', id)
+            .single(),
+        null,
+        metadata[id],
+      );
+      if (result.id != id || result.title != normalizedTitle) {
+        throw const FormatException('Conflicting social group result.');
+      }
+      return result;
+    });
+  }
+
+  Future<ChatConversation> _socialConversation(String conversationId) async {
+    validateChatUuid(conversationId);
+    final metadata = await _socialGroups({conversationId});
+    return _conversation(
+      await _request(() => _client
+          .from('chat_conversations')
+          .select(_conversationColumns)
+          .eq('id', conversationId)
+          .single()),
+      null,
+      metadata[conversationId],
+    );
+  }
+
+  @override
+  Future<ChatConversation> renameSocialChatGroup(
+      String conversationId, String title) async {
+    validateChatUuid(conversationId);
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty || normalizedTitle.runes.length > 80) {
+      throw const FormatException('Invalid social group title.');
+    }
+    final result = await _request(() => _client.rpc(
+          'rename_social_chat_group',
+          params: {
+            'p_conversation_id': conversationId,
+            'p_title': normalizedTitle,
+          },
+        ));
+    if (result != conversationId) {
+      throw const FormatException('Invalid social group mutation result.');
+    }
+    return _socialConversation(conversationId);
+  }
+
+  @override
+  Future<ChatConversation> closeSocialChatGroup(String conversationId) async {
+    validateChatUuid(conversationId);
+    final result = await _request(() => _client.rpc(
+          'close_social_chat_group',
+          params: {'p_conversation_id': conversationId},
+        ));
+    if (result != conversationId) {
+      throw const FormatException('Invalid social group mutation result.');
+    }
+    return _socialConversation(conversationId);
+  }
+
+  @override
+  Future<void> leaveSocialChatGroup(String conversationId) async {
+    validateChatUuid(conversationId);
+    final result = await _request(() => _client.rpc(
+          'leave_social_chat_group',
+          params: {'p_conversation_id': conversationId},
+        ));
+    if (result != conversationId) {
+      throw const FormatException('Invalid social group mutation result.');
+    }
+  }
+
+  @override
+  Future<List<SocialChatMember>> fetchSocialChatGroupMembers(
+      Set<String> conversationIds) async {
+    if (conversationIds.isEmpty || conversationIds.length > 50) {
+      throw const FormatException('Invalid social group member request.');
+    }
+    for (final id in conversationIds) {
+      validateChatUuid(id);
+    }
+    final response = await _request(() => _client.rpc(
+          'list_social_chat_group_members',
+          params: {'p_conversation_ids': conversationIds.toList()..sort()},
+        ));
+    if (response is! List) {
+      throw const FormatException('Invalid social group members.');
+    }
+    final members = <SocialChatMember>[];
+    final identities = <String>{};
+    for (final value in response) {
+      if (value is! Map) {
+        throw const FormatException('Invalid social group member.');
+      }
+      final member =
+          SocialChatMember.fromRemote(Map<String, dynamic>.from(value));
+      if (!conversationIds.contains(member.conversationId) ||
+          !identities.add('${member.conversationId}:${member.profile.id}')) {
+        throw const FormatException('Invalid social group member identity.');
+      }
+      members.add(member);
+    }
+    return members;
+  }
+
   /// Complete paged RLS inventory, but NOT a transaction snapshot. Runtime
   /// must fence concurrent membership/open-chat changes before deactivating cache.
   @override
@@ -210,7 +416,68 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
       if (cursor != null) query = query.gt('id', cursor);
       return query.order('id', ascending: true).limit(100);
     });
-    return rows.map(_conversation).toList();
+    final groupIds = rows
+        .where((row) => row['kind'] == ChatConversationKind.group.name)
+        .map((row) => row['learning_group_id'])
+        .whereType<String>()
+        .toSet();
+    final groups = <String, Map<String, dynamic>>{};
+    if (groupIds.isNotEmpty) {
+      final response =
+          await _request(() => _client.rpc('list_my_learning_groups'));
+      if (response is! List) {
+        throw const FormatException('Invalid learning group inventory.');
+      }
+      for (final value in response) {
+        if (value is! Map) {
+          throw const FormatException('Invalid learning group metadata.');
+        }
+        final row = Map<String, dynamic>.from(value);
+        final id = row['group_id'];
+        if (id is String && groupIds.contains(id)) groups[id] = row;
+      }
+      if (!groups.keys.toSet().containsAll(groupIds)) {
+        throw const FormatException('Missing learning group metadata.');
+      }
+    }
+    final socialIds = rows
+        .where((row) => row['kind'] == _socialKind)
+        .map((row) => row['id'])
+        .whereType<String>()
+        .toSet();
+    final socialGroups = await _socialGroups(socialIds);
+    return rows.map((row) {
+      final groupId = row['learning_group_id'];
+      final id = row['id'];
+      return _conversation(
+        row,
+        groupId is String ? groups[groupId] : null,
+        id is String ? socialGroups[id] : null,
+      );
+    }).toList();
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _socialGroups(
+      Set<String> conversationIds) async {
+    if (conversationIds.isEmpty) return const {};
+    final response =
+        await _request(() => _client.rpc('list_my_social_chat_groups'));
+    if (response is! List) {
+      throw const FormatException('Invalid social group inventory.');
+    }
+    final groups = <String, Map<String, dynamic>>{};
+    for (final value in response) {
+      if (value is! Map) {
+        throw const FormatException('Invalid social group metadata.');
+      }
+      final row = Map<String, dynamic>.from(value);
+      final id = row['conversation_id'];
+      if (id is String && conversationIds.contains(id)) groups[id] = row;
+    }
+    if (!groups.keys.toSet().containsAll(conversationIds)) {
+      throw const FormatException('Missing social group metadata.');
+    }
+    return groups;
   }
 
   /// Merge-only paged pull. NEVER pass this list to reconcileHistory: concurrent
@@ -532,7 +799,9 @@ final class OperationalChatSupabaseGateway implements OperationalChatGateway {
         'chat_operational_messages',
         'chat_translations',
         'chat_corrections',
-        'chat_slang_annotations'
+        'chat_slang_annotations',
+        'learning_groups',
+        'learning_group_members'
       ]) {
         channel.onPostgresChanges(
             event: PostgresChangeEvent.all,

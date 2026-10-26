@@ -103,7 +103,7 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  test('separate DB v6 contains operational chat caches only', () async {
+  test('separate DB v9 contains operational chat caches only', () async {
     final rows = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
     expect(rows.map((row) => row['name']).toSet(), {
@@ -114,8 +114,85 @@ void main() {
       'chat_corrections',
       'chat_slang_annotations'
     });
-    expect(await db.getVersion(), 6);
+    expect(await db.getVersion(), 9);
+    expect(
+      (await db.rawQuery('PRAGMA table_info(chat_conversations)'))
+          .map((row) => row['name']),
+      contains('social_owner_id'),
+    );
     expect((await db.rawQuery('PRAGMA foreign_keys')).single.values.single, 1);
+  });
+  test('group cache round-trips and known mute blocks only local sending',
+      () async {
+    final groupConversation = uuid(700);
+    final groupId = uuid(701);
+    await store.cacheConversation(ChatConversation.group(
+      id: groupConversation,
+      groupId: groupId,
+      title: 'Lớp Anh văn',
+      memberCount: 4,
+    ));
+    final pending = OperationalChatMessage(
+      id: uuid(702),
+      conversationId: groupConversation,
+      senderId: a,
+      rawText: 'offline group message',
+      sourceLanguageCode: 'vi',
+      clientGeneratedId: uuid(703),
+      clientCreatedAt: instant,
+    );
+    await store.enqueue(pending);
+
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: [
+        ChatConversation.group(
+          id: groupConversation,
+          groupId: groupId,
+          title: 'Lớp Anh văn',
+          memberCount: 4,
+          groupMuted: true,
+        )
+      ],
+      capturedIds: {conversation, groupConversation},
+      visibleIds: {conversation, groupConversation},
+      expectedRevision: revision,
+      isCurrent: () => true,
+    );
+
+    final cached = (await store.conversations())
+        .firstWhere((row) => row.id == groupConversation);
+    expect(cached.isGroup, isTrue);
+    expect(cached.title, 'Lớp Anh văn');
+    expect(cached.memberCount, 4);
+    expect(cached.canSend, isFalse);
+    expect((await store.messages(groupConversation)).single.sendStatus,
+        ChatSendStatus.blocked);
+
+    await expectLater(
+      store.enqueue(OperationalChatMessage(
+        id: uuid(704),
+        conversationId: groupConversation,
+        senderId: a,
+        rawText: 'must not queue',
+        sourceLanguageCode: 'vi',
+        clientGeneratedId: uuid(705),
+        clientCreatedAt: instant,
+      )),
+      throwsFormatException,
+    );
+    await store.mergeRemote(OperationalChatMessage(
+      id: uuid(706),
+      conversationId: groupConversation,
+      senderId: outsider,
+      rawText: 'history remains readable',
+      sourceLanguageCode: 'en',
+      clientGeneratedId: uuid(707),
+      clientCreatedAt: instant,
+      sentAt: instant,
+      sendStatus: ChatSendStatus.sent,
+    ));
+    expect(await store.messages(groupConversation), hasLength(2));
   });
   test('raw validation preserves Unicode and counts code points not UTF16', () {
     expect(message(1).rawText, 'Tối nay đi quẩy k bro?');

@@ -878,6 +878,7 @@ final class SqliteLessonSessionStore implements LessonCompletionSyncStore {
               'photo_note_id': item['photo_note_id'],
               'media_asset_id': item['media_asset_id'],
               'target_id': item['target_id'],
+              'word': item['answer'],
               'source_revision': item['source_revision'],
             },
         ],

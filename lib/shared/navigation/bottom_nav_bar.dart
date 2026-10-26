@@ -21,7 +21,8 @@ class BottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
-    final activeIndex = _tabRoutes.indexOf(location).clamp(0, 3);
+    final activeIndex =
+        location == '/groups' ? 3 : _tabRoutes.indexOf(location).clamp(0, 3);
 
     return SafeArea(
       top: false,

@@ -62,6 +62,9 @@ OperationalChatTranslation translation({
 
 Map<String, dynamic> remoteTranslation({
   String translatorVersion = operationalChatTranslatorVersion,
+  String provider = operationalChatTranslationProvider,
+  String model = operationalChatTranslationModel,
+  String promptVersion = operationalChatPromptVersion,
   String status = 'succeeded',
   Object? translatedText = 'Hello 😀',
   String timestamp = '2026-09-18T12:00:00.000Z',
@@ -71,9 +74,9 @@ Map<String, dynamic> remoteTranslation({
       'message_id': messageId,
       'target_language_code': 'en',
       'translated_text': translatedText,
-      'provider': operationalChatTranslationProvider,
-      'model': operationalChatTranslationModel,
-      'prompt_version': operationalChatPromptVersion,
+      'provider': provider,
+      'model': model,
+      'prompt_version': promptVersion,
       'translator_version': translatorVersion,
       'status': status,
       'attempt_count': 1,
@@ -114,7 +117,7 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  test('version 2 database upgrades additively and preserves raw rows',
+  test('version 2 database upgrades additively to v9 and preserves raw rows',
       () async {
     final path = '${directory.path}/legacy.db';
     final legacy = await databaseFactoryFfi.openDatabase(
@@ -157,8 +160,12 @@ void main() {
       path: path,
     );
     final upgradedDb = await upgraded.open();
-    expect(await upgradedDb.getVersion(), 6);
+    expect(await upgradedDb.getVersion(), 9);
     expect(await upgradedDb.query('chat_conversations'), hasLength(1));
+    expect(
+      (await upgradedDb.query('chat_conversations')).single['kind'],
+      ChatConversationKind.direct.name,
+    );
     expect(
       (await upgradedDb.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='chat_translations'",
@@ -185,6 +192,24 @@ void main() {
     expect(decoded.status, ChatTranslationStatus.succeeded);
     expect(decoded.translatedText, 'Hello 😀');
     expect(decoded.updatedAt.isUtc, isTrue);
+    expect(
+      OperationalChatTranslation.fromRemote(remoteTranslation(
+        translatorVersion: operationalChatPreviousTranslatorVersion,
+        provider: operationalChatPreviousTranslationProvider,
+        model: operationalChatPreviousTranslationModel,
+        promptVersion: operationalChatPreviousPromptVersion,
+      )).translatorVersion,
+      operationalChatPreviousTranslatorVersion,
+    );
+    expect(
+      OperationalChatTranslation.fromRemote(remoteTranslation(
+        translatorVersion: operationalChatLegacyTranslatorVersion,
+        provider: 'gemini',
+        model: operationalChatLegacyTranslationModel,
+        promptVersion: operationalChatLegacyPromptVersion,
+      )).translatorVersion,
+      operationalChatLegacyTranslatorVersion,
+    );
 
     for (final row in [
       remoteTranslation(translatorVersion: 'chat-translate-old'),

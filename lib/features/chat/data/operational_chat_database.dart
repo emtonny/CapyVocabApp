@@ -13,7 +13,7 @@ final class OperationalChatDatabase {
 
   Future<Database> open() => _opening ??= factory.openDatabase(path,
       options: OpenDatabaseOptions(
-        version: 6,
+        version: 9,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: (db, _) async {
           await db.execute('''CREATE TABLE chat_conversations (
@@ -44,6 +44,9 @@ final class OperationalChatDatabase {
           await _createVersion4(db);
           await _createVersion5(db);
           await _createVersion6(db);
+          await _createVersion7(db);
+          await _createVersion8(db);
+          await _createVersion9(db);
         },
         onUpgrade: (db, oldVersion, _) async {
           if (oldVersion < 2) await _createVersion2(db);
@@ -51,6 +54,9 @@ final class OperationalChatDatabase {
           if (oldVersion < 4) await _createVersion4(db);
           if (oldVersion < 5) await _createVersion5(db);
           if (oldVersion < 6) await _createVersion6(db);
+          if (oldVersion < 7) await _createVersion7(db);
+          if (oldVersion < 8) await _createVersion8(db);
+          if (oldVersion < 9) await _createVersion9(db);
         },
       ));
 
@@ -209,6 +215,79 @@ final class OperationalChatDatabase {
     await db.execute('DROP TABLE chat_translations');
     await db.execute(
         'ALTER TABLE chat_translations_v6 RENAME TO chat_translations');
+    await db.execute('''CREATE INDEX chat_translation_message
+      ON chat_translations(owner_scope,message_id,translator_version)''');
+  }
+
+  static Future<void> _createVersion7(DatabaseExecutor db) async {
+    // peer_id remains the non-null legacy identity column so upgrading never
+    // rebuilds the parent table or risks cascading away cached messages.
+    final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='chat_conversations'");
+    // A few pre-release correction/annotation-only fixtures intentionally had
+    // no conversation cache. Keep them readable; normal app DBs always do.
+    if (tables.isEmpty) return;
+    await db.execute('''ALTER TABLE chat_conversations ADD COLUMN kind TEXT
+      NOT NULL DEFAULT 'direct' CHECK(kind IN ('direct','group'))''');
+    await db.execute('ALTER TABLE chat_conversations ADD COLUMN group_id TEXT');
+    await db
+        .execute('ALTER TABLE chat_conversations ADD COLUMN group_title TEXT');
+    await db.execute('ALTER TABLE chat_conversations '
+        'ADD COLUMN group_avatar_url TEXT NOT NULL DEFAULT \'\'');
+    await db.execute('''ALTER TABLE chat_conversations
+      ADD COLUMN group_member_count INTEGER NOT NULL DEFAULT 2
+      CHECK(group_member_count>=1)''');
+    await db.execute('''ALTER TABLE chat_conversations
+      ADD COLUMN group_status TEXT NOT NULL DEFAULT 'active'
+      CHECK(group_status IN ('active','archived'))''');
+    await db.execute('''ALTER TABLE chat_conversations
+      ADD COLUMN group_is_muted INTEGER NOT NULL DEFAULT 0
+      CHECK(group_is_muted IN (0,1))''');
+    await db.execute('''CREATE UNIQUE INDEX chat_conversation_group_identity
+      ON chat_conversations(owner_scope,group_id) WHERE kind='group' ''');
+  }
+
+  static Future<void> _createVersion8(DatabaseExecutor db) async {
+    final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='chat_conversations'");
+    if (tables.isEmpty) return;
+    await db.execute(
+        'ALTER TABLE chat_conversations ADD COLUMN social_owner_id TEXT');
+  }
+
+  static Future<void> _createVersion9(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE chat_translations_v9 (
+      owner_scope TEXT NOT NULL, id TEXT NOT NULL, message_id TEXT NOT NULL,
+      target_language_code TEXT NOT NULL CHECK(target_language_code IN ('vi','en')),
+      translated_text TEXT, provider TEXT NOT NULL,
+      model TEXT NOT NULL, prompt_version TEXT NOT NULL,
+      translator_version TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('queued','processing','succeeded','failed')),
+      attempt_count INTEGER NOT NULL CHECK(attempt_count BETWEEN 0 AND 4),
+      next_attempt_at INTEGER, error_code TEXT,
+      created_at INTEGER NOT NULL, completed_at INTEGER, updated_at INTEGER NOT NULL,
+      PRIMARY KEY(owner_scope,id),
+      UNIQUE(owner_scope,message_id,target_language_code,translator_version),
+      FOREIGN KEY(owner_scope,message_id) REFERENCES chat_messages(owner_scope,id) ON DELETE CASCADE,
+      CHECK((provider='gemini' AND model='gemini-3.5-flash-lite'
+          AND prompt_version='chat-translate-p1' AND translator_version='chat-translate-v1')
+        OR (provider='vilao' AND model='gemini-3.8-flash'
+          AND prompt_version='chat-translate-p2' AND translator_version='chat-translate-v2')
+        OR (provider='gemini' AND model='gemini-3-flash-preview'
+          AND prompt_version='chat-translate-p3' AND translator_version='chat-translate-v3')),
+      CHECK(error_code IS NULL OR (length(error_code) BETWEEN 1 AND 64 AND error_code NOT GLOB '*[^A-Z0-9_]*')),
+      CHECK((status='succeeded' AND translated_text IS NOT NULL
+        AND length(translated_text) BETWEEN 1 AND 16000 AND trim(translated_text)<>''
+        AND completed_at IS NOT NULL AND error_code IS NULL AND next_attempt_at IS NULL)
+        OR (status<>'succeeded' AND translated_text IS NULL AND completed_at IS NULL
+          AND ((status='failed' AND error_code IS NOT NULL)
+            OR (status<>'failed' AND error_code IS NULL))))
+    )''');
+    await db.execute('''INSERT INTO chat_translations_v9
+      SELECT * FROM chat_translations''');
+    await db.execute('DROP TABLE chat_translations');
+    await db.execute(
+        'ALTER TABLE chat_translations_v9 RENAME TO chat_translations');
     await db.execute('''CREATE INDEX chat_translation_message
       ON chat_translations(owner_scope,message_id,translator_version)''');
   }

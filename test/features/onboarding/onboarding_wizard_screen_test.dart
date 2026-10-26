@@ -124,6 +124,15 @@ void main() {
     );
     expect(find.byType(Radio<String>), findsNothing);
     expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.byKey(const Key('role-personal-card')), findsOneWidget);
+    expect(find.byKey(const Key('role-teacher-card')), findsOneWidget);
+    expect(find.byKey(const Key('role-parent-card')), findsNothing);
+    expect(find.text('Giáo viên / Quản lý lớp'), findsOneWidget);
+    expect(find.text('Phụ huynh'), findsNothing);
+    expect(
+      find.text('Tạo lớp sau khi tài khoản được xác minh'),
+      findsOneWidget,
+    );
 
     await tester.ensureVisible(find.byKey(const Key('role-personal-card')));
     await tester.tap(find.byKey(const Key('role-personal-card')));

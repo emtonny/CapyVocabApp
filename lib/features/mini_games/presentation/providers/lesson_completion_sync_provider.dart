@@ -12,7 +12,7 @@ import 'lesson_session_provider.dart';
 
 const lessonResultSyncEnabled = bool.fromEnvironment(
   'LESSON_RESULT_SYNC_ENABLED',
-  defaultValue: false,
+  defaultValue: true,
 );
 
 const _networkStatusChannel = MethodChannel(

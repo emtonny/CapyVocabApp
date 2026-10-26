@@ -63,6 +63,8 @@ try {
         -f (Join-Path $repoRoot 'supabase\migrations\20260921120000_add_vilao_chat_translation_v2.sql') `
         -f (Join-Path $repoRoot 'supabase\tests\chat_translation_queue_security.sql') `
         -f (Join-Path $repoRoot 'supabase\tests\chat_translation_wakeup_security.sql') `
+        -f (Join-Path $repoRoot 'supabase\migrations\20261021110000_add_gemini_chat_translation_v3.sql') `
+        -f (Join-Path $repoRoot 'supabase\tests\chat_translation_v3_security.sql') `
         2>&1 | Out-String)
     $psqlExitCode = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
@@ -71,8 +73,8 @@ try {
     }
 
     $passes = [regex]::Matches($output, 'PASS:').Count
-    if ($passes -ne 58) {
-        throw "Expected all 58 C4B/C4G SQL checks; observed $passes."
+    if ($passes -ne 64) {
+        throw "Expected all 64 C4B/C4G SQL checks; observed $passes."
     }
     [pscustomobject]@{
         status = 'VERIFIED'

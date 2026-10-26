@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Exact-Staging smoke. Synthetic text/accounts only; invokes live Chat Vilao once.
+# Exact-Staging smoke. Synthetic text/accounts only; invokes live Chat Gemini once.
 param(
     [string]$ProjectRef = 'nxteaznowkfennxpqjmt',
     [switch]$SelfTest
@@ -218,7 +218,8 @@ try {
         '20260918120000',
         '20260918125000',
         '20260918130000',
-        '20260921120000'
+        '20260921120000',
+        '20261021110000'
     )) {
         if (-not (Test-MigrationAppliedExactlyOnce `
             $migrationText $requiredMigration)) {
@@ -400,7 +401,7 @@ try {
         id = [guid]::NewGuid().ToString()
         message_id = $messageId
         target_language_code = 'en'
-        translator_version = 'chat-translate-v2'
+        translator_version = 'chat-translate-v3'
     }) @(401, 403) 'Client translation write denial'
 
     $burst = @(Invoke-WorkerBurst 5)
@@ -427,10 +428,10 @@ try {
         $translation.Json[0].status -ne 'succeeded' -or
         $translation.Json[0].attempt_count -ne 1 -or
         [string]::IsNullOrWhiteSpace($translation.Json[0].translated_text) -or
-        $translation.Json[0].provider -ne 'vilao' -or
-        $translation.Json[0].model -ne 'gemini-3.8-flash' -or
-        $translation.Json[0].prompt_version -ne 'chat-translate-p2' -or
-        $translation.Json[0].translator_version -ne 'chat-translate-v2' -or
+        $translation.Json[0].provider -ne 'gemini' -or
+        $translation.Json[0].model -ne 'gemini-3-flash-preview' -or
+        $translation.Json[0].prompt_version -ne 'chat-translate-p3' -or
+        $translation.Json[0].translator_version -ne 'chat-translate-v3' -or
         $translation.Json[0].target_language_code -ne 'en' -or
         $null -ne $translation.Json[0].error_code -or
         $null -eq $translation.Json[0].completed_at) {

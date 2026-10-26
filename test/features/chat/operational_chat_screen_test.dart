@@ -103,6 +103,14 @@ void main() {
     store = OperationalChatStore(database: await local.open(), owner: owner);
     await store
         .cacheConversation(ChatConversation(id: f.conversation, peerId: f.b));
+    await store.cacheProfiles([
+      ChatPeerProfile(
+        id: f.b,
+        displayName: 'Friend',
+        username: 'friend',
+        avatarUrl: '',
+      ),
+    ]);
     requests = [];
     friendsOnline = false;
     relayOnline = false;
@@ -146,6 +154,7 @@ void main() {
       operationalChatDatabaseProvider.overrideWith((_) async => local),
       operationalChatStoreProvider(owner).overrideWith((_) async => store),
       operationalChatCoordinatorProvider.overrideWith((_) async => coordinator),
+      operationalChatProfileRefreshProvider(owner).overrideWith((_) async {}),
       operationalChatNetworkProvider
           .overrideWithValue(() async => friendsOnline),
       operationalChatTtsProvider.overrideWithValue(speech),
@@ -200,11 +209,13 @@ void main() {
         isNotNull);
     await tester.tap(find.byKey(const Key('chat-send')));
     await flush(tester,
-        until: () => tester
-            .widget<TextField>(find.byKey(const Key('chat-compose')))
-            .controller!
-            .text
-            .isEmpty);
+        until: () =>
+            tester
+                .widget<TextField>(find.byKey(const Key('chat-compose')))
+                .controller!
+                .text
+                .isEmpty &&
+            find.text(raw).evaluate().isNotEmpty);
     expect(find.text(raw), findsOneWidget);
     expect(
         (tester.widget<TextField>(find.byKey(const Key('chat-compose'))))
@@ -397,8 +408,12 @@ void main() {
     expect(requests.length, 2);
     expect(requests.first.url.queryParameters['user_id'], 'eq.${f.a}');
     expect(requests.first.url.queryParameters['status'], 'eq.accepted');
-    expect(find.text(f.b), findsOneWidget);
-    await tester.tap(find.text(f.b));
+    final friendOption = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('Friend'),
+    );
+    expect(friendOption, findsOneWidget);
+    await tester.tap(friendOption);
     await flush(tester);
     expect(gateway.opens, 0); // coordinator's local network gate rejects open
     expect(find.textContaining('Chưa mở được chat.'), findsOneWidget);
@@ -414,8 +429,8 @@ void main() {
     await tester.runAsync(() => store.database.delete('chat_conversations'));
     await mount(tester);
     await tester.tap(find.byKey(const Key('chat-new')));
-    await flush(tester, until: () => find.text(f.b).evaluate().isNotEmpty);
-    await tester.tap(find.text(f.b));
+    await flush(tester, until: () => find.text('Friend').evaluate().isNotEmpty);
+    await tester.tap(find.text('Friend'));
     await flush(tester,
         until: () =>
             find.byKey(const Key('chat-compose')).evaluate().isNotEmpty &&
@@ -429,6 +444,80 @@ void main() {
         '/chat/${f.uuid(500)}');
     expect(gateway.sends, 0);
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepted friend can be selected to create a social group',
+      (tester) async {
+    friendsOnline = true;
+    relayOnline = true;
+    await mount(tester);
+
+    await tester.tap(find.byKey(const Key('chat-new-group')));
+    await flush(
+      tester,
+      until: () => find
+          .byKey(const ValueKey('social-group-member-${f.b}'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    await tester.enterText(
+      find.byKey(const Key('social-group-title')),
+      'Nhóm cuối tuần',
+    );
+    final memberTile = find.byKey(const ValueKey('social-group-member-${f.b}'));
+    final memberCheckbox = find.descendant(
+      of: memberTile,
+      matching: find.byType(Checkbox),
+    );
+    await tester.tap(memberCheckbox);
+    await tester.pump();
+    expect(tester.widget<Checkbox>(memberCheckbox).value, isTrue);
+    await tester.tap(find.byKey(const Key('social-group-create')));
+    await flush(
+      tester,
+      until: () =>
+          find.byKey(const Key('chat-compose')).evaluate().isNotEmpty &&
+          find.byType(AlertDialog).evaluate().isEmpty,
+    );
+
+    expect(gateway.socialCreates, 1);
+    expect(gateway.lastSocialTitle, 'Nhóm cuối tuần');
+    expect(gateway.lastSocialMembers, [f.b]);
+    final cached = await tester.runAsync(store.conversations);
+    expect(
+      cached!.map((row) => row.id),
+      contains(f.uuid(501)),
+    );
+    expect(
+      router.routerDelegate.currentConfiguration.last.matchedLocation,
+      '/chat/${f.uuid(501)}',
+    );
+    await tester.tap(find.byKey(const Key('social-group-manage')));
+    await flush(
+      tester,
+      until: () => find
+          .byKey(const ValueKey('social-group-profile-${f.b}'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(find.text('Owner'), findsOneWidget);
+    expect(find.text('Friend'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('social-group-rename')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('social-group-rename-input')), 'Nhóm beta');
+    await tester.tap(find.byKey(const Key('social-group-rename-confirm')));
+    await flush(
+      tester,
+      until: () => find.textContaining('Nhóm beta ·').evaluate().isNotEmpty,
+    );
+    expect(gateway.socialRenames, 1);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 250)),
+    );
+    await tester.pump();
   });
 
   testWidgets('phone and wide layouts fit with keyboard and Unicode send limit',
@@ -493,10 +582,10 @@ void main() {
     await flush(tester,
         until: () =>
             router.routeInformationProvider.value.uri.path == '/chat' &&
-            find.text('Trò chuyện · Staging').evaluate().isNotEmpty);
+            find.text('Trò chuyện · Beta').evaluate().isNotEmpty);
 
     expect(router.routeInformationProvider.value.uri.path, '/chat');
-    expect(find.text('Trò chuyện · Staging'), findsOneWidget);
+    expect(find.text('Trò chuyện · Beta'), findsOneWidget);
     expect(find.byKey(const Key('chat-new')), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -560,7 +649,7 @@ void main() {
       (tester) async {
     router.go('/friends');
     await mount(tester);
-    expect(find.text('Trò chuyện · Staging'), findsNothing);
+    expect(find.text('Trò chuyện · Beta'), findsNothing);
     expect(find.byKey(const Key('friends-open-chat')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
@@ -574,7 +663,7 @@ void main() {
     ]);
     router.go('/friends');
     await mount(tester);
-    expect(find.text('Trò chuyện · Staging'), findsNothing);
+    expect(find.text('Trò chuyện · Beta'), findsNothing);
     expect(find.byKey(const Key('friends-open-chat')), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
