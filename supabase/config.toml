@@ -391,8 +391,8 @@ deno_version = 2
 [functions.gemini-vision-scan]
 verify_jwt = false
 
-# Database wake-ups authenticate with a dedicated trigger secret inside the
-# handler, so the gateway must not require a user JWT.
+# Internal database webhook/Cron requests use a dedicated trigger secret. The
+# function rejects user JWTs and remains fail-closed until C4D wires a provider.
 [functions.chat-translation-worker]
 verify_jwt = false
 

@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/supabase_service.dart';
+import '../../../core/services/tts_service.dart';
 import '../../language_profile/presentation/language_profile_provider.dart';
+import '../../library/presentation/providers/library_provider.dart';
 import '../application/operational_chat_coordinator.dart';
 import '../data/chat_network_status_native.dart'
     if (dart.library.js_interop) '../data/chat_network_status_web.dart'
@@ -17,7 +19,7 @@ import '../data/operational_chat_supabase_gateway.dart';
 import '../domain/operational_chat.dart';
 
 final operationalChatEnabledProvider = Provider<bool>((_) =>
-    const bool.fromEnvironment('CHAT_RELAY_ENABLED', defaultValue: false));
+    const bool.fromEnvironment('CHAT_RELAY_ENABLED', defaultValue: true));
 final operationalChatClientProvider =
     Provider<SupabaseClient>((_) => SupabaseService.client);
 
@@ -34,6 +36,50 @@ final operationalChatForegroundProvider = StateProvider<bool>((_) {
 });
 final operationalChatNetworkProvider =
     Provider<Future<bool> Function()>((_) => network.chatNetworkAvailable);
+final operationalChatTtsProvider = Provider<TtsService>((ref) {
+  final service = TtsService();
+  ref.onDispose(() => unawaited(service.stop()));
+  return service;
+});
+
+final class OperationalChatMailboxRequest {
+  const OperationalChatMailboxRequest({
+    required this.owner,
+    required this.conversationId,
+    required this.peerId,
+    required this.revision,
+  });
+
+  final ChatOwner owner;
+  final String conversationId;
+  final String peerId;
+  final int revision;
+}
+
+final class OperationalChatMailboxController
+    extends StateNotifier<OperationalChatMailboxRequest?> {
+  OperationalChatMailboxController() : super(null);
+
+  void open({
+    required ChatOwner owner,
+    required String conversationId,
+    required String peerId,
+  }) {
+    validateChatUuid(conversationId);
+    validateChatUuid(peerId);
+    state = OperationalChatMailboxRequest(
+      owner: owner,
+      conversationId: conversationId,
+      peerId: peerId,
+      revision: (state?.revision ?? 0) + 1,
+    );
+  }
+}
+
+final operationalChatMailboxControllerProvider = StateNotifierProvider<
+    OperationalChatMailboxController, OperationalChatMailboxRequest?>((_) {
+  return OperationalChatMailboxController();
+});
 
 final operationalChatSessionProvider = StreamProvider<Session?>((ref) {
   final client = ref.watch(operationalChatClientProvider);
@@ -140,7 +186,8 @@ final operationalChatCoordinatorProvider =
       owner: owner,
       session: session,
       publishableKey: key,
-      isCurrentSession: current);
+      isCurrentSession: current,
+      loadLocalMedia: ref.read(libraryMediaLoaderProvider).readBytes);
   final coordinator = OperationalChatCoordinator(
       store: store,
       remote: gateway,
@@ -180,6 +227,83 @@ final operationalChatMessagesProvider = StreamProvider.autoDispose
   yield* store.watchMessages(key.$2);
 });
 
+final operationalChatAlbumImageBytesProvider = FutureProvider.autoDispose
+    .family<Uint8List, (ChatOwner, OperationalChatAlbumImage)>(
+        (ref, key) async {
+  final owner = ref.watch(operationalChatOwnerProvider);
+  if (owner != key.$1 || !key.$2.available) {
+    throw StateError('Album image is unavailable.');
+  }
+  final localPath = key.$2.localRelativePath;
+  if (localPath != null) {
+    try {
+      return await ref.read(libraryMediaLoaderProvider).readBytes(localPath);
+    } catch (_) {
+      // A sent image may be restored from its private Chat copy.
+    }
+  }
+  final coordinator =
+      await ref.watch(operationalChatCoordinatorProvider.future);
+  if (coordinator == null || ref.read(operationalChatOwnerProvider) != key.$1) {
+    throw StateError('Chat image runtime unavailable.');
+  }
+  return coordinator.downloadAlbumImage(key.$2);
+});
+
+/// Bridges local-only Library deletes into Chat's durable invalidation outbox.
+/// Replaying every Trash row is intentional: the store key is idempotent and
+/// preserves completed tombstones, including across app restarts.
+final operationalChatLibraryDeletionBridgeProvider = Provider<void>((ref) {
+  final owner = ref.watch(operationalChatOwnerProvider);
+  final coordinator =
+      ref.watch(operationalChatCoordinatorProvider).asData?.value;
+  final deleted = ref.watch(libraryTrashPhotoNotesProvider).valueOrNull;
+  if (owner == null || coordinator == null || deleted == null) return;
+  Future.microtask(() async {
+    for (final note in deleted.where((row) => row.userId == owner.userId)) {
+      try {
+        await coordinator.invalidateAlbumImageShares(note.id);
+      } catch (_) {
+        // Session changes are handled by the next provider rebuild.
+        return;
+      }
+    }
+  });
+});
+
+final operationalChatTranslationsProvider = StreamProvider.autoDispose
+    .family<List<OperationalChatTranslation>, (ChatOwner, String)>(
+        (ref, key) async* {
+  final store = await ref.watch(operationalChatStoreProvider(key.$1).future);
+  if (store == null) {
+    yield [];
+    return;
+  }
+  yield* store.watchTranslations(key.$2);
+});
+
+final operationalChatCorrectionsProvider = StreamProvider.autoDispose
+    .family<List<OperationalChatCorrection>, (ChatOwner, String)>(
+        (ref, key) async* {
+  final store = await ref.watch(operationalChatStoreProvider(key.$1).future);
+  if (store == null) {
+    yield [];
+    return;
+  }
+  yield* store.watchCorrections(key.$2);
+});
+
+final operationalChatAnnotationsProvider = StreamProvider.autoDispose
+    .family<List<OperationalChatAnnotation>, (ChatOwner, String)>(
+        (ref, key) async* {
+  final store = await ref.watch(operationalChatStoreProvider(key.$1).future);
+  if (store == null) {
+    yield [];
+    return;
+  }
+  yield* store.watchAnnotations(key.$2);
+});
+
 final operationalChatPeerProfilesProvider = StreamProvider.autoDispose
     .family<List<ChatPeerProfile>, ChatOwner>((ref, owner) async* {
   final store = await ref.watch(operationalChatStoreProvider(owner).future);
@@ -211,13 +335,18 @@ final operationalChatProfileRefreshProvider =
   }
   final ids = <String>{
     ...friends,
-    ...conversations.map((conversation) => conversation.peerId),
-  }.toList()
-    ..sort();
-  if (ids.isEmpty ||
-      !await ref
-          .read(operationalChatNetworkProvider)()
-          .timeout(const Duration(seconds: 3))) {
+    ...conversations
+        .where((conversation) => conversation.isDirect)
+        .map((conversation) => conversation.peerId),
+  };
+  for (final conversation in conversations) {
+    final messages = await store.messages(conversation.id);
+    ids.addAll(messages.map((message) => message.senderId));
+  }
+  ids.remove(owner.userId);
+  if (!await ref
+      .read(operationalChatNetworkProvider)()
+      .timeout(const Duration(seconds: 3))) {
     return;
   }
   final client = ref.watch(operationalChatClientProvider);
@@ -225,14 +354,41 @@ final operationalChatProfileRefreshProvider =
   if (session == null || session.isExpired || session.user.id != owner.userId) {
     return;
   }
+  final profilesById = <String, ChatPeerProfile>{};
+  final socialIds = conversations
+      .where((conversation) => conversation.isSocialGroup)
+      .map((conversation) => conversation.id)
+      .toList();
+  final runtime = ref.read(operationalChatCoordinatorProvider).asData?.value;
+  if (runtime != null) {
+    try {
+      for (var offset = 0; offset < socialIds.length; offset += 50) {
+        final end =
+            offset + 50 < socialIds.length ? offset + 50 : socialIds.length;
+        final members = await runtime
+            .socialChatGroupMembers(socialIds.sublist(offset, end).toSet());
+        for (final member in members) {
+          profilesById[member.profile.id] = member.profile;
+        }
+      }
+    } catch (_) {
+      // Existing cached names remain usable when membership refresh fails.
+    }
+  }
+  if (profilesById.isNotEmpty &&
+      ref.read(operationalChatOwnerProvider) == owner) {
+    await store.cacheProfiles(profilesById.values.toList());
+  }
   try {
-    final response = await client.rpc('get_public_profiles',
-        params: {'profile_ids': ids}).timeout(const Duration(seconds: 12));
+    final requestedIds = ids.toList()..sort();
+    if (requestedIds.isEmpty) return;
+    final response = await client.rpc('get_public_profiles', params: {
+      'profile_ids': requestedIds
+    }).timeout(const Duration(seconds: 12));
     if (ref.read(operationalChatOwnerProvider) != owner || response is! List) {
       return;
     }
-    final allowed = ids.toSet();
-    final profiles = <ChatPeerProfile>[];
+    final allowed = requestedIds.toSet();
     final seen = <String>{};
     for (final value in response) {
       if (value is! Map) throw const FormatException('Invalid profile list.');
@@ -241,14 +397,35 @@ final operationalChatProfileRefreshProvider =
       if (!allowed.contains(profile.id) || !seen.add(profile.id)) {
         throw const FormatException('Invalid profile identity.');
       }
-      profiles.add(profile);
+      profilesById[profile.id] = profile;
     }
     if (ref.read(operationalChatOwnerProvider) == owner) {
-      await store.cacheProfiles(profiles);
+      await store.cacheProfiles(profilesById.values.toList());
     }
   } catch (_) {
     // Cached labels remain usable; profile decoration is not chat-critical.
   }
+});
+
+final operationalSocialChatMembersProvider = FutureProvider.autoDispose
+    .family<List<SocialChatMember>, (ChatOwner, String)>((ref, key) async {
+  final owner = key.$1;
+  final conversationId = key.$2;
+  validateChatUuid(conversationId);
+  if (!ref.watch(operationalChatEnabledProvider) ||
+      ref.watch(operationalChatOwnerProvider) != owner) {
+    return [];
+  }
+  final runtime = await ref.watch(operationalChatCoordinatorProvider.future);
+  if (runtime == null) {
+    throw StateError('Chat unavailable.');
+  }
+  final members = await runtime.socialChatGroupMembers({conversationId});
+  final store = await ref.watch(operationalChatStoreProvider(owner).future);
+  if (store != null && ref.read(operationalChatOwnerProvider) == owner) {
+    await store.cacheProfiles(members.map((member) => member.profile).toList());
+  }
+  return members;
 });
 
 /// Cache notifications only: opening a page must not fetch a profile.

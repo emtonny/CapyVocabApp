@@ -132,6 +132,7 @@ class VocabCanvasOverlay extends StatefulWidget {
     this.showWord = true,
     this.showPhonetic = true,
     this.showMeaning = true,
+    this.fitCanvasToImage = false,
     super.key,
   });
 
@@ -147,6 +148,7 @@ class VocabCanvasOverlay extends StatefulWidget {
   final bool showWord;
   final bool showPhonetic;
   final bool showMeaning;
+  final bool fitCanvasToImage;
 
   /// Reports the label selected by hit-testing; audio playback stays with the
   /// caller and is intentionally outside this widget.
@@ -236,7 +238,7 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    return LayoutBuilder(
+    final canvas = LayoutBuilder(
       builder: (context, constraints) {
         final canvasSize = _resolveCanvasSize(
           constraints,
@@ -298,26 +300,31 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
                 child: customPaint,
               );
 
-        return Center(
-          child: SizedBox.fromSize(
-            size: canvasSize,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Positioned.fromRect(
-                  rect: imageRect,
-                  child: Image(
-                    image: widget.imageProvider,
-                    fit: BoxFit.fill,
-                  ),
+        final canvas = SizedBox.fromSize(
+          size: canvasSize,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fromRect(
+                rect: imageRect,
+                child: Image(
+                  image: widget.imageProvider,
+                  fit: BoxFit.fill,
                 ),
-                overlay,
-              ],
-            ),
+              ),
+              overlay,
+            ],
           ),
         );
+        return widget.fitCanvasToImage ? canvas : Center(child: canvas);
       },
     );
+    return widget.fitCanvasToImage
+        ? AspectRatio(
+            aspectRatio: sourceSize.width / sourceSize.height,
+            child: canvas,
+          )
+        : canvas;
   }
 
   void _handleLabelTap({
@@ -369,6 +376,13 @@ class _VocabCanvasOverlayState extends State<VocabCanvasOverlay> {
 
   Size _resolveCanvasSize(BoxConstraints constraints, double aspectRatio) {
     if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) {
+      if (widget.fitCanvasToImage) {
+        final availableAspectRatio =
+            constraints.maxWidth / constraints.maxHeight;
+        return availableAspectRatio > aspectRatio
+            ? Size(constraints.maxHeight * aspectRatio, constraints.maxHeight)
+            : Size(constraints.maxWidth, constraints.maxWidth / aspectRatio);
+      }
       return Size(constraints.maxWidth, constraints.maxHeight);
     }
     if (constraints.hasBoundedWidth) {

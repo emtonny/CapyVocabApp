@@ -1,0 +1,208 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../core/constants/app_colors.dart';
+import '../../../chat/domain/operational_chat.dart';
+import '../../../chat/presentation/operational_chat_provider.dart';
+import '../../domain/entities/friend_entity.dart';
+import '../providers/accepted_friends_provider.dart';
+import '../providers/friends_provider.dart';
+import 'friend_list_item.dart';
+import 'friend_contact_dialog.dart';
+
+class AcceptedFriendsList extends ConsumerWidget {
+  const AcceptedFriendsList({super.key, required this.owner});
+
+  final FriendOwner owner;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(friendsOwnerProvider) != owner) {
+      return const SizedBox.shrink();
+    }
+    final state = ref.watch(acceptedFriendsProvider(owner));
+    final chat = ref.watch(friendChatAccessProvider(owner));
+    final notifier = ref.read(acceptedFriendsProvider(owner).notifier);
+    final rankedItems = List<FriendConnection>.of(state.items)
+      ..sort(_compareStudyPoints);
+
+    if (!state.ready || !state.cacheLoaded) {
+      return const Center(
+        child: CircularProgressIndicator(
+          key: Key('accepted-friends-loading'),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (chat.availability != FriendChatAvailability.ready)
+          _ChatAvailabilityBanner(availability: chat.availability),
+        if (state.error != null)
+          _AcceptedNotice(
+            key: const Key('accepted-friends-error'),
+            message: state.error!,
+            actionLabel: 'Thử lại',
+            onAction: notifier.refresh,
+          ),
+        if (state.message != null)
+          _AcceptedNotice(
+            key: const Key('accepted-friends-message'),
+            message: state.message!,
+            actionLabel: 'Đóng',
+            onAction: notifier.clearMessage,
+          ),
+        Expanded(
+          child: state.items.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text(
+                      'Bạn chưa có bạn bè đã chấp nhận.',
+                      key: Key('accepted-friends-empty'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.mutedInk,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: notifier.refresh,
+                  child: ListView.separated(
+                    key: const Key('accepted-friends-list'),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 112),
+                    itemCount: rankedItems.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final item = rankedItems[index];
+                      final opening = state.openingPeerId == item.profile.id;
+                      return FriendListItem(
+                        rank: index + 1,
+                        connection: item,
+                        opening: opening,
+                        onViewContact: () => showFriendContactDialog(
+                          context,
+                          owner: owner,
+                          profile: item.profile,
+                        ),
+                        onOpenChat: chat.canOpen && state.openingPeerId == null
+                            ? () async {
+                                final openDirect = chat.openDirectChat;
+                                if (openDirect == null) return;
+                                final conversationId = await notifier.openChat(
+                                  peerId: item.profile.id,
+                                  openDirectChat: openDirect,
+                                );
+                                if (conversationId != null &&
+                                    context.mounted &&
+                                    ref.read(friendsOwnerProvider) == owner) {
+                                  ref
+                                      .read(
+                                        operationalChatMailboxControllerProvider
+                                            .notifier,
+                                      )
+                                      .open(
+                                        owner: ChatOwner(
+                                          projectRef: owner.projectRef,
+                                          userId: owner.userId,
+                                        ),
+                                        conversationId: conversationId,
+                                        peerId: item.profile.id,
+                                      );
+                                }
+                              }
+                            : null,
+                      );
+                    },
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+int _compareStudyPoints(FriendConnection left, FriendConnection right) {
+  final points = right.profile.studyPoints.compareTo(left.profile.studyPoints);
+  if (points != 0) return points;
+  return left.profile.username.toLowerCase().compareTo(
+        right.profile.username.toLowerCase(),
+      );
+}
+
+class _ChatAvailabilityBanner extends StatelessWidget {
+  const _ChatAvailabilityBanner({required this.availability});
+
+  final FriendChatAvailability availability;
+
+  @override
+  Widget build(BuildContext context) {
+    final needsProfile =
+        availability == FriendChatAvailability.ownLanguageProfileRequired;
+    return _AcceptedNotice(
+      key: const Key('accepted-friends-chat-gate'),
+      message: needsProfile
+          ? 'Thiết lập hồ sơ ngôn ngữ để bắt đầu Chat.'
+          : 'Chat đang chuẩn bị. Danh sách bạn bè vẫn dùng được.',
+      actionLabel: needsProfile ? 'Mở Cài đặt' : null,
+      onAction: needsProfile ? () => context.push('/settings') : null,
+    );
+  }
+}
+
+class _AcceptedNotice extends StatelessWidget {
+  const _AcceptedNotice({
+    super.key,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        decoration: BoxDecoration(
+          color: AppColors.yellow.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.ink, width: 1.5),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: AppColors.ink),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (actionLabel != null && onAction != null)
+              TextButton(
+                onPressed: onAction,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                ),
+                child: Text(actionLabel!),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -2,15 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 
-/// Fine linen-paper texture used only by the AI Scan sheet.
+/// Reusable fine linen-paper texture with a configurable base color.
 class ScanPaperBackground extends StatelessWidget {
-  const ScanPaperBackground({super.key});
+  const ScanPaperBackground({
+    super.key,
+    this.backgroundColor = AppColors.cream,
+  });
+
+  final Color backgroundColor;
 
   @override
   Widget build(BuildContext context) {
-    return const RepaintBoundary(
+    return RepaintBoundary(
       child: CustomPaint(
-        painter: ScanPaperBackgroundPainter(),
+        painter: ScanPaperBackgroundPainter(
+          backgroundColor: backgroundColor,
+        ),
         size: Size.infinite,
       ),
     );

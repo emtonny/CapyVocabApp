@@ -82,6 +82,38 @@ void main() {
     expect(restored.photoNote.syncStatus, SyncStatus.synced);
   });
 
+  test('upload acknowledgement preserves a deletion made during the request',
+      () async {
+    final userId = ids.next();
+    final snapshot = _snapshot(ids, userId);
+    await store.saveLocalAccount(_account(userId, cloudBackup: true));
+    await store.saveCapturedPhotoNote(snapshot);
+    final remote = _FakeGateway(
+      authenticatedUserId: userId,
+      onPhotoNoteUpsert: () => store.movePhotoNotesToTrash(
+        userId: userId,
+        photoNoteIds: [snapshot.photoNote.id],
+        deletedAt: _baseTime.add(const Duration(hours: 1)),
+      ),
+    );
+
+    final worker = _worker(store, remote, () => now);
+    final result = await worker.drainOnce(userId: userId, limit: 5);
+    expect(result.completed, 5);
+    final note = await store.getPhotoNoteForSync(
+      userId: userId,
+      photoNoteId: snapshot.photoNote.id,
+    );
+    expect(note!.isDeleted, isTrue);
+    expect(note.syncStatus, SyncStatus.pending);
+    expect(
+        await database.query('sync_operations',
+            where:
+                "entity_id = ? AND operation_type = 'soft_delete' AND state = 'pending'",
+            whereArgs: [snapshot.photoNote.id]),
+        hasLength(1));
+  });
+
   test('backs off a transient failure and safely retries deterministic upload',
       () async {
     final userId = ids.next();
@@ -335,12 +367,14 @@ final class _FakeGateway implements LibrarySyncGateway {
     this.authenticatedUserId,
     this.remainingUploadFailures = 0,
     this.remainingMediaUpsertFailures = 0,
+    this.onPhotoNoteUpsert,
   });
 
   @override
   String? authenticatedUserId;
   int remainingUploadFailures;
   int remainingMediaUpsertFailures;
+  final Future<void> Function()? onPhotoNoteUpsert;
   int uploadAttempts = 0;
   final List<String> calls = [];
   final List<String> uploadedDisplayPaths = [];
@@ -397,6 +431,7 @@ final class _FakeGateway implements LibrarySyncGateway {
     required String displayObjectPath,
   }) async {
     calls.add('photo:${photoNote.id}');
+    await onPhotoNoteUpsert?.call();
   }
 
   @override

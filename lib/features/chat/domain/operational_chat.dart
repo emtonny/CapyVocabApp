@@ -1,5 +1,252 @@
-/// Operational text only. Never a Training/export contract.
+import 'dart:typed_data';
+
+/// Operational chat only. Never a Training/export contract.
 enum ChatSendStatus { pending, sent, blocked }
+
+const operationalChatAlbumImagePlaceholder = 'Đã chia sẻ 1 ảnh từ Album';
+const operationalChatUnavailableImageText = 'Không hiển thị được ảnh này nữa';
+const operationalChatMaximumImageLabels = 15;
+
+final class OperationalChatImageLabel {
+  OperationalChatImageLabel({
+    required this.number,
+    required String word,
+    required String phonetic,
+    required String meaning,
+    required String partOfSpeech,
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  })  : word = word.trim(),
+        phonetic = phonetic.trim(),
+        meaning = meaning.trim(),
+        partOfSpeech = partOfSpeech.trim() {
+    if (number < 1 ||
+        number > operationalChatMaximumImageLabels ||
+        this.word.isEmpty ||
+        this.word.runes.length > 160 ||
+        this.phonetic.runes.length > 160 ||
+        this.meaning.runes.length > 320 ||
+        this.partOfSpeech.runes.length > 80 ||
+        [x, y, width, height].any((value) => !value.isFinite) ||
+        x < 0 ||
+        y < 0 ||
+        width <= 0 ||
+        height <= 0 ||
+        x + width > 1 ||
+        y + height > 1) {
+      throw const FormatException('Invalid operational chat image label.');
+    }
+  }
+
+  final int number;
+  final String word;
+  final String phonetic;
+  final String meaning;
+  final String partOfSpeech;
+  final double x;
+  final double y;
+  final double width;
+  final double height;
+
+  Map<String, Object> toJson() => {
+        'number': number,
+        'word': word,
+        'phonetic': phonetic,
+        'meaning': meaning,
+        'part_of_speech': partOfSpeech,
+        'x': x,
+        'y': y,
+        'width': width,
+        'height': height,
+      };
+
+  factory OperationalChatImageLabel.fromJson(Object? value) {
+    if (value is! Map) {
+      throw const FormatException('Invalid operational chat image label.');
+    }
+    final row = Map<String, Object?>.from(value);
+    final number = row['number'];
+    final word = row['word'];
+    final phonetic = row['phonetic'];
+    final meaning = row['meaning'];
+    final partOfSpeech = row['part_of_speech'];
+    final x = row['x'];
+    final y = row['y'];
+    final width = row['width'];
+    final height = row['height'];
+    if (number is! int ||
+        word is! String ||
+        phonetic is! String ||
+        meaning is! String ||
+        partOfSpeech is! String ||
+        x is! num ||
+        y is! num ||
+        width is! num ||
+        height is! num) {
+      throw const FormatException('Invalid operational chat image label.');
+    }
+    return OperationalChatImageLabel(
+      number: number,
+      word: word,
+      phonetic: phonetic,
+      meaning: meaning,
+      partOfSpeech: partOfSpeech,
+      x: x.toDouble(),
+      y: y.toDouble(),
+      width: width.toDouble(),
+      height: height.toDouble(),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is OperationalChatImageLabel &&
+      number == other.number &&
+      word == other.word &&
+      phonetic == other.phonetic &&
+      meaning == other.meaning &&
+      partOfSpeech == other.partOfSpeech &&
+      x == other.x &&
+      y == other.y &&
+      width == other.width &&
+      height == other.height;
+
+  @override
+  int get hashCode => Object.hash(
+        number,
+        word,
+        phonetic,
+        meaning,
+        partOfSpeech,
+        x,
+        y,
+        width,
+        height,
+      );
+}
+
+final class OperationalChatAlbumImage {
+  OperationalChatAlbumImage({
+    required this.sourcePhotoNoteId,
+    required this.objectPath,
+    required this.mimeType,
+    required this.byteSize,
+    required this.available,
+    List<OperationalChatImageLabel> labels = const [],
+    this.localRelativePath,
+  }) : labels = List.unmodifiable(labels) {
+    validateChatUuid(sourcePhotoNoteId);
+    final validPath = RegExp(
+      r'^[0-9a-f-]{36}/[0-9a-f-]{36}/image\.(jpg|jpeg|png|webp|heic)$',
+    ).hasMatch(objectPath);
+    if (!validPath ||
+        !{'image/jpeg', 'image/png', 'image/webp', 'image/heic'}
+            .contains(mimeType) ||
+        byteSize <= 0 ||
+        byteSize > 8 * 1024 * 1024 ||
+        this.labels.length > operationalChatMaximumImageLabels ||
+        (localRelativePath != null && localRelativePath!.trim().isEmpty)) {
+      throw const FormatException('Invalid operational chat image.');
+    }
+  }
+
+  final String sourcePhotoNoteId;
+  final String objectPath;
+  final String mimeType;
+  final int byteSize;
+  final bool available;
+  final List<OperationalChatImageLabel> labels;
+  final String? localRelativePath;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OperationalChatAlbumImage &&
+          other.sourcePhotoNoteId == sourcePhotoNoteId &&
+          other.objectPath == objectPath &&
+          other.mimeType == mimeType &&
+          other.byteSize == byteSize &&
+          other.available == available &&
+          _sameImageLabels(other.labels, labels) &&
+          other.localRelativePath == localRelativePath;
+
+  @override
+  int get hashCode => Object.hash(
+        sourcePhotoNoteId,
+        objectPath,
+        mimeType,
+        byteSize,
+        available,
+        Object.hashAll(labels),
+        localRelativePath,
+      );
+
+  OperationalChatAlbumImage copyWith({
+    bool? available,
+    String? localRelativePath,
+  }) =>
+      OperationalChatAlbumImage(
+        sourcePhotoNoteId: sourcePhotoNoteId,
+        objectPath: objectPath,
+        mimeType: mimeType,
+        byteSize: byteSize,
+        available: available ?? this.available,
+        labels: labels,
+        localRelativePath: localRelativePath ?? this.localRelativePath,
+      );
+}
+
+bool _sameImageLabels(
+  List<OperationalChatImageLabel> left,
+  List<OperationalChatImageLabel> right,
+) {
+  if (identical(left, right)) return true;
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
+}
+
+enum ChatConversationKind { direct, group }
+
+const operationalChatTranslatorVersion = 'chat-translate-v3';
+const operationalChatPromptVersion = 'chat-translate-p3';
+const operationalChatTranslationModel = 'gemini-3-flash-preview';
+const operationalChatTranslationProvider = 'gemini';
+const operationalChatPreviousTranslatorVersion = 'chat-translate-v2';
+const operationalChatPreviousPromptVersion = 'chat-translate-p2';
+const operationalChatPreviousTranslationModel = 'gemini-3.8-flash';
+const operationalChatPreviousTranslationProvider = 'vilao';
+const operationalChatLegacyTranslatorVersion = 'chat-translate-v1';
+const operationalChatLegacyPromptVersion = 'chat-translate-p1';
+const operationalChatLegacyTranslationModel = 'gemini-3.5-flash-lite';
+const operationalChatSupportedTranslatorVersions = <String>[
+  operationalChatLegacyTranslatorVersion,
+  operationalChatPreviousTranslatorVersion,
+  operationalChatTranslatorVersion,
+];
+
+bool isSupportedOperationalChatTranslation({
+  required String provider,
+  required String model,
+  required String promptVersion,
+  required String translatorVersion,
+}) =>
+    (provider == operationalChatTranslationProvider &&
+        model == operationalChatTranslationModel &&
+        promptVersion == operationalChatPromptVersion &&
+        translatorVersion == operationalChatTranslatorVersion) ||
+    (provider == operationalChatPreviousTranslationProvider &&
+        model == operationalChatPreviousTranslationModel &&
+        promptVersion == operationalChatPreviousPromptVersion &&
+        translatorVersion == operationalChatPreviousTranslatorVersion) ||
+    (provider == 'gemini' &&
+        model == operationalChatLegacyTranslationModel &&
+        promptVersion == operationalChatLegacyPromptVersion &&
+        translatorVersion == operationalChatLegacyTranslatorVersion);
 
 void validateChatUuid(String value) {
   if (!RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
@@ -29,10 +276,19 @@ final class ChatOwner {
 final class ChatConversation {
   ChatConversation(
       {required this.id,
-      required this.peerId,
+      required String peerId,
       this.lastMessageAt,
       this.lastMessageText,
-      this.unreadCount = 0}) {
+      this.unreadCount = 0})
+      : kind = ChatConversationKind.direct,
+        _peerId = peerId,
+        _groupId = null,
+        _title = null,
+        socialOwnerId = null,
+        avatarUrl = '',
+        memberCount = 2,
+        groupMuted = false,
+        groupArchived = false {
     validateChatUuid(id);
     validateChatUuid(peerId);
     if (unreadCount < 0) {
@@ -40,11 +296,90 @@ final class ChatConversation {
     }
   }
 
+  ChatConversation.group({
+    required this.id,
+    required String groupId,
+    required String title,
+    this.socialOwnerId,
+    this.avatarUrl = '',
+    required this.memberCount,
+    this.groupMuted = false,
+    this.groupArchived = false,
+    this.lastMessageAt,
+    this.lastMessageText,
+    this.unreadCount = 0,
+  })  : kind = ChatConversationKind.group,
+        _peerId = null,
+        _groupId = groupId,
+        _title = title {
+    validateChatUuid(id);
+    validateChatUuid(groupId);
+    if (socialOwnerId != null) validateChatUuid(socialOwnerId!);
+    if (title.trim().isEmpty ||
+        title.runes.length > 80 ||
+        memberCount < 1 ||
+        (socialOwnerId != null && (groupId != id || memberCount < 2)) ||
+        unreadCount < 0) {
+      throw const FormatException('Invalid group conversation.');
+    }
+  }
+
   final String id;
-  final String peerId;
+  final ChatConversationKind kind;
+  final String? _peerId;
+  final String? _groupId;
+  final String? _title;
+  final String? socialOwnerId;
+  final String avatarUrl;
+  final int memberCount;
+  final bool groupMuted;
+  final bool groupArchived;
   final DateTime? lastMessageAt;
   final String? lastMessageText;
   final int unreadCount;
+
+  bool get isDirect => kind == ChatConversationKind.direct;
+  bool get isGroup => kind == ChatConversationKind.group;
+  bool get isSocialGroup => isGroup && socialOwnerId != null;
+  bool isSocialOwner(String userId) => socialOwnerId == userId;
+  String? get directPeerId => _peerId;
+  String? get groupId => _groupId;
+  String? get title => _title;
+  String get peerId {
+    final value = _peerId;
+    if (value == null) throw StateError('Group conversation has no peer.');
+    return value;
+  }
+
+  bool get canSend => isDirect || (!groupMuted && !groupArchived);
+}
+
+final class SocialChatMember {
+  SocialChatMember({
+    required this.conversationId,
+    required this.profile,
+    required this.isOwner,
+  }) {
+    validateChatUuid(conversationId);
+  }
+
+  final String conversationId;
+  final ChatPeerProfile profile;
+  final bool isOwner;
+
+  factory SocialChatMember.fromRemote(Map<String, dynamic> row) {
+    final conversationId = row['conversation_id'];
+    final userId = row['user_id'];
+    final isOwner = row['is_owner'];
+    if (conversationId is! String || userId is! String || isOwner is! bool) {
+      throw const FormatException('Invalid social chat member.');
+    }
+    return SocialChatMember(
+      conversationId: conversationId,
+      profile: ChatPeerProfile.fromRemote({...row, 'id': userId}),
+      isOwner: isOwner,
+    );
+  }
 }
 
 final class ChatPeerProfile {
@@ -98,6 +433,7 @@ final class OperationalChatMessage {
     this.sendStatus = ChatSendStatus.pending,
     this.attemptCount = 0,
     this.nextAttemptAt,
+    this.albumImage,
   }) {
     for (final value in [id, conversationId, senderId, clientGeneratedId]) {
       validateChatUuid(value);
@@ -107,7 +443,9 @@ final class OperationalChatMessage {
         rawText.runes.length > 4000 ||
         attemptCount < 0 ||
         attemptCount > 10 ||
-        (sendStatus == ChatSendStatus.sent && sentAt == null)) {
+        (sendStatus == ChatSendStatus.sent && sentAt == null) ||
+        (albumImage != null &&
+            rawText != operationalChatAlbumImagePlaceholder)) {
       throw const FormatException('Invalid operational message.');
     }
   }
@@ -123,6 +461,7 @@ final class OperationalChatMessage {
   final ChatSendStatus sendStatus;
   final int attemptCount;
   final DateTime? nextAttemptAt;
+  final OperationalChatAlbumImage? albumImage;
 
   /// Only columns C2 allows clients to insert; never a timestamp/job override.
   Map<String, Object?> get insertPayload => {
@@ -133,6 +472,15 @@ final class OperationalChatMessage {
         'source_language_code': sourceLanguageCode,
         'client_generated_id': clientGeneratedId,
         'client_created_at': clientCreatedAt.toUtc().toIso8601String(),
+        'attachment_kind': albumImage == null ? 'none' : 'album_image',
+        'attachment_source_photo_note_id': albumImage?.sourcePhotoNoteId,
+        'attachment_object_path': albumImage?.objectPath,
+        'attachment_mime_type': albumImage?.mimeType,
+        'attachment_byte_size': albumImage?.byteSize,
+        'attachment_labels': albumImage?.labels
+                .map((label) => label.toJson())
+                .toList(growable: false) ??
+            const <Object>[],
       };
 
   factory OperationalChatMessage.fromRemote(Map<String, dynamic> row) {
@@ -156,6 +504,36 @@ final class OperationalChatMessage {
     if (row['deleted_at'] != null || row['moderation_state'] != 'visible') {
       throw const FormatException('Hidden chat response.');
     }
+    OperationalChatAlbumImage? albumImage;
+    final attachmentKind = row['attachment_kind'];
+    if (attachmentKind == 'album_image') {
+      final sourcePhotoNoteId = row['attachment_source_photo_note_id'];
+      final objectPath = row['attachment_object_path'];
+      final mimeType = row['attachment_mime_type'];
+      final byteSize = row['attachment_byte_size'];
+      final available = row['attachment_available'];
+      final labels = row['attachment_labels'];
+      if (sourcePhotoNoteId is! String ||
+          objectPath is! String ||
+          mimeType is! String ||
+          byteSize is! int ||
+          available is! bool ||
+          labels is! List) {
+        throw const FormatException('Invalid chat image response.');
+      }
+      albumImage = OperationalChatAlbumImage(
+        sourcePhotoNoteId: sourcePhotoNoteId,
+        objectPath: objectPath,
+        mimeType: mimeType,
+        byteSize: byteSize,
+        available: available,
+        labels: labels
+            .map(OperationalChatImageLabel.fromJson)
+            .toList(growable: false),
+      );
+    } else if (attachmentKind != null && attachmentKind != 'none') {
+      throw const FormatException('Invalid chat attachment response.');
+    }
     return OperationalChatMessage(
       id: text('id'),
       conversationId: text('conversation_id'),
@@ -166,6 +544,7 @@ final class OperationalChatMessage {
       clientCreatedAt: time('client_created_at'),
       sentAt: time('sent_at'),
       sendStatus: ChatSendStatus.sent,
+      albumImage: albumImage,
     );
   }
 
@@ -175,7 +554,505 @@ final class OperationalChatMessage {
       rawText == other.rawText &&
       sourceLanguageCode == other.sourceLanguageCode &&
       clientGeneratedId == other.clientGeneratedId &&
-      clientCreatedAt.isAtSameMomentAs(other.clientCreatedAt);
+      clientCreatedAt.isAtSameMomentAs(other.clientCreatedAt) &&
+      hasSameAttachmentIdentity(other);
+
+  bool hasSameAttachmentIdentity(OperationalChatMessage other) {
+    final left = albumImage;
+    final right = other.albumImage;
+    if (left == null || right == null) return left == null && right == null;
+    return left.sourcePhotoNoteId == right.sourcePhotoNoteId &&
+        left.objectPath == right.objectPath &&
+        left.mimeType == right.mimeType &&
+        left.byteSize == right.byteSize &&
+        _sameImageLabels(left.labels, right.labels);
+  }
+}
+
+enum ChatTranslationStatus { queued, processing, succeeded, failed }
+
+enum ChatCorrectionStatus { proposed, accepted, rejected }
+
+enum ChatCorrectionSyncStatus {
+  synced,
+  proposalPending,
+  proposalBlocked,
+  decisionPending,
+  decisionBlocked,
+}
+
+enum ChatCorrectionDecision { accepted, rejected }
+
+enum ChatAnnotationType {
+  slang('slang'),
+  abbreviation('abbreviation'),
+  informalAddress('informal_address'),
+  idiom('idiom'),
+  typoOrPhoneticSpelling('typo_or_phonetic_spelling'),
+  other('other');
+
+  const ChatAnnotationType(this.wireValue);
+  final String wireValue;
+
+  static ChatAnnotationType fromWire(String value) {
+    for (final type in values) {
+      if (type.wireValue == value) return type;
+    }
+    throw const FormatException('Invalid chat annotation type.');
+  }
+}
+
+enum ChatAnnotationSyncStatus { synced, pending, blocked }
+
+/// A peer-authored correction kept separate from the immutable raw message.
+/// It is operational chat data only and is never a Training/export contract.
+final class OperationalChatCorrection {
+  OperationalChatCorrection({
+    required this.id,
+    required this.messageId,
+    required this.authorId,
+    required this.targetLanguageCode,
+    required this.proposedText,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    this.acceptedBy,
+    this.acceptedAt,
+    this.rejectedBy,
+    this.rejectedAt,
+    this.syncStatus = ChatCorrectionSyncStatus.synced,
+    this.pendingDecision,
+    this.attemptCount = 0,
+    this.nextAttemptAt,
+  }) {
+    for (final value in [id, messageId, authorId]) {
+      validateChatUuid(value);
+    }
+    if (!{'vi', 'en'}.contains(targetLanguageCode) ||
+        proposedText.trim().isEmpty ||
+        proposedText.runes.length > 4000 ||
+        updatedAt.isBefore(createdAt) ||
+        attemptCount < 0 ||
+        attemptCount > 4 ||
+        !_validDecisionState ||
+        !_validSyncState) {
+      throw const FormatException('Invalid operational correction.');
+    }
+  }
+
+  final String id;
+  final String messageId;
+  final String authorId;
+  final String targetLanguageCode;
+  final String proposedText;
+  final ChatCorrectionStatus status;
+  final String? acceptedBy;
+  final DateTime? acceptedAt;
+  final String? rejectedBy;
+  final DateTime? rejectedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final ChatCorrectionSyncStatus syncStatus;
+  final ChatCorrectionDecision? pendingDecision;
+  final int attemptCount;
+  final DateTime? nextAttemptAt;
+
+  bool get _validDecisionState {
+    if (acceptedBy != null) validateChatUuid(acceptedBy!);
+    if (rejectedBy != null) validateChatUuid(rejectedBy!);
+    return switch (status) {
+      ChatCorrectionStatus.proposed => acceptedBy == null &&
+          acceptedAt == null &&
+          rejectedBy == null &&
+          rejectedAt == null,
+      ChatCorrectionStatus.accepted => acceptedBy != null &&
+          acceptedAt != null &&
+          rejectedBy == null &&
+          rejectedAt == null &&
+          !acceptedAt!.isBefore(createdAt),
+      ChatCorrectionStatus.rejected => rejectedBy != null &&
+          rejectedAt != null &&
+          acceptedBy == null &&
+          acceptedAt == null &&
+          !rejectedAt!.isBefore(createdAt),
+    };
+  }
+
+  bool get _validSyncState {
+    final proposal = {
+      ChatCorrectionSyncStatus.proposalPending,
+      ChatCorrectionSyncStatus.proposalBlocked,
+    }.contains(syncStatus);
+    final decision = {
+      ChatCorrectionSyncStatus.decisionPending,
+      ChatCorrectionSyncStatus.decisionBlocked,
+    }.contains(syncStatus);
+    if (syncStatus == ChatCorrectionSyncStatus.synced) {
+      return pendingDecision == null &&
+          attemptCount == 0 &&
+          nextAttemptAt == null;
+    }
+    if (proposal) {
+      return status == ChatCorrectionStatus.proposed &&
+          pendingDecision == null &&
+          (nextAttemptAt == null) ==
+              (syncStatus == ChatCorrectionSyncStatus.proposalBlocked);
+    }
+    if (decision) {
+      return status == ChatCorrectionStatus.proposed &&
+          pendingDecision != null &&
+          (nextAttemptAt == null) ==
+              (syncStatus == ChatCorrectionSyncStatus.decisionBlocked);
+    }
+    return false;
+  }
+
+  Map<String, Object?> get insertPayload {
+    if (syncStatus != ChatCorrectionSyncStatus.proposalPending) {
+      throw StateError('Correction is not a pending proposal.');
+    }
+    return {
+      'id': id,
+      'message_id': messageId,
+      'author_id': authorId,
+      'target_language_code': targetLanguageCode,
+      'proposed_text': proposedText,
+    };
+  }
+
+  factory OperationalChatCorrection.fromRemote(Map<String, dynamic> row) {
+    String text(String key) {
+      final value = row[key];
+      if (value is! String || value.isEmpty) {
+        throw const FormatException('Invalid chat correction response.');
+      }
+      return value;
+    }
+
+    String? optionalText(String key) {
+      final value = row[key];
+      if (value != null && value is! String) {
+        throw const FormatException('Invalid chat correction response.');
+      }
+      return value as String?;
+    }
+
+    DateTime time(String key) {
+      final raw = text(key);
+      final value = DateTime.tryParse(raw);
+      if (value == null || !RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(raw)) {
+        throw const FormatException('Invalid chat correction timestamp.');
+      }
+      return value.toUtc();
+    }
+
+    DateTime? optionalTime(String key) => row[key] == null ? null : time(key);
+    ChatCorrectionStatus status;
+    try {
+      status = ChatCorrectionStatus.values.byName(text('status'));
+    } on ArgumentError {
+      throw const FormatException('Invalid chat correction status.');
+    }
+    return OperationalChatCorrection(
+      id: text('id'),
+      messageId: text('message_id'),
+      authorId: text('author_id'),
+      targetLanguageCode: text('target_language_code'),
+      proposedText: text('proposed_text'),
+      status: status,
+      acceptedBy: optionalText('accepted_by'),
+      acceptedAt: optionalTime('accepted_at'),
+      rejectedBy: optionalText('rejected_by'),
+      rejectedAt: optionalTime('rejected_at'),
+      createdAt: time('created_at'),
+      updatedAt: time('updated_at'),
+    );
+  }
+
+  bool hasSameProposal(OperationalChatCorrection other) =>
+      id == other.id &&
+      messageId == other.messageId &&
+      authorId == other.authorId &&
+      targetLanguageCode == other.targetLanguageCode &&
+      proposedText == other.proposedText;
+}
+
+/// A source-speaker tag over the immutable raw message. Offsets are zero-based,
+/// half-open Unicode code-point indexes, matching Dart runes and PostgreSQL.
+/// Operational only: this is not a Training/export contract.
+final class OperationalChatAnnotation {
+  OperationalChatAnnotation({
+    required this.id,
+    required this.messageId,
+    required this.correctionId,
+    required this.createdBy,
+    required this.spanText,
+    required this.spanStart,
+    required this.spanEnd,
+    required this.tagType,
+    required this.normalizedSource,
+    required this.createdAt,
+    this.syncStatus = ChatAnnotationSyncStatus.synced,
+    this.attemptCount = 0,
+    this.nextAttemptAt,
+  }) {
+    for (final value in [id, messageId, correctionId, createdBy]) {
+      validateChatUuid(value);
+    }
+    if (spanText.trim().isEmpty ||
+        spanText.runes.length > 4000 ||
+        spanStart < 0 ||
+        spanEnd <= spanStart ||
+        spanText.runes.length != spanEnd - spanStart ||
+        normalizedSource.trim().isEmpty ||
+        normalizedSource.runes.length > 4000 ||
+        attemptCount < 0 ||
+        attemptCount > 4 ||
+        !_validSyncState) {
+      throw const FormatException('Invalid operational chat annotation.');
+    }
+  }
+
+  final String id;
+  final String messageId;
+  final String correctionId;
+  final String createdBy;
+  final String spanText;
+  final int spanStart;
+  final int spanEnd;
+  final ChatAnnotationType tagType;
+  final String normalizedSource;
+  final DateTime createdAt;
+  final ChatAnnotationSyncStatus syncStatus;
+  final int attemptCount;
+  final DateTime? nextAttemptAt;
+
+  bool get _validSyncState => switch (syncStatus) {
+        ChatAnnotationSyncStatus.synced =>
+          attemptCount == 0 && nextAttemptAt == null,
+        ChatAnnotationSyncStatus.pending => nextAttemptAt != null,
+        ChatAnnotationSyncStatus.blocked => nextAttemptAt == null,
+      };
+
+  Map<String, Object?> get insertPayload {
+    if (syncStatus != ChatAnnotationSyncStatus.pending) {
+      throw StateError('Annotation is not pending.');
+    }
+    return {
+      'id': id,
+      'message_id': messageId,
+      'correction_id': correctionId,
+      'created_by': createdBy,
+      'span_text': spanText,
+      'span_start': spanStart,
+      'span_end': spanEnd,
+      'tag_type': tagType.wireValue,
+      'normalized_source': normalizedSource,
+    };
+  }
+
+  factory OperationalChatAnnotation.fromRemote(Map<String, dynamic> row) {
+    String text(String key) {
+      final value = row[key];
+      if (value is! String || value.isEmpty) {
+        throw const FormatException('Invalid chat annotation response.');
+      }
+      return value;
+    }
+
+    int integer(String key) {
+      final value = row[key];
+      if (value is! int) {
+        throw const FormatException('Invalid chat annotation response.');
+      }
+      return value;
+    }
+
+    final rawTime = text('created_at');
+    final createdAt = DateTime.tryParse(rawTime);
+    if (createdAt == null ||
+        !RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(rawTime)) {
+      throw const FormatException('Invalid chat annotation timestamp.');
+    }
+    if (row['annotator_role'] != 'source_speaker' ||
+        row['status'] != 'active') {
+      throw const FormatException('Invalid chat annotation state.');
+    }
+    return OperationalChatAnnotation(
+      id: text('id'),
+      messageId: text('message_id'),
+      correctionId: text('correction_id'),
+      createdBy: text('created_by'),
+      spanText: text('span_text'),
+      spanStart: integer('span_start'),
+      spanEnd: integer('span_end'),
+      tagType: ChatAnnotationType.fromWire(text('tag_type')),
+      normalizedSource: text('normalized_source'),
+      createdAt: createdAt.toUtc(),
+    );
+  }
+
+  bool hasSameTag(OperationalChatAnnotation other) =>
+      id == other.id &&
+      messageId == other.messageId &&
+      correctionId == other.correctionId &&
+      createdBy == other.createdBy &&
+      spanText == other.spanText &&
+      spanStart == other.spanStart &&
+      spanEnd == other.spanEnd &&
+      tagType == other.tagType &&
+      normalizedSource == other.normalizedSource;
+}
+
+/// Operational display cache only. Never a Training/export contract.
+final class OperationalChatTranslation {
+  OperationalChatTranslation({
+    required this.id,
+    required this.messageId,
+    required this.targetLanguageCode,
+    required this.provider,
+    required this.model,
+    required this.promptVersion,
+    required this.translatorVersion,
+    required this.status,
+    required this.attemptCount,
+    required this.createdAt,
+    required this.updatedAt,
+    this.translatedText,
+    this.nextAttemptAt,
+    this.errorCode,
+    this.completedAt,
+  }) {
+    validateChatUuid(id);
+    validateChatUuid(messageId);
+    final validSuccess = status == ChatTranslationStatus.succeeded &&
+        translatedText != null &&
+        translatedText!.trim().isNotEmpty &&
+        translatedText!.runes.length <= 16000 &&
+        completedAt != null &&
+        errorCode == null &&
+        nextAttemptAt == null;
+    final validPendingState = status != ChatTranslationStatus.succeeded &&
+        translatedText == null &&
+        completedAt == null &&
+        (status == ChatTranslationStatus.failed) == (errorCode != null);
+    if (!{'vi', 'en'}.contains(targetLanguageCode) ||
+        !isSupportedOperationalChatTranslation(
+          provider: provider,
+          model: model,
+          promptVersion: promptVersion,
+          translatorVersion: translatorVersion,
+        ) ||
+        attemptCount < 0 ||
+        attemptCount > 4 ||
+        (status == ChatTranslationStatus.queued && attemptCount != 0) ||
+        ({ChatTranslationStatus.processing, ChatTranslationStatus.succeeded}
+                .contains(status) &&
+            attemptCount == 0) ||
+        (status != ChatTranslationStatus.failed && nextAttemptAt != null) ||
+        updatedAt.isBefore(createdAt) ||
+        (completedAt != null && completedAt!.isBefore(createdAt)) ||
+        (errorCode != null &&
+            !RegExp(r'^[A-Z0-9_]{1,64}$').hasMatch(errorCode!)) ||
+        (!validSuccess && !validPendingState)) {
+      throw const FormatException('Invalid operational translation.');
+    }
+  }
+
+  final String id;
+  final String messageId;
+  final String targetLanguageCode;
+  final String? translatedText;
+  final String provider;
+  final String model;
+  final String promptVersion;
+  final String translatorVersion;
+  final ChatTranslationStatus status;
+  final int attemptCount;
+  final DateTime? nextAttemptAt;
+  final String? errorCode;
+  final DateTime createdAt;
+  final DateTime? completedAt;
+  final DateTime updatedAt;
+
+  factory OperationalChatTranslation.fromRemote(Map<String, dynamic> row) {
+    String text(String key) {
+      final value = row[key];
+      if (value is! String || value.isEmpty) {
+        throw const FormatException('Invalid chat translation response.');
+      }
+      return value;
+    }
+
+    String? optionalText(String key) {
+      final value = row[key];
+      if (value != null && value is! String) {
+        throw const FormatException('Invalid chat translation response.');
+      }
+      return value as String?;
+    }
+
+    DateTime time(String key) {
+      final raw = text(key);
+      final value = DateTime.tryParse(raw);
+      if (value == null || !RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(raw)) {
+        throw const FormatException('Invalid chat translation timestamp.');
+      }
+      return value.toUtc();
+    }
+
+    DateTime? optionalTime(String key) => row[key] == null ? null : time(key);
+
+    final rawStatus = text('status');
+    final ChatTranslationStatus status;
+    try {
+      status = ChatTranslationStatus.values.byName(rawStatus);
+    } on ArgumentError {
+      throw const FormatException('Invalid chat translation status.');
+    }
+    final attemptCount = row['attempt_count'];
+    if (attemptCount is! int) {
+      throw const FormatException('Invalid chat translation attempt.');
+    }
+    return OperationalChatTranslation(
+      id: text('id'),
+      messageId: text('message_id'),
+      targetLanguageCode: text('target_language_code'),
+      translatedText: optionalText('translated_text'),
+      provider: text('provider'),
+      model: text('model'),
+      promptVersion: text('prompt_version'),
+      translatorVersion: text('translator_version'),
+      status: status,
+      attemptCount: attemptCount,
+      nextAttemptAt: optionalTime('next_attempt_at'),
+      errorCode: optionalText('error_code'),
+      createdAt: time('created_at'),
+      completedAt: optionalTime('completed_at'),
+      updatedAt: time('updated_at'),
+    );
+  }
+
+  bool hasSameRemoteState(OperationalChatTranslation other) =>
+      id == other.id &&
+      messageId == other.messageId &&
+      targetLanguageCode == other.targetLanguageCode &&
+      translatedText == other.translatedText &&
+      provider == other.provider &&
+      model == other.model &&
+      promptVersion == other.promptVersion &&
+      translatorVersion == other.translatorVersion &&
+      status == other.status &&
+      attemptCount == other.attemptCount &&
+      _sameTime(nextAttemptAt, other.nextAttemptAt) &&
+      errorCode == other.errorCode &&
+      createdAt.isAtSameMomentAs(other.createdAt) &&
+      _sameTime(completedAt, other.completedAt) &&
+      updatedAt.isAtSameMomentAs(other.updatedAt);
+
+  static bool _sameTime(DateTime? left, DateTime? right) => left == null
+      ? right == null
+      : right != null && left.isAtSameMomentAs(right);
 }
 
 enum ChatRelayFailureKind { retryable, denied }
@@ -198,10 +1075,35 @@ enum ChatRemoteSignal { connected, changed, disconnected }
 abstract interface class OperationalChatGateway
     implements OperationalChatTransport {
   Future<ChatConversation> openDirectChat(String peerId);
+  Future<ChatConversation> createSocialChatGroup({
+    required String title,
+    required List<String> memberIds,
+    required String requestId,
+  });
+  Future<ChatConversation> renameSocialChatGroup(
+      String conversationId, String title);
+  Future<ChatConversation> closeSocialChatGroup(String conversationId);
+  Future<void> leaveSocialChatGroup(String conversationId);
+  Future<List<SocialChatMember>> fetchSocialChatGroupMembers(
+      Set<String> conversationIds);
   Future<List<ChatConversation>> fetchConversations();
   Future<List<OperationalChatMessage>> fetchHistory(String conversationId);
+  Future<List<OperationalChatTranslation>> fetchTranslations(
+      String conversationId);
+  Future<OperationalChatCorrection> proposeCorrection(
+      OperationalChatCorrection correction);
+  Future<OperationalChatCorrection> resolveCorrection(
+      String correctionId, ChatCorrectionDecision decision);
+  Future<List<OperationalChatCorrection>> fetchCorrections(
+      String conversationId);
+  Future<OperationalChatAnnotation> proposeAnnotation(
+      OperationalChatAnnotation annotation);
+  Future<List<OperationalChatAnnotation>> fetchAnnotations(
+      String conversationId);
   Future<Set<String>> visibleCachedIds(String conversationId, Set<String> ids);
   Future<Set<String>> visibleConversationIds(Set<String> ids);
+  Future<Uint8List> downloadAlbumImage(OperationalChatAlbumImage image);
+  Future<List<String>> invalidateAlbumImages(String sourcePhotoNoteId);
   Stream<ChatRemoteSignal> get signals;
   Future<void> restartRealtime();
   Future<void> dispose();

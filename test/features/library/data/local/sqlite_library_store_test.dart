@@ -237,6 +237,76 @@ void main() {
     expect(await store.getLibraryPullCursor(userId: userId), 9);
   });
 
+  test('empty cloud batches insert and update the owner cursor', () async {
+    final userId = ids.next();
+    await store.saveLocalAccount(_account(userId, cloudBackup: true));
+    for (final cursor in [0, 4]) {
+      await store.applyLibraryCloudDelta(LibraryCloudDelta(
+        userId: userId,
+        previousCursor: 0,
+        nextCursor: cursor,
+        hasMore: false,
+        snapshots: const [],
+        deletions: const [],
+      ));
+    }
+    expect(await store.getLibraryPullCursor(userId: userId), 4);
+    expect(await database.query('library_pull_cursors'), hasLength(1));
+  });
+
+  test('late upload acknowledgement cannot clear a newer local deletion',
+      () async {
+    final userId = ids.next();
+    await store.saveLocalAccount(_account(userId, cloudBackup: true));
+    final snapshot = _snapshot(ids, userId);
+    await store.saveCapturedPhotoNote(snapshot);
+    await store.movePhotoNotesToTrash(
+      userId: userId,
+      photoNoteIds: [snapshot.photoNote.id],
+      deletedAt: _time.add(const Duration(hours: 1)),
+    );
+    await store.markPhotoNoteSynced(
+      userId: userId,
+      photoNoteId: snapshot.photoNote.id,
+      expectedUpdatedAt: snapshot.photoNote.updatedAt,
+    );
+    final note = await store.getPhotoNoteForSync(
+      userId: userId,
+      photoNoteId: snapshot.photoNote.id,
+    );
+    expect(note!.isDeleted, isTrue);
+    expect(note.syncStatus, SyncStatus.pending);
+  });
+
+  test('replayed older tombstone preserves its identity and deletion version',
+      () async {
+    final userId = ids.next();
+    final noteId = ids.next();
+    await store.saveLocalAccount(_account(userId, cloudBackup: true));
+    for (final version in [9, 4]) {
+      await store.applyLibraryCloudDelta(LibraryCloudDelta(
+        userId: userId,
+        previousCursor: version == 9 ? 0 : 9,
+        nextCursor: 9,
+        hasMore: false,
+        snapshots: const [],
+        deletions: [
+          LibraryCloudDeletion(
+            userId: userId,
+            photoNoteId: noteId,
+            sequence: version,
+            deletedAt: _time.add(Duration(days: version)),
+          )
+        ],
+      ));
+    }
+    final tombstone = (await database.query('sync_tombstones')).single;
+    expect(tombstone['deletion_version'], 9);
+    expect(tombstone['deleted_at'],
+        _time.add(const Duration(days: 9)).toIso8601String());
+    expect(tombstone['remote_purge_completed'], 1);
+  });
+
   test('lists deduplicated media references across every local owner',
       () async {
     final firstUserId = ids.next();

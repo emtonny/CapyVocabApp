@@ -66,6 +66,7 @@ abstract interface class LibrarySyncSource {
   Future<void> markPhotoNoteSynced({
     required String userId,
     required String photoNoteId,
+    DateTime? expectedUpdatedAt,
   });
 
   Future<void> markTombstoneRemotePurgeCompleted({

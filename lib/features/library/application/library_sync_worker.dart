@@ -308,6 +308,7 @@ final class LibrarySyncWorker {
         await _local.markPhotoNoteSynced(
           userId: operation.userId,
           photoNoteId: operation.entityId,
+          expectedUpdatedAt: note.updatedAt,
         );
         return;
       case SyncEntityType.album:

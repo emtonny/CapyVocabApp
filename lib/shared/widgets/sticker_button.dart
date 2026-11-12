@@ -290,7 +290,7 @@ class StickerButtonPainter extends CustomPainter {
       );
       if (showShadow) {
         canvas.drawRRect(
-          shape.shift(Offset(0, shadowOffset)),
+          shape.shift(Offset(shadowOffset, shadowOffset)),
           Paint()
             ..color = inkCoffee.withValues(alpha: 0.3)
             ..style = PaintingStyle.fill,
@@ -318,9 +318,7 @@ class StickerButtonPainter extends CustomPainter {
     // 0 4px 0 2px var(--ink-coffee)
     // ─────────────────────────────────────
     if (showShadow) {
-      final shadowRect = rect.shift(
-        Offset(0, shadowOffset),
-      );
+      final shadowRect = rect.shift(Offset(shadowOffset, shadowOffset));
 
       final outerShadow = RRect.fromRectAndRadius(
         shadowRect.inflate(shadowSpread),

@@ -1,8 +1,12 @@
+import 'dart:ui' show Tristate;
+
 import 'package:capy_vocab/features/home/presentation/screens/home_screen.dart';
+import 'package:capy_vocab/features/home/presentation/providers/home_provider.dart';
 import 'package:capy_vocab/core/constants/app_colors.dart';
 import 'package:capy_vocab/shared/navigation/bottom_nav_bar.dart';
 import 'package:capy_vocab/shared/widgets/sticker_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -109,6 +113,34 @@ void main() {
     );
   });
 
+  testWidgets('route Groups keeps the Friends tab selected', (tester) async {
+    final router = GoRouter(
+      initialLocation: '/groups',
+      routes: [
+        GoRoute(
+          path: '/groups',
+          builder: (_, __) => const Scaffold(
+            body: SizedBox.expand(),
+            bottomNavigationBar: BottomNavBar(),
+          ),
+        ),
+        GoRoute(path: '/friends', builder: (_, __) => const SizedBox.shrink()),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+
+    final semantics = tester.getSemantics(find.byTooltip('Bạn bè'));
+    expect(semantics.flagsCollection.isSelected, Tristate.isTrue);
+    expect(
+      tester
+          .getSemantics(find.byTooltip('Trang chủ'))
+          .flagsCollection
+          .isSelected,
+      Tristate.isFalse,
+    );
+  });
+
   testWidgets('khớp golden của thanh điều hướng neo-brutal', (tester) async {
     tester.view.physicalSize = const Size(390, 180);
     tester.view.devicePixelRatio = 1;
@@ -159,7 +191,32 @@ Widget _testApp() {
     ],
   );
 
-  return MaterialApp.router(routerConfig: router);
+  return ProviderScope(
+    overrides: [
+      homeProvider.overrideWith(
+        (ref) => Stream.value(
+          HomeState(
+            userId: 'navigation-test-owner',
+            displayName: 'Navigation Test',
+            yuzuBalance: 100,
+            pendingYuzu: 0,
+            streakDays: 0,
+            updatedAt: DateTime(2026, 9, 27),
+          ),
+        ),
+      ),
+      homeUnreadNotificationsProvider.overrideWith(
+        (ref) => Stream.value(0),
+      ),
+    ],
+    child: MaterialApp.router(
+      routerConfig: router,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        child: child!,
+      ),
+    ),
+  );
 }
 
 Widget _navOnlyApp() {

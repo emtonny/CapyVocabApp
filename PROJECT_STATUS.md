@@ -1,8 +1,10 @@
 # Deery Vocab — Project Status
 
-> Last verified: 2026-09-12 (local checks; remote migration history read-only)
+> Last verified: 2026-10-07 (GitHub Home source integration; verification details in docs/github-home-sync-2026-10-07.md)
 > Phạm vi: trạng thái implementation hiện tại, khoảng trống và công việc tiếp
 > theo. Code và test là nguồn sự thật khi có khác biệt.
+
+Đã tích hợp source Home `664a7c9` (07/10/2026) vào trạng thái local của `interface`, giữ các sửa lỗi Chat/Friends/Library/Settings và backend audit ngày 01/10. Có luồng học hằng ngày, hai game ảnh, session offline, đồng bộ kết quả, thưởng xu vàng và leaderboard; xem [báo cáo đồng bộ](docs/github-home-sync-2026-10-07.md) và [Home](home.md). Lịch sử fast-forward bên dưới là checkpoint cũ.
 
 Đã fast-forward `AI-scan` lên `b742ea4` và ghép lại Vilao làm gateway mặc định.
 Giữ cấu trúc tài liệu local; lịch sử Database/Library từ GitHub nằm trong
@@ -34,21 +36,27 @@ startup config + local onboarding cache
 | Khu vực | Trạng thái | Hiện có | Còn thiếu chính |
 | --- | --- | --- | --- |
 | Bootstrap | Đã test local | Nạp config, cache onboarding; không chặn startup bởi health check mạng | Kiểm thử bản ghép trên thiết bị thật |
-| Auth email/password | Hoạt động | Đăng ký, xác nhận email, đăng nhập, ghi nhớ email, đăng xuất | Acceptance test production đầy đủ |
+| Auth email/password | Hoạt động; hard gate mới pending | Đăng ký, xác nhận email, đăng nhập, ghi nhớ email, đăng xuất | Gửi lại xác nhận, đổi email đã xác nhận và khóa tài nguyên trước xác nhận |
 | Password recovery | Hoạt động | Gửi email, callback/deep link, đặt mật khẩu mới, kết thúc recovery session | Kiểm thử thủ công trên từng domain/thiết bị production |
 | Route guard | Đã test local | Session và onboarding cache owner-scoped, refresh nền | Khôi phục intended route sau đăng nhập |
-| Onboarding | Hoạt động | Wizard 5 bước, validation, kiểm tra username/phone, RPC lưu nguyên tử | Reminder scheduling thực tế |
-| Home | Một phần | Shell, header, navigation, giao diện mẫu | Lesson map và tiến trình học còn dùng dữ liệu/scaffold chưa hoàn chỉnh |
+| Onboarding | Hoạt động; SMS quốc tế pending | Wizard 5 bước, validation, kiểm tra username/phone Việt Nam, RPC lưu nguyên tử | Chọn quốc gia, SMS thật, chỉ hoàn tất sau xác nhận và migration số quốc tế |
+| Home | Source tích hợp | Daily mission, lesson map, tiến trình, thưởng và leaderboard | Nghiệm thu thiết bị/backend bản tích hợp |
 | AI Scan | Đã test local, chờ deploy bản ghép | Vilao mặc định, auth/entitlement, circuit breaker, ledger, overlay và persistence native | Live scan bản ghép, TTS, Web scan durability |
 | Storage album | Đã test local | SQLite Library, detail, Trash, media recovery và explicit cloud restore | Web scan durability; kiểm thử thiết bị bản ghép |
-| Settings | Một phần | Profile, đăng xuất, Cloud Backup consent/backfill; đã sửa Material regression | Theme và thanh toán hoàn chỉnh |
-| Friends/Pet shop | Scaffold UI | Route, coming-soon UI và một số datasource | Provider, business flow và persistence end-to-end |
-| Solo Arena/Mini-games | Scaffold | Route/file nền | Gameplay, state, scoring và persistence |
-| Chat/Notifications | Scaffold | Datasource hoặc file nền | UI, provider và flow end-to-end |
-| Payment | Chưa tích hợp | Một số abstraction/shell | SDK thực, backend verification và webhook |
+| Settings | Một phần | Profile, đăng xuất, Cloud Backup consent/backfill; đã sửa Material regression | Đổi/xác nhận email và SĐT; hai công tắc chỉ cho bạn bè xem liên hệ; theme/thanh toán |
+| Friends | Username-first local; backend Exact-Staging verified | UI exact username, request/accept/reject, owner-scoped cache, Realtime invalidation, accepted list và Chat handoff | Giữ tìm kiếm username-only; thêm đọc liên hệ được chủ tài khoản cho phép chỉ giữa bạn bè đã chấp nhận |
+| Pet shop | Scaffold UI | Route và coming-soon UI | Provider, business flow và persistence end-to-end |
+| Mini-games | Source tích hợp | Hai game ảnh, session SQLite, mastery và result sync | Nghiệm thu bản tích hợp; Solo Arena vẫn scaffold |
+| Chat/Notifications | Chat có implementation local | Hộp thư, dịch/correction, ảnh Album và offline outbox | Notifications và các backend audit gate còn lại |
+| Payment | Chưa tích hợp | Entitlement/gói hiện gắn theo tài khoản và ngày hết hạn | SDK/webhook; lịch sử liên hệ/ưu đãi; giữ gói hiện tại khi đổi và dùng liên hệ mới ở lần gia hạn |
 
 Chi tiết implementation của AI Scan nằm trong
 [docs/scan-feature.md](docs/scan-feature.md).
+Chi tiết Friends MVP, giới hạn rollout và bằng chứng F1–F6 nằm trong
+[friend.md](friend.md).
+Kế hoạch đã duyệt cho xác nhận email/SMS quốc tế, quyền hiển thị liên hệ và giữ
+gói/ưu đãi khi đổi liên hệ nằm trong
+[auth.md](auth.md).
 
 ## Route hiện tại
 
@@ -63,13 +71,14 @@ Chi tiết implementation của AI Scan nằm trong
 | `/scan-overlay` | Màn kết quả riêng, không phải flow mặc định |
 | `/solo-arena` | Solo Arena scaffold |
 | `/pet-shop` | Pet Shop coming soon |
-| `/friends` | Friends coming soon |
+| `/friends` | Quản lý lời mời, danh sách bạn bè và Chat handoff; chỉ bật bằng `FRIENDS_ENABLED` trên exact Staging |
 | `/settings` | Cài đặt và đăng xuất |
 
 ## Backend và dữ liệu
 
 - Flutter chỉ chứa Supabase URL và public/publishable key.
-- 21 migration local khớp database mà client đang trỏ tới qua kiểm tra read-only;
+- Hai migration Friends `20260922120000` và `20260923120000` khớp exact
+  Staging qua kiểm tra read-only ngày 2026-09-24;
   đây là đối chiếu history, không thay thế kiểm chứng toàn bộ schema/RLS runtime.
 - Thay đổi database mới phải được ghi bằng migration trong
   `supabase/migrations/`.
@@ -82,10 +91,12 @@ Chi tiết implementation của AI Scan nằm trong
 
 ### P0 — Trước khi release
 
-1. Chạy acceptance test production cho đăng ký, xác nhận email, đăng nhập và
+1. Thực hiện plan A0–A6 cho xác nhận email, SMS quốc tế, đổi liên hệ, quyền hiển
+   thị với bạn bè và giữ gói/ưu đãi; không rollout trước live Staging gate.
+2. Chạy acceptance test production cho đăng ký, xác nhận email, đăng nhập và
    password recovery trên Android, iOS và Web.
-2. Audit RLS, Storage policy, trigger, grant và cấu hình JWT của Edge Function.
-3. Hoàn thiện lesson map, một hoạt động từ vựng và lưu tiến trình để tạo vòng
+3. Audit RLS, Storage policy, trigger, grant và cấu hình JWT của Edge Function.
+4. Hoàn thiện lesson map, một hoạt động từ vựng và lưu tiến trình để tạo vòng
    học đầu tiên có giá trị sử dụng thực.
 
 ### P1 — Sau vòng học đầu tiên

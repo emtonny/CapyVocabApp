@@ -10,12 +10,14 @@ import '../../features/ai_scan/presentation/screens/photo_scan_bottom_sheet.dart
 import '../../features/ai_scan/presentation/screens/scan_result_overlay_screen.dart';
 import '../../features/auth/presentation/screens/auth_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
-import '../../features/chat/presentation/operational_chat_screen.dart';
 import '../../features/chat/presentation/operational_chat_overlay.dart';
 import '../../features/friends/presentation/screens/friends_leaderboard_screen.dart';
+import '../../features/groups/presentation/groups_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/library/presentation/screens/storage_album_screen.dart';
 import '../../features/library/domain/entities/photo_note.dart';
+import '../../features/mini_games/application/lesson_session_controller.dart';
+import '../../features/mini_games/presentation/screens/lesson_session_screen.dart';
 import '../../features/onboarding/application/onboarding_status_store.dart';
 import '../../features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
 import '../../features/pet_shop/presentation/screens/pet_shop_screen.dart';
@@ -88,6 +90,22 @@ List<RouteBase> _buildAppRoutes(
   _RouterRefreshListenable refreshListenable,
 ) {
   return [
+    GoRoute(
+      path: '/lesson',
+      pageBuilder: (context, state) {
+        final request = state.extra;
+        return _softPage(
+          state,
+          child: request is LessonStartRequest
+              ? LessonSessionScreen(request: request)
+              : const GraphPaperScaffold(
+                  body: Center(
+                    child: Text('Không tìm thấy nhiệm vụ để bắt đầu.'),
+                  ),
+                ),
+        );
+      },
+    ),
     ShellRoute(
       builder: (context, state, child) => OperationalChatOverlay(
         child: child,
@@ -130,10 +148,28 @@ List<RouteBase> _buildAppRoutes(
         ),
         GoRoute(
           path: '/storage',
-          pageBuilder: (context, state) => _softPage(
-            state,
-            child: const StorageAlbumScreen(),
-          ),
+          pageBuilder: (context, state) {
+            final from = int.tryParse(
+              state.uri.queryParameters['from'] ?? '',
+            );
+            final to = int.tryParse(state.uri.queryParameters['to'] ?? '');
+            final range = from != null && to != null && from < to
+                ? DateTimeRange(
+                    start: DateTime.fromMillisecondsSinceEpoch(
+                      from,
+                      isUtc: true,
+                    ),
+                    end: DateTime.fromMillisecondsSinceEpoch(
+                      to,
+                      isUtc: true,
+                    ),
+                  )
+                : null;
+            return _softPage(
+              state,
+              child: StorageAlbumScreen(initialCapturedRange: range),
+            );
+          },
         ),
         GoRoute(
           path: '/storage/vocabulary',
@@ -217,26 +253,17 @@ List<RouteBase> _buildAppRoutes(
           ),
         ),
         GoRoute(
+          path: '/groups',
+          pageBuilder: (context, state) => _softPage(
+            state,
+            child: const GroupsScreen(),
+          ),
+        ),
+        GoRoute(
           path: '/settings',
           pageBuilder: (context, state) => _softPage(
             state,
             child: const SettingsScreen(),
-          ),
-        ),
-        GoRoute(
-          path: '/chat',
-          pageBuilder: (context, state) => _softPage(
-            state,
-            child: const OperationalChatScreen(),
-          ),
-        ),
-        GoRoute(
-          path: '/chat/:conversationId',
-          pageBuilder: (context, state) => _softPage(
-            state,
-            child: OperationalChatScreen(
-              conversationId: state.pathParameters['conversationId'],
-            ),
           ),
         ),
       ],

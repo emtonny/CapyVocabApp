@@ -106,7 +106,7 @@ class LanguageProfileNotifier extends StateNotifier<LanguageProfileState> {
     );
     if (!profile.isValid) {
       state = state.copyWith(
-        errorMessage: 'Ngôn ngữ gốc và ngôn ngữ học phải khác nhau.',
+        errorMessage: 'Ngôn ngữ giao tiếp và ngôn ngữ muốn học phải khác nhau.',
       );
       return false;
     }

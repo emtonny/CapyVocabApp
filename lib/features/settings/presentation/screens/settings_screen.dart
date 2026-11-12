@@ -8,6 +8,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/entitlements/entitlement_provider.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../shared/widgets/graph_paper_background.dart';
+import '../../../../shared/widgets/app_user_avatar.dart';
 import '../../../../shared/widgets/sticker_button.dart';
 import '../../../../shared/widgets/top_notification.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -16,6 +17,10 @@ import '../../../language_profile/presentation/language_profile_provider.dart';
 import '../../../onboarding/application/onboarding_status_store.dart';
 import '../../../onboarding/presentation/providers/onboarding_status_provider.dart';
 import '../providers/cloud_backup_consent_provider.dart';
+import '../providers/current_user_profile_provider.dart';
+import '../widgets/account_contact_section.dart';
+import '../widgets/settings_dialog.dart';
+import '../widgets/settings_toggle.dart';
 
 typedef ResetOnboarding = Future<void> Function();
 
@@ -61,20 +66,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (enabled) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          backgroundColor: AppColors.softWhite,
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: AppColors.ink, width: 2.5),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.cloud_upload_rounded, color: AppColors.blue),
-              SizedBox(width: 8),
-              Expanded(child: Text('Bật sao lưu đám mây?')),
-            ],
-          ),
+        builder: (dialogContext) => SettingsDialog(
+          title: 'Bật sao lưu đám mây?',
+          icon: Icons.cloud_upload_rounded,
+          accentColor: AppColors.blue,
           content: const Text(
             'Ảnh và dữ liệu của các bài quét mới sẽ được tải lên vùng riêng tư '
             'trên Supabase. Bản trong máy vẫn dùng được khi mất mạng.\n\n'
@@ -83,15 +78,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             'trên thiết bị.',
           ),
           actions: [
-            TextButton(
-              key: const Key('cloud-backup-cancel-button'),
+            SettingsDialogAction(
+              actionKey: const Key('cloud-backup-cancel-button'),
+              label: 'Để sau',
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Để sau'),
+              surfaceColor: AppColors.softWhite,
             ),
-            FilledButton(
-              key: const Key('cloud-backup-confirm-button'),
+            SettingsDialogAction(
+              actionKey: const Key('cloud-backup-confirm-button'),
+              label: 'Đồng ý và bật',
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Đồng ý và bật'),
+              icon: const Icon(Icons.cloud_done_rounded),
+              surfaceColor: AppColors.blue,
             ),
           ],
         ),
@@ -132,14 +130,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _backfillExistingPhotoNotes() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.softWhite,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.ink, width: 2.5),
-        ),
-        title: const Text('Sao lưu các bài đã có?'),
+      builder: (dialogContext) => SettingsDialog(
+        title: 'Sao lưu các bài đã có?',
+        icon: Icons.cloud_sync_rounded,
+        accentColor: AppColors.mint,
         content: const Text(
           'Chỉ các bài đang còn trong Thư viện, có đủ ảnh trên máy hoặc dùng '
           'ảnh đã nằm trên cloud mới được xếp để sao lưu. Ảnh bị thiếu và bài '
@@ -147,15 +141,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'train AI.',
         ),
         actions: [
-          TextButton(
-            key: const Key('cloud-backup-backfill-cancel-button'),
+          SettingsDialogAction(
+            actionKey: const Key('cloud-backup-backfill-cancel-button'),
+            label: 'Hủy',
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Hủy'),
+            surfaceColor: AppColors.softWhite,
           ),
-          FilledButton(
-            key: const Key('cloud-backup-backfill-confirm-button'),
+          SettingsDialogAction(
+            actionKey: const Key('cloud-backup-backfill-confirm-button'),
+            label: 'Xác nhận sao lưu',
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Xác nhận sao lưu'),
+            icon: const Icon(Icons.backup_rounded),
+            surfaceColor: AppColors.mint,
           ),
         ],
       ),
@@ -199,26 +196,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.softWhite,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.ink, width: 2.5),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.logout_rounded, color: AppColors.coral),
-            SizedBox(width: 8),
-            Text(
-              'Đăng xuất',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.ink,
-              ),
-            ),
-          ],
-        ),
+      builder: (dialogContext) => SettingsDialog(
+        title: 'Đăng xuất',
+        icon: Icons.logout_rounded,
+        accentColor: AppColors.coral,
         content: const Text(
           'Bạn có chắc chắn muốn đăng xuất khỏi DeerVocab?',
           style: TextStyle(
@@ -227,30 +208,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
         actions: [
-          TextButton(
+          SettingsDialogAction(
+            label: 'Hủy',
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text(
-              'Hủy',
-              style: TextStyle(
-                color: AppColors.mutedInk,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            surfaceColor: AppColors.softWhite,
           ),
-          FilledButton(
-            key: const Key('logout-confirm-button'),
+          SettingsDialogAction(
+            actionKey: const Key('logout-confirm-button'),
+            label: 'Đăng xuất',
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.coral,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text(
-              'Đăng xuất',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            icon: const Icon(Icons.logout_rounded),
+            surfaceColor: AppColors.coral,
           ),
         ],
       ),
@@ -293,24 +261,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _resetOnboarding() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.softWhite,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.ink, width: 2.5),
-        ),
-        title: const Text('Reset onboarding'),
+      builder: (dialogContext) => SettingsDialog(
+        title: 'Reset onboarding',
+        icon: Icons.restart_alt_rounded,
+        accentColor: AppColors.coral,
         content: const Text('Bạn chắc chắn muốn reset onboarding?'),
         actions: [
-          TextButton(
+          SettingsDialogAction(
+            label: 'Hủy',
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Hủy'),
+            surfaceColor: AppColors.softWhite,
           ),
-          FilledButton(
+          SettingsDialogAction(
+            label: 'Reset',
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.coral),
-            child: const Text('Reset'),
+            icon: const Icon(Icons.restart_alt_rounded),
+            surfaceColor: AppColors.coral,
           ),
         ],
       ),
@@ -355,6 +321,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final entitlements = ref.watch(entitlementProvider);
     final user = SupabaseService.auth.currentUser;
+    final databaseProfile = ref.watch(currentUserProfileProvider).valueOrNull;
     final languageUserId = ref.watch(currentLanguageProfileUserIdProvider);
     final languageState = ref.watch(languageProfileProvider);
     final languageProfile = languageState.profile;
@@ -368,10 +335,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final cloudBackupLoading = cloudBackupConsent.isLoading;
     final cloudBackupError = cloudBackupConsent.hasError;
     final metadata = user?.userMetadata;
-    final displayName =
-        (metadata?['display_name'] as String?)?.trim().isNotEmpty == true
-            ? metadata!['display_name'] as String
-            : (user?.email?.split('@').first ?? 'Học viên Deer');
+    final databaseDisplayName = databaseProfile?.displayName.trim() ?? '';
+    final metadataDisplayName =
+        (metadata?['display_name'] as String?)?.trim() ?? '';
+    final displayName = databaseDisplayName.isNotEmpty
+        ? databaseDisplayName
+        : metadataDisplayName.isNotEmpty
+            ? metadataDisplayName
+            : (user?.email?.split('@').first ?? 'Học viên');
     final email = user?.email ?? 'Chưa liên kết email';
 
     return GraphPaperScaffold(
@@ -411,14 +382,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  const Text(
-                    'Cài đặt',
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.ink,
-                      letterSpacing: -0.4,
+                  const Expanded(
+                    child: Text(
+                      'Cài đặt',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                        letterSpacing: -0.4,
+                      ),
                     ),
                   ),
                 ],
@@ -451,22 +426,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: Row(
                       children: [
                         // Avatar
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: AppColors.yellow,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: AppColors.ink,
-                              width: 2.2,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            '🦌',
-                            style: TextStyle(fontSize: 38),
-                          ),
+                        AppUserAvatar(
+                          key: const Key('settings-user-avatar'),
+                          avatarUrl: databaseProfile?.avatarUrl,
+                          size: 64,
+                          backgroundColor: AppColors.yellow,
+                          borderWidth: 2.2,
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -567,13 +532,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         _buildSettingTile(
                           icon: Icons.language_rounded,
                           iconColor: AppColors.blue,
-                          title: 'Ngôn ngữ học',
+                          title: 'Ngôn ngữ giao tiếp và học',
                           subtitle: languageProfile == null
                               ? languageUserId == null
                                   ? 'Đăng nhập để thiết lập'
                                   : 'Chưa thiết lập'
-                              : '${languageLabel(languageProfile.nativeLanguageCode)} → '
-                                  '${languageLabel(languageProfile.learningLanguageCode)} · '
+                              : 'Giao tiếp: '
+                                  '${languageLabel(languageProfile.nativeLanguageCode)} · '
+                                  'Muốn học: '
+                                  '${languageLabel(languageProfile.learningLanguageCode)}\n'
                                   '${proficiencyLabel(languageProfile.proficiencyLevel)}',
                           onTap:
                               languageUserId == null || languageState.isSaving
@@ -637,70 +604,84 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       child: Column(
                         children: [
-                          SwitchListTile.adaptive(
-                            key: const Key('cloud-backup-switch'),
-                            value: cloudBackupEnabled,
-                            activeThumbColor: AppColors.ink,
-                            activeTrackColor: AppColors.mint,
-                            onChanged: !cloudBackupAvailable ||
-                                    libraryUserId == null ||
-                                    cloudBackupLoading ||
-                                    _isUpdatingCloudBackup ||
-                                    _isBackfillingCloudBackup
-                                ? null
-                                : _changeCloudBackupConsent,
-                            secondary: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: AppColors.blue.withValues(alpha: 0.28),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: AppColors.ink,
-                                  width: 1.8,
-                                ),
-                              ),
-                              child: _isUpdatingCloudBackup
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(10),
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.ink,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.cloud_upload_outlined,
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        AppColors.blue.withValues(alpha: 0.28),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
                                       color: AppColors.ink,
-                                      size: 22,
+                                      width: 1.8,
                                     ),
-                            ),
-                            title: const Text(
-                              'Sao lưu đám mây',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                            subtitle: Text(
-                              !cloudBackupAvailable
-                                  ? 'Web đang lưu cục bộ; đồng bộ cloud chưa được bật'
-                                  : libraryUserId == null
-                                      ? 'Đăng nhập để bật sao lưu'
-                                      : cloudBackupError
-                                          ? 'Không đọc được trạng thái trên máy'
-                                          : cloudBackupEnabled
-                                              ? 'Bài mới tự sao lưu; bài cũ chỉ khi bạn chọn'
-                                              : 'Chỉ lưu trên thiết bị',
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.mutedInk,
-                              ),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 2,
+                                  ),
+                                  child: _isUpdatingCloudBackup
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(10),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.ink,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.cloud_upload_outlined,
+                                          color: AppColors.ink,
+                                          size: 22,
+                                        ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Sao lưu đám mây',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                          color: AppColors.ink,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        !cloudBackupAvailable
+                                            ? 'Web đang lưu cục bộ; đồng bộ cloud chưa được bật'
+                                            : libraryUserId == null
+                                                ? 'Đăng nhập để bật sao lưu'
+                                                : cloudBackupError
+                                                    ? 'Không đọc được trạng thái trên máy'
+                                                    : cloudBackupEnabled
+                                                        ? 'Bài mới tự sao lưu; bài cũ chỉ khi bạn chọn'
+                                                        : 'Chỉ lưu trên thiết bị',
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.mutedInk,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SettingsToggle(
+                                  key: const Key('cloud-backup-switch'),
+                                  value: cloudBackupEnabled,
+                                  semanticLabel: 'Sao lưu đám mây',
+                                  onChanged: !cloudBackupAvailable ||
+                                          libraryUserId == null ||
+                                          cloudBackupLoading ||
+                                          _isUpdatingCloudBackup ||
+                                          _isBackfillingCloudBackup
+                                      ? null
+                                      : _changeCloudBackupConsent,
+                                ),
+                              ],
                             ),
                           ),
                           if (cloudBackupAvailable && cloudBackupEnabled)
@@ -782,6 +763,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     accent: AppColors.coral,
                   ),
                   const SizedBox(height: 8),
+
+                  if (user != null) ...[
+                    const AccountContactSection(),
+                    const SizedBox(height: 16),
+                  ],
 
                   // Logout Button
                   Container(
@@ -1065,7 +1051,8 @@ class _LanguageProfileDialogState
     }
     if (native == learning) {
       setState(
-        () => _validationError = 'Ngôn ngữ học phải khác ngôn ngữ gốc.',
+        () => _validationError =
+            'Ngôn ngữ muốn học phải khác ngôn ngữ giao tiếp.',
       );
       return;
     }
@@ -1086,17 +1073,28 @@ class _LanguageProfileDialogState
       DropdownMenuItem(value: 'en', child: Text('Tiếng Anh')),
     ];
 
-    return AlertDialog(
-      title: const Text('Ngôn ngữ của bạn'),
+    return SettingsDialog(
+      title: 'Ngôn ngữ giao tiếp và học',
+      icon: Icons.translate_rounded,
+      accentColor: AppColors.blue,
       content: SizedBox(
-        width: 360,
+        width: 380,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const Text(
+              'Ngôn ngữ giao tiếp được dùng khi nhắn tin và góp ý bản dịch. '
+              'Ngôn ngữ muốn học được dùng cho bản dịch và bài luyện tập.',
+            ),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               key: const Key('settings-native-language-field'),
+              isExpanded: true,
               initialValue: _nativeLanguageCode,
-              decoration: const InputDecoration(labelText: 'Ngôn ngữ gốc'),
+              decoration: settingsInputDecoration(
+                label: 'Ngôn ngữ giao tiếp',
+              ),
               items: languageItems,
               onChanged: state.isSaving
                   ? null
@@ -1108,8 +1106,11 @@ class _LanguageProfileDialogState
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               key: const Key('settings-learning-language-field'),
+              isExpanded: true,
               initialValue: _learningLanguageCode,
-              decoration: const InputDecoration(labelText: 'Ngôn ngữ muốn học'),
+              decoration: settingsInputDecoration(
+                label: 'Ngôn ngữ muốn học',
+              ),
               items: languageItems,
               onChanged: state.isSaving
                   ? null
@@ -1121,8 +1122,11 @@ class _LanguageProfileDialogState
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               key: const Key('settings-proficiency-level-field'),
+              isExpanded: true,
               initialValue: _proficiencyLevel,
-              decoration: const InputDecoration(labelText: 'Trình độ hiện tại'),
+              decoration: settingsInputDecoration(
+                label: 'Trình độ hiện tại',
+              ),
               items: supportedProficiencyLevels
                   .map(
                     (level) => DropdownMenuItem(
@@ -1151,20 +1155,23 @@ class _LanguageProfileDialogState
         ),
       ),
       actions: [
-        TextButton(
+        SettingsDialogAction(
+          label: 'Hủy',
           onPressed:
               state.isSaving ? null : () => Navigator.of(context).pop(false),
-          child: const Text('Hủy'),
+          surfaceColor: AppColors.softWhite,
         ),
-        FilledButton(
-          key: const Key('save-language-profile-button'),
+        SettingsDialogAction(
+          actionKey: const Key('save-language-profile-button'),
+          label: state.isSaving ? 'Đang lưu...' : 'Lưu',
           onPressed: state.isSaving ? null : _save,
-          child: state.isSaving
+          icon: state.isSaving
               ? const SizedBox.square(
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Lưu'),
+              : const Icon(Icons.check_rounded),
+          surfaceColor: AppColors.yellow,
         ),
       ],
     );

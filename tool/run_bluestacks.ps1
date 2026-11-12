@@ -1,7 +1,8 @@
 param(
     [int]$Port,
     [switch]$Release,
-    [switch]$Staging
+    [switch]$Staging,
+    [switch]$BuildAndInstall
 )
 
 $ErrorActionPreference = 'Stop'
@@ -99,14 +100,34 @@ try {
             SUPABASE_URL = "https://$stagingRef.supabase.co"
             SUPABASE_ANON_KEY = $anonValue
             LIBRARY_SYNC_ENABLED = $true
+            LESSON_RESULT_SYNC_ENABLED = $true
             CHAT_RELAY_ENABLED = $true
+            FRIENDS_ENABLED = $true
         } | ConvertTo-Json
         [IO.File]::WriteAllText($defineFile, $defines, (New-Object Text.UTF8Encoding($false)))
         $runArguments += "--dart-define-from-file=$defineFile"
     }
 
-    Write-Host 'Building and running Capy Vocab...' -ForegroundColor Cyan
-    flutter @runArguments
+    if ($BuildAndInstall) {
+        $buildArguments = @('build', 'apk', '--no-pub')
+        $buildArguments += if ($Release) { '--release' } else { '--debug' }
+        if ($defineFile) {
+            $buildArguments += "--dart-define-from-file=$defineFile"
+        }
+        Write-Host 'Building Capy Vocab with the selected backend and sync flags...' -ForegroundColor Cyan
+        flutter @buildArguments
+        if ($LASTEXITCODE -ne 0) { throw 'Flutter APK build failed.' }
+        $variant = if ($Release) { 'release' } else { 'debug' }
+        $apk = Join-Path $projectRoot "build\app\outputs\flutter-apk\app-$variant.apk"
+        & $adb -s $device install -r $apk
+        if ($LASTEXITCODE -ne 0) { throw 'APK installation failed.' }
+        & $adb -s $device shell am start -n 'com.capyvocab.app/.MainActivity'
+        if ($LASTEXITCODE -ne 0) { throw 'App launch failed.' }
+    } else {
+        Write-Host 'Building and running Capy Vocab...' -ForegroundColor Cyan
+        flutter @runArguments
+        if ($LASTEXITCODE -ne 0) { throw 'Flutter run failed.' }
+    }
 }
 finally {
     if ($defineFile -and (Test-Path -LiteralPath $defineFile)) {

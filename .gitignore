@@ -43,6 +43,12 @@ GoogleService-Info.plist
 build/
 ephemeral/
 **/failures/
+devtools_options.yaml
+
+# Local diagnostic artifacts
+.tmp/
+artifacts/
+__pycache__/
 
 # Node.js dependencies (Supabase CLI)
 node_modules/

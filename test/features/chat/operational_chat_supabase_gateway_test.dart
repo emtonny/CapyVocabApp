@@ -52,6 +52,86 @@ Map<String, dynamic> chatRow(
       'participant_high': high,
       'last_message_at': null
     };
+Map<String, dynamic> groupChatRow() => {
+      'id': uuid(900),
+      'kind': 'group',
+      'participant_low': null,
+      'participant_high': null,
+      'learning_group_id': uuid(901),
+      'last_message_at': instant.toIso8601String(),
+    };
+Map<String, dynamic> socialChatRow({String title = 'Nhóm cuối tuần'}) => {
+      'id': uuid(902),
+      'kind': 'social',
+      'participant_low': null,
+      'participant_high': null,
+      'learning_group_id': null,
+      'last_message_at': instant.toIso8601String(),
+    };
+Map<String, dynamic> socialChatMetadata({String title = 'Nhóm cuối tuần'}) => {
+      'conversation_id': uuid(902),
+      'title': title,
+      'owner_user_id': a,
+      'member_count': 2,
+      'status': 'active',
+    };
+Map<String, dynamic> translationRow(int n,
+        {String conversationId = conversation,
+        String translatorVersion = operationalChatTranslatorVersion}) =>
+    {
+      'id': uuid(n + 500),
+      'message_id': uuid(n),
+      'target_language_code': 'en',
+      'translated_text': 'Synthetic translation $n',
+      'provider': operationalChatTranslationProvider,
+      'model': operationalChatTranslationModel,
+      'prompt_version': operationalChatPromptVersion,
+      'translator_version': translatorVersion,
+      'status': 'succeeded',
+      'attempt_count': 1,
+      'next_attempt_at': null,
+      'error_code': null,
+      'created_at': instant.toIso8601String(),
+      'completed_at': instant.toIso8601String(),
+      'updated_at': instant.toIso8601String(),
+      'chat_operational_messages': {'conversation_id': conversationId}
+    };
+Map<String, dynamic> correctionRow(int n,
+        {String conversationId = conversation,
+        String status = 'proposed',
+        String author = a}) =>
+    {
+      'id': uuid(n + 700),
+      'message_id': uuid(n),
+      'author_id': author,
+      'target_language_code': 'en',
+      'proposed_text': 'Are you going tonight?',
+      'status': status,
+      'accepted_by': status == 'accepted' ? a : null,
+      'accepted_at': status == 'accepted' ? instant.toIso8601String() : null,
+      'rejected_by': status == 'rejected' ? a : null,
+      'rejected_at': status == 'rejected' ? instant.toIso8601String() : null,
+      'created_at': instant.toIso8601String(),
+      'updated_at': instant.toIso8601String(),
+      'chat_operational_messages': {'conversation_id': conversationId}
+    };
+Map<String, dynamic> annotationRow(int n,
+        {String conversationId = conversation}) =>
+    {
+      'id': uuid(n + 800),
+      'message_id': uuid(n),
+      'correction_id': uuid(n + 700),
+      'created_by': a,
+      'span_text': '😀',
+      'span_start': 9,
+      'span_end': 10,
+      'tag_type': 'slang',
+      'normalized_source': 'vui',
+      'annotator_role': 'source_speaker',
+      'status': 'active',
+      'created_at': instant.toIso8601String(),
+      'chat_operational_messages': {'conversation_id': conversationId}
+    };
 http.Response jsonResponse(Object? value, [int status = 200]) =>
     http.Response(jsonEncode(value), status,
         headers: {'content-type': 'application/json; charset=utf-8'});
@@ -110,6 +190,33 @@ void main() {
               isCurrentSession: () => true),
           throwsFormatException);
     }
+  });
+  test('failed image cleanup remains retryable after access is revoked',
+      () async {
+    final path = '$a/${uuid(1)}/image.jpg';
+    handler = (request) => request.url.path.contains('/rpc/')
+        ? jsonResponse([
+            {'object_path': path}
+          ])
+        : jsonResponse({
+            'message': 'Synthetic storage failure',
+            'statusCode': '503',
+            'error': 'Unavailable'
+          }, 503);
+    await expectLater(gateway.invalidateAlbumImages(uuid(90)),
+        relayFailure(ChatRelayFailureKind.retryable));
+    expect(requests.any((request) => request.method == 'DELETE'), isTrue);
+  });
+
+  test('image cleanup retry accepts already invalidated paths', () async {
+    final path = '$a/${uuid(1)}/image.jpg';
+    handler = (request) => request.url.path.contains('/rpc/')
+        ? jsonResponse([
+            {'object_path': path}
+          ])
+        : jsonResponse([]);
+    expect(await gateway.invalidateAlbumImages(uuid(90)), [path]);
+    expect(requests.last.method, 'DELETE');
   });
   test('insert preserves raw and sends only permitted columns with bound JWT',
       () async {
@@ -239,6 +346,147 @@ void main() {
       expect(request.url.queryParameters['moderation_state'], 'eq.visible');
     }
   });
+  test('translations paginate by version and conversation through RLS join',
+      () async {
+    handler = (request) {
+      final cursor = request.url.queryParameters['id'];
+      return jsonResponse(cursor == null
+          ? [translationRow(1)]
+          : cursor == 'gt.${uuid(501)}'
+              ? [translationRow(2)]
+              : []);
+    };
+
+    final rows = await gateway.fetchTranslations(conversation);
+
+    expect(rows.map((row) => row.messageId), [uuid(1), uuid(2)]);
+    expect(rows.every((row) => row.status == ChatTranslationStatus.succeeded),
+        isTrue);
+    expect(requests.length, 3);
+    for (final request in requests) {
+      expect(request.url.path, '/rest/v1/chat_translations');
+      expect(request.url.queryParameters['order'], 'id.asc.nullslast');
+      expect(request.url.queryParameters['translator_version'],
+          'in.("$operationalChatLegacyTranslatorVersion","$operationalChatPreviousTranslatorVersion","$operationalChatTranslatorVersion")');
+      expect(
+          request
+              .url.queryParameters['chat_operational_messages.conversation_id'],
+          'eq.$conversation');
+      expect(request.url.queryParameters['select'],
+          contains('chat_operational_messages!inner(conversation_id)'));
+    }
+  });
+  test('translation response from another chat or stale policy fails closed',
+      () async {
+    for (final row in [
+      translationRow(1, conversationId: uuid(999)),
+      translationRow(1, translatorVersion: 'chat-translate-old'),
+    ]) {
+      handler = (request) =>
+          jsonResponse(request.url.queryParameters['id'] == null ? [row] : []);
+      await expectLater(
+          gateway.fetchTranslations(conversation), throwsFormatException);
+    }
+  });
+  test('correction proposal sends only immutable proposal columns', () async {
+    final pending = OperationalChatCorrection(
+      id: uuid(701),
+      messageId: uuid(1),
+      authorId: a,
+      targetLanguageCode: 'en',
+      proposedText: 'Are you going tonight?',
+      status: ChatCorrectionStatus.proposed,
+      createdAt: instant,
+      updatedAt: instant,
+      syncStatus: ChatCorrectionSyncStatus.proposalPending,
+      nextAttemptAt: instant,
+    );
+    handler = (_) => jsonResponse(correctionRow(1), 201);
+
+    final ack = await gateway.proposeCorrection(pending);
+
+    expect(ack.id, pending.id);
+    expect(requests.single.url.path, '/rest/v1/chat_corrections');
+    expect(jsonDecode(requests.single.body), pending.insertPayload);
+    expect(jsonDecode(requests.single.body), isNot(contains('status')));
+  });
+  test('corrections page by conversation and reject a foreign joined row',
+      () async {
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null ? [correctionRow(1)] : []);
+    expect((await gateway.fetchCorrections(conversation)).single.messageId,
+        uuid(1));
+    expect(
+        requests.first.url
+            .queryParameters['chat_operational_messages.conversation_id'],
+        'eq.$conversation');
+
+    requests.clear();
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null
+            ? [correctionRow(1, conversationId: uuid(999))]
+            : []);
+    await expectLater(
+        gateway.fetchCorrections(conversation), throwsFormatException);
+  });
+  test('accept decision uses resolver RPC and validates its final state',
+      () async {
+    handler = (_) => jsonResponse(correctionRow(1, status: 'accepted'));
+
+    final result = await gateway.resolveCorrection(
+        uuid(701), ChatCorrectionDecision.accepted);
+
+    expect(result.status, ChatCorrectionStatus.accepted);
+    expect(requests.single.url.path, '/rest/v1/rpc/resolve_chat_correction');
+    expect(jsonDecode(requests.single.body), {
+      'p_correction_id': uuid(701),
+      'p_decision': 'accepted',
+    });
+  });
+  test('annotation proposal sends code-point span and immutable fields only',
+      () async {
+    final pending = OperationalChatAnnotation(
+      id: uuid(801),
+      messageId: uuid(1),
+      correctionId: uuid(701),
+      createdBy: a,
+      spanText: '😀',
+      spanStart: 9,
+      spanEnd: 10,
+      tagType: ChatAnnotationType.slang,
+      normalizedSource: 'vui',
+      createdAt: instant,
+      syncStatus: ChatAnnotationSyncStatus.pending,
+      nextAttemptAt: instant,
+    );
+    handler = (_) => jsonResponse(annotationRow(1), 201);
+
+    final ack = await gateway.proposeAnnotation(pending);
+
+    expect(ack.id, pending.id);
+    expect(requests.single.url.path, '/rest/v1/chat_slang_annotations');
+    expect(jsonDecode(requests.single.body), pending.insertPayload);
+    expect(jsonDecode(requests.single.body), isNot(contains('created_at')));
+  });
+  test('annotations page by conversation and reject a foreign joined row',
+      () async {
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null ? [annotationRow(1)] : []);
+    expect(
+        (await gateway.fetchAnnotations(conversation)).single.spanText, '😀');
+    expect(
+        requests.first.url
+            .queryParameters['chat_operational_messages.conversation_id'],
+        'eq.$conversation');
+
+    requests.clear();
+    handler = (request) => jsonResponse(
+        request.url.queryParameters['id'] == null
+            ? [annotationRow(1, conversationId: uuid(999))]
+            : []);
+    await expectLater(
+        gateway.fetchAnnotations(conversation), throwsFormatException);
+  });
   test('partial pagination failure returns no complete inventory', () async {
     handler = (request) => request.url.queryParameters['id'] == null
         ? jsonResponse([chatRow()])
@@ -246,6 +494,39 @@ void main() {
     await expectLater(gateway.fetchConversations(),
         relayFailure(ChatRelayFailureKind.retryable));
     expect(requests.length, 2);
+  });
+  test('group inventory joins authoritative group metadata once', () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/list_my_learning_groups') {
+        return jsonResponse([
+          {
+            'group_id': uuid(901),
+            'title': 'Lớp Anh văn',
+            'group_status': 'active',
+            'membership_status': 'active',
+            'is_muted': false,
+            'active_student_count': 3,
+          }
+        ]);
+      }
+      return jsonResponse(
+          request.url.queryParameters['id'] == null ? [groupChatRow()] : []);
+    };
+
+    final group = (await gateway.fetchConversations()).single;
+
+    expect(group.isGroup, isTrue);
+    expect(group.isSocialGroup, isFalse);
+    expect(group.socialOwnerId, isNull);
+    expect(group.groupId, uuid(901));
+    expect(group.title, 'Lớp Anh văn');
+    expect(group.memberCount, 4);
+    expect(group.canSend, isTrue);
+    expect(
+        requests
+            .where((r) => r.url.path == '/rest/v1/rpc/list_my_learning_groups')
+            .length,
+        1);
   });
   test('repeated cursor, malformed or foreign conversation fails closed',
       () async {
@@ -261,6 +542,70 @@ void main() {
           {'id': 42}
         ]);
     await expectLater(gateway.fetchConversations(), throwsFormatException);
+  });
+  test('social group lifecycle and member projection use bounded RPCs',
+      () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/rename_social_chat_group' ||
+          request.url.path == '/rest/v1/rpc/close_social_chat_group' ||
+          request.url.path == '/rest/v1/rpc/leave_social_chat_group') {
+        return jsonResponse(uuid(902));
+      }
+      if (request.url.path == '/rest/v1/rpc/list_my_social_chat_groups') {
+        final closed = requests.any(
+            (row) => row.url.path == '/rest/v1/rpc/close_social_chat_group');
+        return jsonResponse([
+          {
+            ...socialChatMetadata(title: 'Tên mới'),
+            'status': closed ? 'closed' : 'active',
+          }
+        ]);
+      }
+      if (request.url.path == '/rest/v1/rpc/list_social_chat_group_members') {
+        return jsonResponse([
+          {
+            'conversation_id': uuid(902),
+            'user_id': a,
+            'display_name': 'Owner',
+            'username': 'owner',
+            'avatar_url': '',
+            'is_owner': true,
+          },
+          {
+            'conversation_id': uuid(902),
+            'user_id': b,
+            'display_name': 'Friend',
+            'username': 'friend',
+            'avatar_url': '',
+            'is_owner': false,
+          },
+        ]);
+      }
+      return jsonResponse(socialChatRow());
+    };
+
+    final renamed = await gateway.renameSocialChatGroup(uuid(902), ' Tên mới ');
+    expect(renamed.title, 'Tên mới');
+    expect(jsonDecode(requests.first.body), {
+      'p_conversation_id': uuid(902),
+      'p_title': 'Tên mới',
+    });
+
+    requests.clear();
+    final members = await gateway.fetchSocialChatGroupMembers({uuid(902)});
+    expect(members.map((row) => row.profile.label), ['Owner', 'Friend']);
+    expect(members.first.isOwner, isTrue);
+    expect(jsonDecode(requests.single.body), {
+      'p_conversation_ids': [uuid(902)],
+    });
+
+    requests.clear();
+    final closed = await gateway.closeSocialChatGroup(uuid(902));
+    expect(closed.groupArchived, isTrue);
+
+    requests.clear();
+    await gateway.leaveSocialChatGroup(uuid(902));
+    expect(requests.single.url.path, '/rest/v1/rpc/leave_social_chat_group');
   });
   test('hidden row or history for another chat rejected', () async {
     for (final row in [
@@ -280,10 +625,70 @@ void main() {
     expect((await gateway.openDirectChat(b)).peerId, b);
     expect(requests.first.url.path, '/rest/v1/rpc/open_direct_chat');
     expect(jsonDecode(requests.first.body), {'p_peer_id': b});
+    expect(
+      requests.last.url.queryParameters['select'],
+      isNot(contains('social_owner_id')),
+    );
     handler = (request) => request.method == 'POST'
         ? jsonResponse(conversation)
         : jsonResponse(chatRow(high: uuid(3)));
     await expectLater(gateway.openDirectChat(b), throwsFormatException);
+  });
+  test('social group creation uses RPC and validates canonical metadata',
+      () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/create_social_chat_group') {
+        return jsonResponse(uuid(902));
+      }
+      if (request.url.path == '/rest/v1/rpc/list_my_social_chat_groups') {
+        return jsonResponse([socialChatMetadata()]);
+      }
+      return jsonResponse(socialChatRow());
+    };
+
+    final group = await gateway.createSocialChatGroup(
+      title: ' Nhóm cuối tuần ',
+      memberIds: [b],
+      requestId: uuid(903),
+    );
+
+    expect(group.isGroup, isTrue);
+    expect(group.groupId, uuid(902));
+    expect(group.title, 'Nhóm cuối tuần');
+    expect(group.memberCount, 2);
+    expect(requests.map((request) => request.url.path), [
+      '/rest/v1/rpc/create_social_chat_group',
+      '/rest/v1/rpc/list_my_social_chat_groups',
+      '/rest/v1/chat_conversations',
+    ]);
+    expect(jsonDecode(requests.first.body), {
+      'p_title': 'Nhóm cuối tuần',
+      'p_member_ids': [b],
+      'p_request_id': uuid(903),
+    });
+  });
+  test('social group inventory joins safe metadata and rejects missing rows',
+      () async {
+    handler = (request) {
+      if (request.url.path == '/rest/v1/rpc/list_my_social_chat_groups') {
+        return jsonResponse([socialChatMetadata()]);
+      }
+      return jsonResponse(
+        request.url.queryParameters['id'] == null ? [socialChatRow()] : [],
+      );
+    };
+
+    final group = (await gateway.fetchConversations()).single;
+    expect(group.title, 'Nhóm cuối tuần');
+    expect(group.memberCount, 2);
+
+    handler = (request) => request.url.path ==
+            '/rest/v1/rpc/list_my_social_chat_groups'
+        ? jsonResponse([])
+        : jsonResponse(
+            request.url.queryParameters['id'] == null ? [socialChatRow()] : [],
+          );
+    await expectLater(gateway.fetchConversations(), throwsFormatException);
   });
   test(
       'visibility checks chunk/paginate cached IDs only, no broad delete snapshot',
@@ -475,7 +880,16 @@ void main() {
           (joins.single['payload']['config']['postgres_changes'] as List)
               .map((row) => row['table'])
               .toSet(),
-          {'chat_conversations', 'chat_members', 'chat_operational_messages'});
+          {
+            'chat_conversations',
+            'chat_members',
+            'chat_operational_messages',
+            'chat_translations',
+            'chat_corrections',
+            'chat_slang_annotations',
+            'learning_groups',
+            'learning_group_members'
+          });
       final payload = {
         'ids': [3],
         'data': {

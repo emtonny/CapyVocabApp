@@ -5,7 +5,8 @@ Date: 2026-09-15. **C3B.1 + C3B.2 IMPLEMENTED / LOCAL VERIFIED; C3 PARTIAL.**
 ## Boundary
 
 `OperationalChatRuntime` is now mounted around the app, but activation requires
-`CHAT_RELAY_ENABLED=true`, exact Staging URL, a session and foreground lifecycle.
+`CHAT_RELAY_ENABLED=true` (source default), exact Staging URL, a session and
+foreground lifecycle.
 Default builds do not activate it, even against Staging. Production is rejected
 even with the flag enabled. Legacy chat UI remains unchanged. The gateway accepts
 only `nxteaznowkfennxpqjmt` and an authenticated

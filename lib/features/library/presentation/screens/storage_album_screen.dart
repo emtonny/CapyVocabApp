@@ -23,6 +23,8 @@ import '../providers/library_cloud_media_restore_provider.dart';
 import '../providers/library_provider.dart';
 import '../../../ai_scan/presentation/widgets/emoji_picker_dialog.dart';
 import '../../../ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
+import '../../../mini_games/application/lesson_question_builder.dart';
+import '../../../mini_games/application/lesson_session_controller.dart';
 part 'storage_album_photos.dart';
 part 'storage_album_albums.dart';
 part 'storage_album_recovery.dart';
@@ -31,9 +33,14 @@ part 'storage_album_detail.dart';
 
 /// Offline-first Library for saved scan aggregates and personal Albums.
 class StorageAlbumScreen extends ConsumerStatefulWidget {
-  const StorageAlbumScreen({this.onOpenPhotoNote, super.key});
+  const StorageAlbumScreen({
+    this.onOpenPhotoNote,
+    this.initialCapturedRange,
+    super.key,
+  });
 
   final ValueChanged<String>? onOpenPhotoNote;
+  final DateTimeRange? initialCapturedRange;
 
   @override
   ConsumerState<StorageAlbumScreen> createState() => _StorageAlbumScreenState();
@@ -209,14 +216,20 @@ enum _LibrarySubview { photos, albums, trash }
 enum _LibraryDatePreset { all, today, yesterday, last7Days, last30Days, custom }
 
 class _LibraryDateFilter {
-  const _LibraryDateFilter(this.preset, [this.date]);
+  const _LibraryDateFilter(this.preset, [this.date]) : capturedRange = null;
 
   const _LibraryDateFilter.all()
       : preset = _LibraryDatePreset.all,
+        date = null,
+        capturedRange = null;
+
+  const _LibraryDateFilter.range(this.capturedRange)
+      : preset = _LibraryDatePreset.custom,
         date = null;
 
   final _LibraryDatePreset preset;
   final DateTime? date;
+  final DateTimeRange? capturedRange;
 
   bool get isActive => preset != _LibraryDatePreset.all;
 }
@@ -227,6 +240,10 @@ List<PhotoNote> _filterNotesByDate(
   DateTime? Function(PhotoNote note) dateOf,
 ) {
   if (!filter.isActive) return notes;
+  // A mission range is already enforced by the repository against
+  // media_assets.captured_at. PhotoNote does not carry that timestamp, so a
+  // second presentation-layer filter would incorrectly use its creation time.
+  if (filter.capturedRange != null) return notes;
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
 
@@ -273,8 +290,27 @@ class _StorageAlbumScreenState extends ConsumerState<StorageAlbumScreen> {
   _LibraryDateFilter _trashDateFilter = const _LibraryDateFilter.all();
 
   @override
+  void initState() {
+    super.initState();
+    final range = widget.initialCapturedRange;
+    if (range != null) {
+      _photoDateFilter = _LibraryDateFilter.range(range);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final notes = ref.watch(libraryPhotoNotesProvider);
+    final range = widget.initialCapturedRange;
+    final notes = range == null
+        ? ref.watch(libraryPhotoNotesProvider)
+        : ref.watch(
+            libraryPhotoNotesByCapturedRangeProvider(
+              (
+                fromInclusive: range.start,
+                toExclusive: range.end,
+              ),
+            ),
+          );
     final mediaRecovery = ref.watch(libraryMediaRecoverySnapshotProvider);
     final openedAlbum = _openedAlbum;
 
