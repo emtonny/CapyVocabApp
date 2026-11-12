@@ -6,14 +6,17 @@ import '../../../../core/services/supabase_service.dart';
 import '../../../language_profile/application/language_profile_store.dart';
 import '../../../language_profile/domain/entities/language_profile.dart';
 import '../../../language_profile/presentation/language_profile_provider.dart';
+import '../../../auth/data/repositories/account_phone_verification_gateway.dart';
+import '../../../auth/domain/account_phone.dart';
 import '../../application/onboarding_status_store.dart';
 import '../../data/repositories/onboarding_repository.dart';
 import '../../domain/entities/onboarding_data.dart';
+import '../../domain/entities/language_country_option.dart';
 import 'onboarding_status_provider.dart';
 
 const _usernamePattern = r'^[a-zA-Z0-9_]{3,20}$';
-const _phonePattern = r'^0[0-9]{9}$';
 const _timePattern = r'^(?:[01][0-9]|2[0-3]):[0-5][0-9]$';
+const _supportedAccountRoles = {'personal', 'parent', 'teacher'};
 
 int studyDurationMinutes(String startTime, String endTime) {
   final startMinutes = _minutesSinceMidnight(startTime);
@@ -27,6 +30,46 @@ int _minutesSinceMidnight(String value) {
   return int.parse(parts[0]) * 60 + int.parse(parts[1]);
 }
 
+OnboardingData _alignLanguageChoices(OnboardingData data) {
+  var native = data.nativeLanguageCode;
+  var learning = data.learningLanguageCode;
+
+  if (!supportedLanguageCodes.contains(native)) {
+    final interfaceCode =
+        languageCountryByLocale(data.interfaceLocale).languageCode;
+    native =
+        supportedLanguageCodes.contains(interfaceCode) ? interfaceCode : 'vi';
+  }
+  if (!supportedLanguageCodes.contains(learning)) {
+    final learningCode =
+        languageCountryByLocale(data.learningLocale).languageCode;
+    learning =
+        supportedLanguageCodes.contains(learningCode) ? learningCode : 'en';
+  }
+  if (native == learning) {
+    learning = native == 'vi' ? 'en' : 'vi';
+  }
+
+  return data.copyWith(
+    interfaceLocale: _localeForLanguage(data.interfaceLocale, native!),
+    learningLocale: _localeForLanguage(data.learningLocale, learning!),
+    nativeLanguageCode: native,
+    learningLanguageCode: learning,
+  );
+}
+
+String _localeForLanguage(String currentLocale, String languageCode) {
+  if (kLanguageCountries.any(
+    (option) =>
+        option.locale == currentLocale && option.languageCode == languageCode,
+  )) {
+    return currentLocale;
+  }
+  return kLanguageCountries
+      .firstWhere((option) => option.languageCode == languageCode)
+      .locale;
+}
+
 final onboardingRepositoryProvider = Provider<OnboardingRepository>(
   (ref) => SupabaseOnboardingRepository(),
 );
@@ -38,6 +81,10 @@ class OnboardingState {
     this.isInitializing = true,
     this.isCheckingUsername = false,
     this.isCheckingPhone = false,
+    this.isSendingPhoneCode = false,
+    this.isVerifyingPhone = false,
+    this.phoneVerificationSent = false,
+    this.phoneVerified = false,
     this.isSaving = false,
     this.fieldErrors = const {},
     this.initializationError,
@@ -51,12 +98,21 @@ class OnboardingState {
   final bool isInitializing;
   final bool isCheckingUsername;
   final bool isCheckingPhone;
+  final bool isSendingPhoneCode;
+  final bool isVerifyingPhone;
+  final bool phoneVerificationSent;
+  final bool phoneVerified;
   final bool isSaving;
   final Map<String, String> fieldErrors;
   final String? initializationError;
   final String? saveError;
 
-  bool get isBusy => isCheckingUsername || isCheckingPhone || isSaving;
+  bool get isBusy =>
+      isCheckingUsername ||
+      isCheckingPhone ||
+      isSendingPhoneCode ||
+      isVerifyingPhone ||
+      isSaving;
 
   OnboardingState copyWith({
     int? currentStep,
@@ -64,6 +120,10 @@ class OnboardingState {
     bool? isInitializing,
     bool? isCheckingUsername,
     bool? isCheckingPhone,
+    bool? isSendingPhoneCode,
+    bool? isVerifyingPhone,
+    bool? phoneVerificationSent,
+    bool? phoneVerified,
     bool? isSaving,
     Map<String, String>? fieldErrors,
     Object? initializationError = _notProvided,
@@ -75,6 +135,11 @@ class OnboardingState {
       isInitializing: isInitializing ?? this.isInitializing,
       isCheckingUsername: isCheckingUsername ?? this.isCheckingUsername,
       isCheckingPhone: isCheckingPhone ?? this.isCheckingPhone,
+      isSendingPhoneCode: isSendingPhoneCode ?? this.isSendingPhoneCode,
+      isVerifyingPhone: isVerifyingPhone ?? this.isVerifyingPhone,
+      phoneVerificationSent:
+          phoneVerificationSent ?? this.phoneVerificationSent,
+      phoneVerified: phoneVerified ?? this.phoneVerified,
       isSaving: isSaving ?? this.isSaving,
       fieldErrors: fieldErrors ?? this.fieldErrors,
       initializationError: identical(initializationError, _notProvided)
@@ -90,10 +155,12 @@ class OnboardingState {
 class OnboardingNotifier extends StateNotifier<OnboardingState> {
   OnboardingNotifier({
     required OnboardingRepository repository,
+    required AccountPhoneVerificationGateway phoneVerificationGateway,
     OnboardingStatusStore? onboardingStatusStore,
     LanguageProfileStore? languageProfileStore,
     String? Function()? currentUserId,
   })  : _repository = repository,
+        _phoneVerificationGateway = phoneVerificationGateway,
         _onboardingStatusStore =
             onboardingStatusStore ?? MemoryOnboardingStatusStore(),
         _languageProfileStore =
@@ -102,6 +169,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
         super(const OnboardingState());
 
   final OnboardingRepository _repository;
+  final AccountPhoneVerificationGateway _phoneVerificationGateway;
   final OnboardingStatusStore _onboardingStatusStore;
   final LanguageProfileStore _languageProfileStore;
   final String? Function() _currentUserId;
@@ -115,9 +183,17 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     }
 
     try {
-      final data = await _repository.loadDraft();
-      if (data.nativeLanguageCode != null &&
-          data.learningLanguageCode != null) {
+      var data = await _repository.loadDraft();
+      final hasStoredLanguageProfile =
+          data.nativeLanguageCode != null && data.learningLanguageCode != null;
+      final verifiedPhone = accountSmsVerificationEnabled
+          ? _phoneVerificationGateway.verifiedPhone
+          : null;
+      if (verifiedPhone != null) {
+        data = data.copyWith(phone: verifiedPhone);
+      }
+      data = _alignLanguageChoices(data);
+      if (hasStoredLanguageProfile) {
         final userId = _currentUserId();
         if (userId != null) {
           await _languageProfileStore.setProfile(
@@ -132,6 +208,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       }
       state = state.copyWith(
         data: data,
+        phoneVerified: verifiedPhone != null,
         isInitializing: false,
         initializationError: null,
       );
@@ -176,23 +253,106 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void updatePhone(String value) {
     state = state.copyWith(
       data: state.data.copyWith(phone: value),
+      phoneVerificationSent: false,
+      phoneVerified: false,
       fieldErrors: _withoutErrors('phone'),
       saveError: null,
     );
   }
 
-  void updateInterfaceLocale(String value) {
+  Future<bool> requestPhoneCode() async {
+    if (state.isBusy) return false;
+    final phone = normalizeAccountPhone(state.data.phone);
+    if (phone == null) {
+      state = state.copyWith(
+        fieldErrors: const {
+          'phone': 'Nhập mã quốc gia và số điện thoại, ví dụ +84987654321.',
+        },
+      );
+      return false;
+    }
+
     state = state.copyWith(
-      data: state.data.copyWith(interfaceLocale: value),
-      fieldErrors: _withoutErrors('interfaceLocale'),
+      data: state.data.copyWith(phone: phone),
+      isSendingPhoneCode: true,
+      fieldErrors: const {},
+    );
+    try {
+      final isAvailable = await _repository.isPhoneAvailable(phone);
+      if (!isAvailable) {
+        state = state.copyWith(
+          isSendingPhoneCode: false,
+          fieldErrors: const {'phone': 'Số điện thoại chưa hợp lệ.'},
+        );
+        return false;
+      }
+      await _phoneVerificationGateway.requestCode(phone);
+      final alreadyVerified = _phoneVerificationGateway.verifiedPhone == phone;
+      state = state.copyWith(
+        isSendingPhoneCode: false,
+        phoneVerificationSent: !alreadyVerified,
+        phoneVerified: alreadyVerified,
+        fieldErrors: const {},
+      );
+      return true;
+    } on AccountPhoneVerificationException catch (error) {
+      state = state.copyWith(
+        isSendingPhoneCode: false,
+        fieldErrors: {'phone': error.message},
+      );
+      return false;
+    } on OnboardingRepositoryException catch (error) {
+      state = state.copyWith(
+        isSendingPhoneCode: false,
+        fieldErrors: {'phone': error.message},
+      );
+      return false;
+    }
+  }
+
+  Future<bool> verifyPhoneCode(String code) async {
+    if (state.isBusy || !state.phoneVerificationSent) return false;
+    final phone = normalizeAccountPhone(state.data.phone);
+    if (phone == null) return false;
+    state = state.copyWith(isVerifyingPhone: true, fieldErrors: const {});
+    try {
+      await _phoneVerificationGateway.verifyCode(phone: phone, code: code);
+      state = state.copyWith(
+        isVerifyingPhone: false,
+        phoneVerificationSent: false,
+        phoneVerified: true,
+        fieldErrors: const {},
+      );
+      return true;
+    } on AccountPhoneVerificationException catch (error) {
+      state = state.copyWith(
+        isVerifyingPhone: false,
+        fieldErrors: {'phoneCode': error.message},
+      );
+      return false;
+    }
+  }
+
+  void updateInterfaceLocale(String value) {
+    final languageCode = languageCountryByLocale(value).languageCode;
+    state = state.copyWith(
+      data: state.data.copyWith(
+        interfaceLocale: value,
+        nativeLanguageCode: languageCode,
+      ),
+      fieldErrors: _withoutLanguageErrors(),
       saveError: null,
     );
   }
 
   void updateLearningLocale(String value) {
+    final languageCode = languageCountryByLocale(value).languageCode;
     state = state.copyWith(
-      data: state.data.copyWith(learningLocale: value),
-      fieldErrors: _withoutErrors('learningLocale'),
+      data: state.data.copyWith(
+        learningLocale: value,
+        learningLanguageCode: languageCode,
+      ),
+      fieldErrors: _withoutLanguageErrors(),
       saveError: null,
     );
   }
@@ -201,22 +361,6 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     state = state.copyWith(
       data: state.data.copyWith(accountRole: value),
       fieldErrors: _withoutErrors('accountRole'),
-      saveError: null,
-    );
-  }
-
-  void updateNativeLanguage(String value) {
-    state = state.copyWith(
-      data: state.data.copyWith(nativeLanguageCode: value),
-      fieldErrors: _withoutLanguageErrors(),
-      saveError: null,
-    );
-  }
-
-  void updateLearningLanguage(String value) {
-    state = state.copyWith(
-      data: state.data.copyWith(learningLanguageCode: value),
-      fieldErrors: _withoutLanguageErrors(),
       saveError: null,
     );
   }
@@ -270,15 +414,14 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       1 => Future.value(_validateLanguageStep()),
       2 => _validateAgePhoneStep(),
       3 => Future.value(_validateRoleStep()),
-      4 => Future.value(_validateLanguageProfileStep()),
-      5 => Future.value(_validateStudyTimeStep()),
-      6 => Future.value(_validateDailyTargetStep()),
+      4 => Future.value(_validateStudyTimeStep()),
+      5 => Future.value(_validateDailyTargetStep()),
       _ => Future.value(false),
     };
   }
 
   Future<bool> nextStep() async {
-    if (state.isBusy || state.currentStep >= 6) return false;
+    if (state.isBusy || state.currentStep >= 5) return false;
     if (!await validateCurrentStep()) return false;
 
     state = state.copyWith(
@@ -439,7 +582,6 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Future<bool> _validateAgePhoneStep() async {
     final errors = <String, String>{};
     final age = state.data.age;
-    final phone = state.data.phone.trim();
 
     if (age == null) {
       errors['age'] = 'Vui lòng nhập tuổi.';
@@ -447,19 +589,29 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       errors['age'] = 'Tuổi phải nằm trong khoảng từ 1 đến 120.';
     }
 
-    if (phone.isEmpty) {
+    if (!accountSmsVerificationEnabled) {
+      state = state.copyWith(fieldErrors: errors);
+      return errors.isEmpty;
+    }
+
+    final phone = normalizeAccountPhone(state.data.phone);
+
+    if (state.data.phone.trim().isEmpty) {
       errors['phone'] = 'Vui lòng nhập số điện thoại.';
-    } else if (!RegExp(_phonePattern).hasMatch(phone)) {
-      errors['phone'] = 'Số điện thoại phải gồm đúng 10 số và bắt đầu bằng 0.';
+    } else if (phone == null) {
+      errors['phone'] =
+          'Nhập mã quốc gia và số điện thoại, ví dụ +84987654321.';
+    } else if (!state.phoneVerified) {
+      errors['phoneCode'] = 'Vui lòng xác nhận số điện thoại bằng mã SMS.';
     }
 
     state = state.copyWith(
-      data: state.data.copyWith(phone: phone),
+      data: state.data.copyWith(phone: phone ?? state.data.phone.trim()),
       fieldErrors: errors,
     );
     if (errors.isNotEmpty) return false;
 
-    final checkedPhone = phone;
+    final checkedPhone = phone!;
     state = state.copyWith(
       isCheckingPhone: true,
       fieldErrors: const {},
@@ -511,12 +663,25 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   }
 
   bool _validateLanguageStep() {
+    final native = state.data.nativeLanguageCode;
+    final learning = state.data.learningLanguageCode;
+    final proficiency = state.data.proficiencyLevel;
     final errors = <String, String>{};
     if (state.data.interfaceLocale.trim().isEmpty) {
-      errors['interfaceLocale'] = 'Vui lòng chọn ngôn ngữ giao diện.';
+      errors['interfaceLocale'] = 'Vui lòng chọn ngôn ngữ giao tiếp.';
+    } else if (!supportedLanguageCodes.contains(native)) {
+      errors['interfaceLocale'] = 'Ngôn ngữ giao tiếp chưa được hỗ trợ.';
     }
     if (state.data.learningLocale.trim().isEmpty) {
       errors['learningLocale'] = 'Vui lòng chọn ngôn ngữ bạn muốn học.';
+    } else if (!supportedLanguageCodes.contains(learning)) {
+      errors['learningLocale'] = 'Ngôn ngữ muốn học chưa được hỗ trợ.';
+    } else if (native == learning) {
+      errors['learningLocale'] =
+          'Ngôn ngữ muốn học phải khác ngôn ngữ giao tiếp.';
+    }
+    if (!supportedProficiencyLevels.contains(proficiency)) {
+      errors['proficiencyLevel'] = 'Vui lòng chọn trình độ hiện tại.';
     }
     state = state.copyWith(fieldErrors: errors);
     return errors.isEmpty;
@@ -524,35 +689,13 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
   bool _validateRoleStep() {
     final role = state.data.accountRole;
-    final isValid = role == 'personal' || role == 'parent';
+    final isValid = _supportedAccountRoles.contains(role);
     state = state.copyWith(
       fieldErrors: isValid
           ? const {}
           : const {'accountRole': 'Vui lòng chọn một vai trò.'},
     );
     return isValid;
-  }
-
-  bool _validateLanguageProfileStep() {
-    final native = state.data.nativeLanguageCode;
-    final learning = state.data.learningLanguageCode;
-    final proficiency = state.data.proficiencyLevel;
-    final errors = <String, String>{};
-
-    if (!supportedLanguageCodes.contains(native)) {
-      errors['nativeLanguageCode'] = 'Vui lòng chọn ngôn ngữ gốc.';
-    }
-    if (!supportedLanguageCodes.contains(learning)) {
-      errors['learningLanguageCode'] = 'Vui lòng chọn ngôn ngữ muốn học.';
-    } else if (native == learning) {
-      errors['learningLanguageCode'] = 'Ngôn ngữ học phải khác ngôn ngữ gốc.';
-    }
-    if (!supportedProficiencyLevels.contains(proficiency)) {
-      errors['proficiencyLevel'] = 'Vui lòng chọn trình độ hiện tại.';
-    }
-
-    state = state.copyWith(fieldErrors: errors);
-    return errors.isEmpty;
   }
 
   bool _validateStudyTimeStep() {
@@ -602,6 +745,8 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Map<String, String> _withoutLanguageErrors() {
     final errors = Map<String, String>.from(state.fieldErrors);
     errors
+      ..remove('interfaceLocale')
+      ..remove('learningLocale')
       ..remove('nativeLanguageCode')
       ..remove('learningLanguageCode');
     return errors;
@@ -617,6 +762,8 @@ final onboardingProvider =
     StateNotifierProvider<OnboardingNotifier, OnboardingState>((ref) {
   final notifier = OnboardingNotifier(
     repository: ref.watch(onboardingRepositoryProvider),
+    phoneVerificationGateway:
+        ref.watch(accountPhoneVerificationGatewayProvider),
     onboardingStatusStore: ref.watch(onboardingStatusStoreProvider),
     languageProfileStore: ref.watch(languageProfileStoreProvider),
     currentUserId: () => SupabaseService.auth.currentUser?.id,

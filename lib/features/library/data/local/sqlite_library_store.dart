@@ -22,6 +22,7 @@ typedef LibraryCloudBackfillCandidate = ({
 final class SqliteLibraryStore
     implements
         LibraryRepository,
+        LocalVocabularyLookupRepository,
         AlbumRepository,
         LearningRepository,
         SyncRepository,
@@ -328,6 +329,94 @@ final class SqliteLibraryStore
     userId = requireUuid(userId, 'userId');
     photoNoteId = requireUuid(photoNoteId, 'photoNoteId');
     return _loadPhotoNoteSnapshot(_database, userId, photoNoteId);
+  }
+
+  @override
+  Future<List<LocalVocabularyMatch>> lookupLocalVocabulary({
+    required String userId,
+    required String query,
+    int limit = 8,
+  }) async {
+    userId = requireUuid(userId, 'userId');
+    if (limit <= 0 || limit > 20) {
+      throw ArgumentError.value(limit, 'limit', 'must be between 1 and 20');
+    }
+    final normalizedQuery = normalizeLocalVocabularyQuery(query);
+    if (normalizedQuery.isEmpty || normalizedQuery.runes.length > 80) {
+      return const [];
+    }
+
+    final rows = await _database.rawQuery('''
+      WITH candidates AS (
+        SELECT
+          COALESCE(NULLIF(TRIM(a.corrected_word), ''), d.word_raw) AS word,
+          COALESCE(NULLIF(TRIM(a.corrected_phonetic), ''), d.phonetic) AS phonetic,
+          COALESCE(NULLIF(TRIM(a.corrected_meaning_vi), ''), d.meaning_vi) AS meaning_vi,
+          d.part_of_speech,
+          d.example_en,
+          d.example_vi,
+          CASE WHEN a.corrected_word IS NOT NULL
+                 OR a.corrected_phonetic IS NOT NULL
+                 OR a.corrected_meaning_vi IS NOT NULL
+               THEN 1 ELSE 0 END AS corrected,
+          p.id AS photo_note_id,
+          p.updated_at
+        FROM vocab_detections d
+        JOIN scan_runs s
+          ON s.id = d.scan_run_id AND s.user_id = ?
+        JOIN photo_notes p
+          ON p.primary_scan_run_id = s.id AND p.user_id = s.user_id
+        LEFT JOIN vocab_annotations a ON a.id = (
+          SELECT latest.id
+          FROM vocab_annotations latest
+          WHERE latest.user_id = s.user_id
+            AND latest.detection_id = d.id
+            AND latest.deleted_at IS NULL
+          ORDER BY latest.revision DESC, latest.updated_at DESC, latest.id DESC
+          LIMIT 1
+        )
+        WHERE s.status = 'succeeded'
+          AND p.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM sync_tombstones tombstone
+            WHERE tombstone.user_id = p.user_id
+              AND tombstone.entity_type = 'photo_note'
+              AND tombstone.entity_id = p.id
+          )
+      ), matches AS (
+        SELECT * FROM candidates
+        WHERE lower(trim(word)) = ?
+      )
+      SELECT
+        word,
+        phonetic,
+        meaning_vi,
+        part_of_speech,
+        example_en,
+        example_vi,
+        MAX(corrected) AS corrected,
+        COUNT(DISTINCT photo_note_id) AS occurrence_count,
+        MAX(updated_at) AS last_seen_at
+      FROM matches
+      GROUP BY word, phonetic, meaning_vi, part_of_speech, example_en, example_vi
+      ORDER BY corrected DESC, last_seen_at DESC, word COLLATE NOCASE
+      LIMIT ?
+    ''', [userId, normalizedQuery, limit]);
+
+    return rows
+        .map(
+          (row) => LocalVocabularyMatch(
+            word: row['word']! as String,
+            phonetic: row['phonetic'] as String?,
+            meaningVi: row['meaning_vi'] as String?,
+            partOfSpeech: row['part_of_speech'] as String?,
+            exampleEn: row['example_en'] as String?,
+            exampleVi: row['example_vi'] as String?,
+            occurrenceCount: row['occurrence_count']! as int,
+            corrected: row['corrected'] == 1,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<PhotoNoteSnapshot?> _loadPhotoNoteSnapshot(
@@ -2153,15 +2242,24 @@ final class SqliteLibraryStore
   Future<void> markPhotoNoteSynced({
     required String userId,
     required String photoNoteId,
+    DateTime? expectedUpdatedAt,
   }) async {
     userId = requireUuid(userId, 'userId');
     photoNoteId = requireUuid(photoNoteId, 'photoNoteId');
     final count = await _database.update(
       'photo_notes',
       {'sync_status': 'synced'},
-      where: 'id = ? AND user_id = ?',
-      whereArgs: [photoNoteId, userId],
+      where: 'id = ? AND user_id = ?'
+          '${expectedUpdatedAt == null ? '' : ' AND updated_at = ?'}',
+      whereArgs: [
+        photoNoteId,
+        userId,
+        if (expectedUpdatedAt != null)
+          requireUtc(expectedUpdatedAt, 'expectedUpdatedAt').toIso8601String(),
+      ],
     );
+    // An edit/delete made while upload was in flight owns its newer outbox work.
+    if (count == 0 && expectedUpdatedAt != null) return;
     if (count != 1) throw StateError('Unknown Photo Note for this account');
     _notify({'photo:$userId'});
   }
@@ -2263,27 +2361,33 @@ final class SqliteLibraryStore
             mediaId,
           ]);
         }
-        await transaction.rawInsert('''
-          INSERT INTO sync_tombstones (
-            id, user_id, entity_type, entity_id, deletion_version,
-            deleted_at, remote_purge_completed
-          ) VALUES (?, ?, 'photo_note', ?, ?, ?, 1)
-          ON CONFLICT (user_id, entity_type, entity_id) DO UPDATE SET
-            deletion_version = MAX(
-              sync_tombstones.deletion_version,
-              excluded.deletion_version
-            ),
-            deleted_at = CASE
-              WHEN excluded.deletion_version >= sync_tombstones.deletion_version
-              THEN excluded.deleted_at ELSE sync_tombstones.deleted_at END,
-            remote_purge_completed = 1
-        ''', [
-          _nextId(),
-          delta.userId,
-          deletion.photoNoteId,
-          deletion.sequence,
-          deletion.deletedAt.toIso8601String(),
-        ]);
+        final tombstones = await transaction.query(
+          'sync_tombstones',
+          where: 'user_id = ? AND entity_type = ? AND entity_id = ?',
+          whereArgs: [delta.userId, 'photo_note', deletion.photoNoteId],
+          limit: 1,
+        );
+        final previous = tombstones.isEmpty ? null : tombstones.single;
+        final newer = previous == null ||
+            deletion.sequence >= (previous['deletion_version']! as int);
+        await _upsert(
+          transaction,
+          'sync_tombstones',
+          {
+            'id': previous?['id'] ?? _nextId(),
+            'user_id': delta.userId,
+            'entity_type': 'photo_note',
+            'entity_id': deletion.photoNoteId,
+            'deletion_version':
+                newer ? deletion.sequence : previous['deletion_version'],
+            'deleted_at': newer
+                ? deletion.deletedAt.toIso8601String()
+                : previous['deleted_at'],
+            'remote_purge_completed': 1,
+          },
+          const ['user_id', 'entity_type', 'entity_id'],
+          immutableColumns: const ['id'],
+        );
         await transaction.update(
           'photo_notes',
           {
@@ -2401,17 +2505,16 @@ final class SqliteLibraryStore
         contentChanged = true;
       }
 
-      await transaction.rawInsert('''
-        INSERT INTO library_pull_cursors (user_id, last_sequence, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT (user_id) DO UPDATE SET
-          last_sequence = excluded.last_sequence,
-          updated_at = excluded.updated_at
-      ''', [
-        delta.userId,
-        delta.nextCursor,
-        _clock().toUtc().toIso8601String(),
-      ]);
+      await _upsert(
+        transaction,
+        'library_pull_cursors',
+        {
+          'user_id': delta.userId,
+          'last_sequence': delta.nextCursor,
+          'updated_at': _clock().toUtc().toIso8601String(),
+        },
+        const ['user_id'],
+      );
       return contentChanged;
     });
     if (changed) {

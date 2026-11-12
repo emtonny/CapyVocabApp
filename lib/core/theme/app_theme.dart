@@ -65,7 +65,7 @@ class AppTheme {
         fontFamily: 'Nunito',
         brightness: Brightness.light,
         colorSchemeSeed: AppColors.duoGreen,
-        scaffoldBackgroundColor: AppColors.creamyYuzu,
+        scaffoldBackgroundColor: AppColors.paleGold,
         pageTransitionsTheme: _softTransitionsTheme,
       );
 

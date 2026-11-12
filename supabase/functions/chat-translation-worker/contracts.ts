@@ -1,6 +1,6 @@
-export const CHAT_TRANSLATOR_VERSION = "chat-translate-v1";
-export const CHAT_PROMPT_VERSION = "chat-translate-p1";
-export const CHAT_TRANSLATION_MODEL = "gemini-3.5-flash-lite";
+export const CHAT_TRANSLATOR_VERSION = "chat-translate-v3";
+export const CHAT_PROMPT_VERSION = "chat-translate-p3";
+export const CHAT_TRANSLATION_MODEL = "gemini-3-flash-preview";
 export const CHAT_PROVIDER_TIMEOUT_MS = 15_000;
 export const CHAT_TRANSLATION_MAX_LENGTH = 16_000;
 

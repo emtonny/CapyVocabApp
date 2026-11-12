@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:typed_data';
 
+import '../../../core/utils/random_uuid.dart';
 import '../data/operational_chat_store.dart';
 import '../domain/operational_chat.dart';
 import 'operational_chat_relay.dart';
@@ -17,8 +19,10 @@ final class OperationalChatCoordinator {
     required this.networkAvailable,
     required this.cachedSourceLanguageCode,
     DateTime Function()? clock,
+    String Function()? idGenerator,
     this.repairInterval = const Duration(seconds: 30),
-  }) : _clock = clock ?? DateTime.now {
+  })  : _clock = clock ?? DateTime.now,
+        _idGenerator = idGenerator ?? createRandomUuidV4 {
     if (repairInterval <= Duration.zero) {
       throw ArgumentError('Invalid chat repair interval.');
     }
@@ -32,6 +36,7 @@ final class OperationalChatCoordinator {
   final String? Function() cachedSourceLanguageCode;
   final Duration repairInterval;
   final DateTime Function() _clock;
+  final String Function() _idGenerator;
   late OperationalChatRelay _relay;
   StreamSubscription<ChatRemoteSignal>? _subscription;
   Future<ChatSyncOutcome>? _flight;
@@ -120,6 +125,65 @@ final class OperationalChatCoordinator {
     return message;
   }
 
+  Future<OperationalChatMessage> enqueueAlbumImage({
+    required String conversationId,
+    required String sourcePhotoNoteId,
+    required String localRelativePath,
+    required String mimeType,
+    required int byteSize,
+    required List<OperationalChatImageLabel> labels,
+  }) async {
+    final code = _source;
+    if (!_active || code == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final message = await _relay.enqueue(
+      conversationId: conversationId,
+      rawText: operationalChatAlbumImagePlaceholder,
+      sourceLanguageCode: code,
+      sourcePhotoNoteId: sourcePhotoNoteId,
+      localImageRelativePath: localRelativePath,
+      imageMimeType: mimeType,
+      imageByteSize: byteSize,
+      imageLabels: labels,
+    );
+    _scheduleSafely();
+    return message;
+  }
+
+  Future<bool> retryBlockedMessage(String messageId) async {
+    final code = _source;
+    if (!_active || code == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final requeued = await store.retryBlockedMessage(
+      messageId,
+      sourceLanguageCode: code,
+      retryAt: _now,
+      isCurrent: () => _active,
+    );
+    if (requeued) {
+      _retryAt = null;
+      _failures = 0;
+      _scheduleSafely();
+    }
+    return requeued;
+  }
+
+  Future<void> invalidateAlbumImageShares(String sourcePhotoNoteId) async {
+    if (!_active) throw StateError('No active chat owner.');
+    await store.enqueueAlbumImageInvalidation(sourcePhotoNoteId,
+        createdAt: _now);
+    _scheduleSafely();
+  }
+
+  Future<Uint8List> downloadAlbumImage(OperationalChatAlbumImage image) async {
+    if (!_active || !image.available) {
+      throw StateError('Album image is unavailable.');
+    }
+    return remote.downloadAlbumImage(image);
+  }
+
   Future<ChatConversation> openDirectChat(String peerId) async {
     if (!_active || _source == null) {
       throw StateError('Chat language profile required.');
@@ -140,6 +204,189 @@ final class OperationalChatCoordinator {
         isCurrent: () => _valid(epoch));
     requestRefresh();
     return conversation;
+  }
+
+  Future<ChatConversation> createSocialChatGroup({
+    required String title,
+    required List<String> memberIds,
+  }) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final conversation = await remote.createSocialChatGroup(
+      title: title,
+      memberIds: memberIds,
+      requestId: _idGenerator(),
+    );
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: [conversation],
+      capturedIds: const {},
+      visibleIds: {conversation.id},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+    return conversation;
+  }
+
+  Future<List<SocialChatMember>> socialChatGroupMembers(
+      Set<String> conversationIds) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final members = await remote.fetchSocialChatGroupMembers(conversationIds);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    return members;
+  }
+
+  Future<ChatConversation> renameSocialChatGroup(
+      String conversationId, String title) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final conversation =
+        await remote.renameSocialChatGroup(conversationId, title);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: [conversation],
+      capturedIds: const {},
+      visibleIds: {conversation.id},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+    return conversation;
+  }
+
+  Future<ChatConversation> closeSocialChatGroup(String conversationId) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    final conversation = await remote.closeSocialChatGroup(conversationId);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: [conversation],
+      capturedIds: const {},
+      visibleIds: {conversation.id},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+    return conversation;
+  }
+
+  Future<void> leaveSocialChatGroup(String conversationId) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final epoch = _epoch;
+    if (!await networkAvailable().timeout(const Duration(seconds: 3)) ||
+        !_valid(epoch)) {
+      throw const ChatRelayException(ChatRelayFailureKind.retryable);
+    }
+    await remote.leaveSocialChatGroup(conversationId);
+    if (!_valid(epoch)) throw const ChatRefreshSuperseded();
+    final revision = store.revision;
+    await store.applyConversationRefresh(
+      conversations: const [],
+      capturedIds: {conversationId},
+      visibleIds: const {},
+      expectedRevision: revision,
+      isCurrent: () => _valid(epoch),
+    );
+    requestRefresh();
+  }
+
+  Future<OperationalChatCorrection> proposeCorrection({
+    required String messageId,
+    required String proposedText,
+    required String targetLanguageCode,
+  }) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final now = _now;
+    final correction = OperationalChatCorrection(
+      id: _idGenerator(),
+      messageId: messageId,
+      authorId: store.owner.userId,
+      targetLanguageCode: targetLanguageCode,
+      proposedText: proposedText,
+      status: ChatCorrectionStatus.proposed,
+      createdAt: now,
+      updatedAt: now,
+      syncStatus: ChatCorrectionSyncStatus.proposalPending,
+      nextAttemptAt: now,
+    );
+    await store.enqueueCorrection(correction, isCurrent: () => _active);
+    _scheduleSafely();
+    return correction;
+  }
+
+  Future<void> decideCorrection(
+      String correctionId, ChatCorrectionDecision decision) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    await store.queueCorrectionDecision(correctionId, decision, _now,
+        isCurrent: () => _active);
+    _scheduleSafely();
+  }
+
+  Future<OperationalChatAnnotation> proposeAnnotation({
+    required String messageId,
+    required String correctionId,
+    required String spanText,
+    required int spanStart,
+    required int spanEnd,
+    required ChatAnnotationType tagType,
+    required String normalizedSource,
+  }) async {
+    if (!_active || _source == null) {
+      throw StateError('Chat language profile required.');
+    }
+    final now = _now;
+    final annotation = OperationalChatAnnotation(
+      id: _idGenerator(),
+      messageId: messageId,
+      correctionId: correctionId,
+      createdBy: store.owner.userId,
+      spanText: spanText,
+      spanStart: spanStart,
+      spanEnd: spanEnd,
+      tagType: tagType,
+      normalizedSource: normalizedSource,
+      createdAt: now,
+      syncStatus: ChatAnnotationSyncStatus.pending,
+      nextAttemptAt: now,
+    );
+    await store.enqueueAnnotation(annotation, isCurrent: () => _active);
+    _scheduleSafely();
+    return annotation;
   }
 
   Future<ChatSyncOutcome> synchronize() {
@@ -177,8 +424,17 @@ final class OperationalChatCoordinator {
         _repairSocket = socketRevision != _socketRevision;
       }
 
+      _syncStage = 'image_invalidation_outbox';
+      await _drainAlbumImageInvalidations(epoch);
+      if (!_valid(epoch)) return ChatSyncOutcome.idle;
       _syncStage = 'outbox';
       await _relay.synchronize(); // raw outbox before potentially slow history
+      if (!_valid(epoch)) return ChatSyncOutcome.idle;
+      _syncStage = 'correction_outbox';
+      await _drainCorrections(epoch);
+      if (!_valid(epoch)) return ChatSyncOutcome.idle;
+      _syncStage = 'annotation_outbox';
+      await _drainAnnotations(epoch);
       if (!_valid(epoch)) return ChatSyncOutcome.idle;
       if (_refreshRequested ||
           _nextRepairAt == null ||
@@ -256,8 +512,118 @@ final class OperationalChatCoordinator {
           visibleIds: visibleIds,
           expectedRevision: revision,
           isCurrent: current);
+      _syncStage = 'translation_fetch';
+      final translations = await remote.fetchTranslations(conversation.id);
+      if (!current()) throw const ChatRefreshSuperseded();
+      if (translations.isNotEmpty) {
+        _syncStage = 'translation_commit';
+        await store.mergeTranslations(
+            conversationId: conversation.id,
+            translations: translations,
+            isCurrent: current);
+      }
+      if (conversation.isDirect) {
+        _syncStage = 'correction_fetch';
+        final corrections = await remote.fetchCorrections(conversation.id);
+        if (!current()) throw const ChatRefreshSuperseded();
+        if (corrections.isNotEmpty) {
+          _syncStage = 'correction_commit';
+          await store.mergeCorrections(
+              conversationId: conversation.id,
+              corrections: corrections,
+              isCurrent: current);
+        }
+        _syncStage = 'annotation_fetch';
+        final annotations = await remote.fetchAnnotations(conversation.id);
+        if (!current()) throw const ChatRefreshSuperseded();
+        if (annotations.isNotEmpty) {
+          _syncStage = 'annotation_commit';
+          await store.mergeAnnotations(
+              conversationId: conversation.id,
+              annotations: annotations,
+              isCurrent: current);
+        }
+      }
     }
     if (!current()) throw const ChatRefreshSuperseded();
+  }
+
+  Future<void> _drainCorrections(int epoch) async {
+    final pending = await store.dueCorrections(_now);
+    for (final correction in pending) {
+      if (!_valid(epoch) || !_online) return;
+      try {
+        final OperationalChatCorrection ack;
+        if (correction.syncStatus == ChatCorrectionSyncStatus.proposalPending) {
+          ack = await remote.proposeCorrection(correction);
+        } else {
+          ack = await remote.resolveCorrection(
+              correction.id, correction.pendingDecision!);
+        }
+        if (!_valid(epoch)) return;
+        await store.mergeCorrectionAck(ack, isCurrent: () => _valid(epoch));
+      } catch (error) {
+        if (!_valid(epoch)) return;
+        final blocked = error is FormatException ||
+            (error is ChatRelayException &&
+                error.kind == ChatRelayFailureKind.denied) ||
+            correction.attemptCount >= 3;
+        final seconds = (5 << correction.attemptCount).clamp(5, 120);
+        await store.failCorrection(correction,
+            blocked: blocked,
+            retryAt: _now.add(Duration(seconds: seconds)),
+            isCurrent: () => _valid(epoch));
+      }
+    }
+  }
+
+  Future<void> _drainAlbumImageInvalidations(int epoch) async {
+    final pending = await store.dueAlbumImageInvalidations(_now);
+    for (final item in pending) {
+      if (!_valid(epoch) || !_online) return;
+      try {
+        await remote.invalidateAlbumImages(item.photoNoteId);
+        if (!_valid(epoch)) return;
+        await store.completeAlbumImageInvalidation(item.photoNoteId);
+      } catch (error) {
+        if (!_valid(epoch)) return;
+        final permanent = error is FormatException ||
+            (error is ChatRelayException &&
+                error.kind == ChatRelayFailureKind.denied);
+        // Revoking access is a durable obligation, not a best-effort send.
+        // Keep retrying transient failures with a capped delay, across restarts.
+        final seconds = (2 << item.attemptCount.clamp(0, 8)).clamp(2, 300);
+        await store.failAlbumImageInvalidation(
+          item.photoNoteId,
+          attemptCount: item.attemptCount,
+          retryAt: _now.add(Duration(seconds: seconds)),
+          blocked: permanent,
+        );
+      }
+    }
+  }
+
+  Future<void> _drainAnnotations(int epoch) async {
+    final pending = await store.dueAnnotations(_now);
+    for (final annotation in pending) {
+      if (!_valid(epoch) || !_online) return;
+      try {
+        final ack = await remote.proposeAnnotation(annotation);
+        if (!_valid(epoch)) return;
+        await store.mergeAnnotationAck(ack, isCurrent: () => _valid(epoch));
+      } catch (error) {
+        if (!_valid(epoch)) return;
+        final blocked = error is FormatException ||
+            (error is ChatRelayException &&
+                error.kind == ChatRelayFailureKind.denied) ||
+            annotation.attemptCount >= 3;
+        final seconds = (5 << annotation.attemptCount).clamp(5, 120);
+        await store.failAnnotation(annotation,
+            blocked: blocked,
+            retryAt: _now.add(Duration(seconds: seconds)),
+            isCurrent: () => _valid(epoch));
+      }
+    }
   }
 
   void _onSignal(ChatRemoteSignal signal) {
@@ -311,6 +677,14 @@ final class OperationalChatCoordinator {
       final pending =
           await store.nextPendingAt(now, sourceLanguageCode: source);
       if (pending != null && pending.isBefore(deadline)) deadline = pending;
+      final correctionPending = await store.nextCorrectionPendingAt(now);
+      if (correctionPending != null && correctionPending.isBefore(deadline)) {
+        deadline = correctionPending;
+      }
+      final annotationPending = await store.nextAnnotationPendingAt(now);
+      if (annotationPending != null && annotationPending.isBefore(deadline)) {
+        deadline = annotationPending;
+      }
     }
     if (generation != _scheduleGeneration ||
         !_started ||

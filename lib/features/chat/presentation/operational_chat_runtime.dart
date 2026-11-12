@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../language_profile/presentation/language_profile_provider.dart';
 import 'operational_chat_provider.dart';
 
 /// Opt-in Staging lifecycle host. Never blocks rendering on sync/network.
@@ -43,6 +44,7 @@ class _OperationalChatRuntimeState extends ConsumerState<OperationalChatRuntime>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(languageProfileProvider);
     ref.watch(operationalChatCoordinatorProvider);
     return widget.child;
   }

@@ -11,12 +11,20 @@ import {
 
 const GEMINI_ENDPOINT =
   `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_TRANSLATION_MODEL}:generateContent`;
+const DEFAULT_VILAO_BASE_URL = "https://api.vilao.ai/v1";
 const MAX_RETRY_AFTER_SECONDS = 300;
 
 type Fetcher = typeof fetch;
 
 export interface GeminiTranslationProviderOptions {
   readonly apiKey: string;
+  readonly fetcher?: Fetcher;
+  readonly now?: () => number;
+}
+
+export interface VilaoTranslationProviderOptions {
+  readonly apiKey: string;
+  readonly baseUrl?: string;
   readonly fetcher?: Fetcher;
   readonly now?: () => number;
 }
@@ -117,6 +125,57 @@ function outputFromResponse(value: unknown): string {
   return text;
 }
 
+function vilaoEndpoint(baseUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(baseUrl.trim());
+  } catch {
+    throw new TypeError("Vilao base URL is invalid");
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new TypeError("Vilao base URL must use HTTPS without credentials");
+  }
+  url.search = "";
+  url.hash = "";
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  if (!url.pathname.endsWith("/chat/completions")) {
+    url.pathname += "/chat/completions";
+  }
+  return url.toString();
+}
+
+function outputFromVilaoResponse(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TranslationProviderFailure("MALFORMED_RESPONSE");
+  }
+  const choices = (value as Record<string, unknown>).choices;
+  if (!Array.isArray(choices) || choices.length !== 1) {
+    throw new TranslationProviderFailure("MALFORMED_RESPONSE");
+  }
+  const choice = choices[0];
+  if (!choice || typeof choice !== "object" || Array.isArray(choice)) {
+    throw new TranslationProviderFailure("MALFORMED_RESPONSE");
+  }
+  const choiceRecord = choice as Record<string, unknown>;
+  if (choiceRecord.finish_reason !== "stop") {
+    throw new TranslationProviderFailure("MALFORMED_RESPONSE");
+  }
+  const message = choiceRecord.message;
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    throw new TranslationProviderFailure("MALFORMED_RESPONSE");
+  }
+  const text = (message as Record<string, unknown>).content;
+  if (typeof text !== "string") {
+    throw new TranslationProviderFailure("OUTPUT_INVALID");
+  }
+  if (
+    !/\S/u.test(text) || Array.from(text).length > CHAT_TRANSLATION_MAX_LENGTH
+  ) {
+    throw new TranslationProviderFailure("OUTPUT_INVALID");
+  }
+  return text;
+}
+
 export function createGeminiTranslationProvider(
   options: GeminiTranslationProviderOptions,
 ): TranslationProvider {
@@ -168,6 +227,58 @@ export function createGeminiTranslationProvider(
         throw new TranslationProviderFailure("MALFORMED_RESPONSE", { cause });
       }
       return { translatedText: outputFromResponse(body) };
+    },
+  };
+}
+
+export function createVilaoTranslationProvider(
+  options: VilaoTranslationProviderOptions,
+): TranslationProvider {
+  const apiKey = options.apiKey.trim();
+  if (!apiKey) throw new TypeError("Vilao API key is required");
+  const endpoint = vilaoEndpoint(options.baseUrl ?? DEFAULT_VILAO_BASE_URL);
+  const fetcher = options.fetcher ?? fetch;
+  const now = options.now ?? Date.now;
+
+  return {
+    async translate(
+      request: TranslationProviderRequest,
+    ): Promise<TranslationProviderResult> {
+      validatePolicy(request);
+
+      let response: Response;
+      try {
+        response = await fetcher(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          signal: request.signal,
+          body: JSON.stringify({
+            model: request.model,
+            messages: [
+              { role: "system", content: systemInstruction(request) },
+              { role: "user", content: request.rawText },
+            ],
+            temperature: 0,
+            max_tokens: 4096,
+            stream: false,
+          }),
+        });
+      } catch (cause) {
+        throw new TranslationProviderFailure("PROVIDER_NETWORK", { cause });
+      }
+
+      if (!response.ok) await rejectHttpResponse(response, now);
+
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch (cause) {
+        throw new TranslationProviderFailure("MALFORMED_RESPONSE", { cause });
+      }
+      return { translatedText: outputFromVilaoResponse(body) };
     },
   };
 }

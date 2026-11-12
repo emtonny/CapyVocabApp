@@ -37,16 +37,52 @@ final class OperationalChatRelay {
   Future<OperationalChatMessage> enqueue(
       {required String conversationId,
       required String rawText,
-      required String sourceLanguageCode}) async {
+      required String sourceLanguageCode,
+      String? sourcePhotoNoteId,
+      String? localImageRelativePath,
+      String? imageMimeType,
+      int? imageByteSize,
+      List<OperationalChatImageLabel> imageLabels = const []}) async {
     if (!_active) throw StateError('No active chat owner.');
+    final id = _idGenerator();
+    final hasImage = sourcePhotoNoteId != null ||
+        localImageRelativePath != null ||
+        imageMimeType != null ||
+        imageByteSize != null;
+    OperationalChatAlbumImage? albumImage;
+    if (hasImage) {
+      if (sourcePhotoNoteId == null ||
+          localImageRelativePath == null ||
+          imageMimeType == null ||
+          imageByteSize == null) {
+        throw const FormatException('Incomplete Album image selection.');
+      }
+      final extension = switch (imageMimeType) {
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/heic' => 'heic',
+        _ => throw const FormatException('Unsupported Album image type.'),
+      };
+      albumImage = OperationalChatAlbumImage(
+        sourcePhotoNoteId: sourcePhotoNoteId,
+        objectPath: '${store.owner.userId}/$id/image.$extension',
+        mimeType: imageMimeType,
+        byteSize: imageByteSize,
+        available: true,
+        labels: imageLabels,
+        localRelativePath: localImageRelativePath,
+      );
+    }
     final message = OperationalChatMessage(
-        id: _idGenerator(),
+        id: id,
         conversationId: conversationId,
         senderId: store.owner.userId,
         rawText: rawText,
         sourceLanguageCode: sourceLanguageCode,
         clientGeneratedId: _idGenerator(),
-        clientCreatedAt: _clock().toUtc());
+        clientCreatedAt: _clock().toUtc(),
+        albumImage: albumImage);
     await store.enqueue(message, isCurrent: () => _active);
     return message;
   }

@@ -7,6 +7,40 @@ import 'package:flutter_test/flutter_test.dart';
 const _userId = 'a1000000-0000-0000-0000-000000000001';
 
 void main() {
+  test('revoking consent during fetch does not commit or request another page',
+      () async {
+    final local = _FakePullStore(enabled: true);
+    final remote = _FakePullGateway(
+        userId: _userId,
+        deltas: [
+          _delta(previous: 0, next: 4, hasMore: true),
+        ],
+        onFetch: () => local.enabled = false);
+    final result = await LibraryCloudPullWorker(local: local, remote: remote)
+        .pull(userId: _userId);
+    expect(result.skippedForConsent, isTrue);
+    expect(local.cursor, 0);
+    expect(remote.requestedCursors, [0]);
+  });
+
+  test('account switch during fetch cannot advance the previous owner cursor',
+      () async {
+    final local = _FakePullStore(enabled: true);
+    late _FakePullGateway remote;
+    remote = _FakePullGateway(
+        userId: _userId,
+        deltas: [
+          _delta(previous: 0, next: 4, hasMore: false),
+        ],
+        onFetch: () => remote.authenticatedUserId = null);
+    await expectLater(
+      LibraryCloudPullWorker(local: local, remote: remote)
+          .pull(userId: _userId),
+      throwsA(isA<LibrarySyncFailure>()),
+    );
+    expect(local.cursor, 0);
+  });
+
   test('consent off performs no remote request', () async {
     final local = _FakePullStore(enabled: false);
     final remote = _FakePullGateway(userId: _userId, deltas: const []);
@@ -104,7 +138,7 @@ LibraryCloudDelta _delta({
 final class _FakePullStore implements LibraryCloudPullStore {
   _FakePullStore({required this.enabled});
 
-  final bool enabled;
+  bool enabled;
   int cursor = 0;
 
   @override
@@ -122,12 +156,15 @@ final class _FakePullStore implements LibraryCloudPullStore {
 
 final class _FakePullGateway implements LibraryCloudPullGateway {
   _FakePullGateway(
-      {required String? userId, required List<LibraryCloudDelta> deltas})
+      {required String? userId,
+      required List<LibraryCloudDelta> deltas,
+      this.onFetch})
       : authenticatedUserId = userId,
         _deltas = List.of(deltas);
 
   @override
-  final String? authenticatedUserId;
+  String? authenticatedUserId;
+  final void Function()? onFetch;
   final List<LibraryCloudDelta> _deltas;
   final List<int> requestedCursors = [];
 
@@ -138,6 +175,7 @@ final class _FakePullGateway implements LibraryCloudPullGateway {
     int limit = 100,
   }) async {
     requestedCursors.add(afterCursor);
+    onFetch?.call();
     return _deltas.removeAt(0);
   }
 }

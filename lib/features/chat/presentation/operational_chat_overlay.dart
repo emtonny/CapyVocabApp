@@ -4,16 +4,25 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../shared/widgets/app_user_avatar.dart';
+import '../../../shared/widgets/sticker_button.dart';
 import '../../ai_scan/presentation/widgets/scan_paper_background.dart';
 import '../domain/operational_chat.dart';
+import 'operational_chat_message_body.dart';
+import 'operational_chat_correction_panel.dart';
+import 'operational_chat_album_image_message.dart';
+import 'operational_chat_album_image_picker.dart';
 import 'operational_chat_provider.dart';
+import 'operational_social_group_sheet.dart';
+import 'operational_social_group_creator.dart';
 
 const _bubbleSize = 64.0;
 const _edgeInset = 8.0;
 const _idleDelay = Duration(seconds: 5);
+// AppColors.cream blended 30% toward white.
+const _conversationPaperColor = Color(0xFFFCF9F0);
 
 /// Global AssistiveTouch-style entry point for operational chat.
 class OperationalChatOverlay extends ConsumerStatefulWidget {
@@ -89,13 +98,33 @@ class _OperationalChatOverlayState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(operationalChatLibraryDeletionBridgeProvider);
     final enabled = ref.watch(operationalChatEnabledProvider);
     final owner = enabled ? ref.watch(operationalChatOwnerProvider) : null;
+    ref.listen<OperationalChatMailboxRequest?>(
+      operationalChatMailboxControllerProvider,
+      (_, request) {
+        if (request == null || request.owner != owner) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted ||
+              request.owner != ref.read(operationalChatOwnerProvider)) {
+            return;
+          }
+          _idleTimer?.cancel();
+          setState(() {
+            _isDraggingBubble = false;
+            _peeking = false;
+            _panelOpen = true;
+          });
+        });
+      },
+    );
     if (owner == null) {
       _idleTimer?.cancel();
       return widget.child;
     }
     final inbox = ref.watch(operationalChatInboxProvider(owner));
+    final mailboxRequest = ref.watch(operationalChatMailboxControllerProvider);
     final unread = inbox.asData?.value.fold<int>(
             0, (total, conversation) => total + conversation.unreadCount) ??
         0;
@@ -169,6 +198,9 @@ class _OperationalChatOverlayState
                           child: _ChatMailbox(
                             key: ValueKey(owner.scope),
                             owner: owner,
+                            request: mailboxRequest?.owner == owner
+                                ? mailboxRequest
+                                : null,
                             onClose: _closePanel,
                             onOpenConversation: widget.openConversation,
                             onDragUpdate: (details) {
@@ -280,49 +312,52 @@ class _ChatBubble extends StatelessWidget {
                 )
               ],
             ),
-            child: const ClipOval(
-              child: Image(
-                image: AssetImage('assets/images/deery-email-avatar.jpg'),
-                fit: BoxFit.cover,
+            child: const Center(
+              child: Icon(
+                Icons.forum_rounded,
+                color: AppColors.softWhite,
+                size: 31,
               ),
             ),
           ),
-        if (unread > 0)
-          Positioned(
-            right: -3,
-            top: -3,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE94141),
-                border: Border.all(color: AppColors.softWhite, width: 2),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                unread > 99 ? '99+' : '$unread',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900),
+          if (unread > 0)
+            Positioned(
+              right: -3,
+              top: -3,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE94141),
+                  border: Border.all(color: AppColors.softWhite, width: 2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  unread > 99 ? '99+' : '$unread',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900),
+                ),
               ),
             ),
-          ),
-      ]),
-    );
+        ]),
+      );
 }
 
 class _ChatMailbox extends ConsumerStatefulWidget {
   const _ChatMailbox({
     required this.owner,
     required this.onClose,
+    required this.request,
     this.onOpenConversation,
     this.onDragUpdate,
     super.key,
   });
 
   final ChatOwner owner;
+  final OperationalChatMailboxRequest? request;
   final VoidCallback onClose;
   final ValueChanged<String>? onOpenConversation;
   final GestureDragUpdateCallback? onDragUpdate;
@@ -334,14 +369,42 @@ class _ChatMailbox extends ConsumerStatefulWidget {
 class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
   final _search = TextEditingController();
   String? _activeConversationId;
-  String? _activePeerId;
   String? _openingPeer;
-  bool _showAiNotice = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _applyRequest(widget.request);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatMailbox oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.request?.revision != oldWidget.request?.revision) {
+      _applyRequest(widget.request);
+    }
+  }
+
+  void _applyRequest(OperationalChatMailboxRequest? request) {
+    if (request == null || request.owner != widget.owner) return;
+    _activeConversationId = request.conversationId;
+  }
 
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  Future<void> _createGroup() async {
+    final conversation =
+        await showOperationalSocialGroupCreator(context, owner: widget.owner);
+    if (!mounted ||
+        ref.read(operationalChatOwnerProvider) != widget.owner ||
+        conversation == null) {
+      return;
+    }
+    await _open('', conversation);
   }
 
   Future<void> _open(String peerId, ChatConversation? conversation) async {
@@ -351,7 +414,6 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
       widget.onOpenConversation?.call(conversation.id);
       setState(() {
         _activeConversationId = conversation.id;
-        _activePeerId = conversation.peerId;
       });
       return;
     }
@@ -365,7 +427,6 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
         widget.onOpenConversation?.call(opened.id);
         setState(() {
           _activeConversationId = opened.id;
-          _activePeerId = peerId;
         });
       }
     } catch (_) {
@@ -393,9 +454,18 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
     final profileById = {for (final profile in profiles) profile.id: profile};
     final conversations = inbox.asData?.value ?? const <ChatConversation>[];
     final conversationByPeer = {
-      for (final conversation in conversations)
+      for (final conversation in conversations.where((row) => row.isDirect))
         conversation.peerId: conversation
     };
+    final groupConversations = conversations
+        .where((row) => row.isGroup)
+        .where((row) =>
+            _search.text.trim().isEmpty ||
+            row.title!.toLowerCase().contains(
+                  _search.text.trim().toLowerCase(),
+                ))
+        .toList()
+      ..sort(_conversationOrder);
     final peerIds = <String>{
       ...conversationByPeer.keys,
       ...?friends.asData?.value,
@@ -427,38 +497,38 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
       });
     final totalUnread = conversations.fold<int>(
         0, (total, conversation) => total + conversation.unreadCount);
+    ChatConversation? activeConversation;
+    for (final row in conversations) {
+      if (row.id == _activeConversationId) activeConversation = row;
+    }
 
     Widget content;
-    if (_activeConversationId != null) {
-      final activePeerId = _activePeerId ??
-          conversationByPeer.entries
-              .firstWhere(
-                (e) => e.value.id == _activeConversationId,
-                orElse: () => MapEntry(
-                  '',
-                  ChatConversation(id: _activeConversationId!, peerId: ''),
-                ),
-              )
-              .value
-              .peerId;
-      final activeProfile = profileById[activePeerId];
+    if (activeConversation != null) {
+      final activeProfile = activeConversation.isDirect
+          ? profileById[activeConversation.peerId]
+          : null;
       content = _MailboxConversationView(
         key: ValueKey('mailbox-conv-$_activeConversationId'),
         owner: widget.owner,
-        conversationId: _activeConversationId!,
-        peerId: activePeerId,
+        conversation: activeConversation,
         profile: activeProfile,
+        profileById: profileById,
         onBack: () => setState(() {
           _activeConversationId = null;
-          _activePeerId = null;
         }),
         onClose: widget.onClose,
         onDragUpdate: widget.onDragUpdate,
       );
     } else {
       content = Column(children: [
+        TextButton.icon(
+          key: const Key('chat-mailbox-create-group'),
+          onPressed: () => _createGroup(),
+          icon: const Icon(Icons.group_add_outlined),
+          label: const Text('Tạo nhóm chat'),
+        ),
         _MailboxHeader(
-          activeCount: peerIds.length,
+          activeCount: peerIds.length + groupConversations.length,
           unreadCount: totalUnread,
           onClose: widget.onClose,
           onDragUpdate: widget.onDragUpdate,
@@ -472,44 +542,43 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                 controller: _search,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  hintText: 'Tìm kiếm bạn bè...',
-                  prefixIcon:
-                      const Icon(Icons.search, color: AppColors.blue),
+                  hintText: 'Tìm nhóm hoặc bạn bè...',
+                  prefixIcon: const Icon(Icons.search, color: AppColors.blue),
                   suffixIcon: _search.text.isEmpty
                       ? null
-                      : IconButton(
-                          tooltip: 'Xóa tìm kiếm',
-                          onPressed: () {
-                            _search.clear();
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.close),
+                      : Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: _StickerIconButton(
+                            semanticLabel: 'Xóa tìm kiếm',
+                            icon: Icons.close_rounded,
+                            flat: true,
+                            showShadow: false,
+                            onPressed: () {
+                              _search.clear();
+                              setState(() {});
+                            },
+                          ),
                         ),
                   filled: true,
                   fillColor: Colors.white,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(
-                        color: Color(0xFF3E322E), width: 2),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF3E322E), width: 2),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(
-                        color: Color(0xFF3E322E), width: 2),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF3E322E), width: 2),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              _AiCard(
-                showNotice: _showAiNotice,
-                onTap: () => setState(() => _showAiNotice = true),
               ),
               const SizedBox(height: 12),
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'TRÒ CHUYỆN BẠN BÈ',
+                  'NHÓM VÀ BẠN BÈ',
                   style: TextStyle(
                     color: Color(0xFF9B877D),
                     fontSize: 12,
@@ -524,6 +593,7 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                   loading: inbox.isLoading && friends.isLoading,
                   hasError: inbox.hasError && friends.hasError,
                   peerIds: entries,
+                  groupConversations: groupConversations,
                   profileById: profileById,
                   conversationByPeer: conversationByPeer,
                   openingPeer: _openingPeer,
@@ -531,8 +601,8 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
                   onRetry: () {
                     ref.invalidate(
                         operationalChatFriendsProvider(widget.owner));
-                    ref.invalidate(operationalChatProfileRefreshProvider(
-                        widget.owner));
+                    ref.invalidate(
+                        operationalChatProfileRefreshProvider(widget.owner));
                   },
                 ),
               ),
@@ -545,24 +615,32 @@ class _ChatMailboxState extends ConsumerState<_ChatMailbox> {
     return Material(
       color: Colors.transparent,
       child: Container(
+        key: const Key('chat-mailbox-frame'),
         decoration: BoxDecoration(
-          color: AppColors.cream,
+          color: const Color(0xFF3E322E),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFF3E322E), width: 3),
           boxShadow: const [
             BoxShadow(color: Color(0xFF3E322E), offset: Offset(0, 10))
           ],
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: ScanPaperBackground(),
+        padding: const EdgeInsets.all(3),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(21),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ScanPaperBackground(
+                    key: const Key('chat-paper-background'),
+                    backgroundColor: _activeConversationId == null
+                        ? AppColors.cream
+                        : _conversationPaperColor,
+                  ),
+                ),
               ),
-            ),
-            content,
-          ],
+              content,
+            ],
+          ),
         ),
       ),
     );
@@ -591,8 +669,8 @@ class _MailboxHeader extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF1C7),
-              border:
-                  Border(bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
+              border: Border(
+                  bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
             ),
             child: Row(children: [
               Container(
@@ -608,96 +686,46 @@ class _MailboxHeader extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child:
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Row(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          'Hộp Thư Chat',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w900),
-                        ),
+                      const Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Hộp Thư Chat',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(Icons.drag_indicator_rounded,
+                              size: 14, color: Color(0xFF9B877D)),
+                        ],
                       ),
-                      SizedBox(width: 4),
-                      Icon(Icons.drag_indicator_rounded,
-                          size: 14, color: Color(0xFF9B877D)),
-                    ],
-                  ),
-                  Text(
-                    unreadCount > 0
-                        ? '$unreadCount chưa đọc · $activeCount bạn'
-                        : '$activeCount bạn bè',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: AppColors.darkGreen,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700),
-                  ),
-                ]),
+                      Text(
+                        unreadCount > 0
+                            ? '$unreadCount chưa đọc · $activeCount bạn'
+                            : '$activeCount bạn bè',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: AppColors.darkGreen,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ]),
               ),
               IconButton(
                 key: const Key('chat-mailbox-close'),
                 tooltip: 'Đóng hộp thư',
                 onPressed: onClose,
-                icon: const Icon(Icons.close, color: AppColors.ink),
+                icon: const Icon(Icons.close_rounded, color: AppColors.ink),
               ),
             ]),
           ),
-        ),
-      );
-}
-
-class _AiCard extends StatelessWidget {
-  const _AiCard({required this.showNotice, required this.onTap});
-  final bool showNotice;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-        key: const Key('chat-ai-card'),
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(11),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF2CC),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.duoOrange, width: 2.5),
-            boxShadow: const [
-              BoxShadow(color: AppColors.duoOrange, offset: Offset(0, 5))
-            ],
-          ),
-          child: Row(children: [
-            const CircleAvatar(
-              radius: 23,
-              backgroundImage:
-                  AssetImage('assets/images/deery-email-avatar.jpg'),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Deery-sensei AI ✨',
-                        style: TextStyle(fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 2),
-                    Text(
-                      showNotice
-                          ? 'Chat với AI chưa mở. Bạn quay lại sau nhé!'
-                          : 'Trợ lý học từ vựng · Sắp ra mắt',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ]),
-            ),
-            const Icon(Icons.lock_clock_outlined, color: AppColors.duoOrange),
-          ]),
         ),
       );
 }
@@ -707,6 +735,7 @@ class _MailboxList extends StatelessWidget {
     required this.loading,
     required this.hasError,
     required this.peerIds,
+    required this.groupConversations,
     required this.profileById,
     required this.conversationByPeer,
     required this.openingPeer,
@@ -717,6 +746,7 @@ class _MailboxList extends StatelessWidget {
   final bool loading;
   final bool hasError;
   final List<String> peerIds;
+  final List<ChatConversation> groupConversations;
   final Map<String, ChatPeerProfile> profileById;
   final Map<String, ChatConversation> conversationByPeer;
   final String? openingPeer;
@@ -725,19 +755,22 @@ class _MailboxList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && peerIds.isEmpty) {
+    if (loading && peerIds.isEmpty && groupConversations.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (hasError && peerIds.isEmpty) {
+    if (hasError && peerIds.isEmpty && groupConversations.isEmpty) {
       return Center(
-        child: TextButton.icon(
+        child: StickerButton(
           onPressed: onRetry,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Không tải được danh sách. Thử lại'),
+          icon: const Icon(Icons.refresh_rounded),
+          label: 'Không tải được danh sách. Thử lại',
+          surfaceColor: AppColors.yellow,
+          edgeColor: AppColors.duoOrange,
+          minHeight: 48,
         ),
       );
     }
-    if (peerIds.isEmpty) {
+    if (peerIds.isEmpty && groupConversations.isEmpty) {
       return const Center(
         child: Text('Không tìm thấy bạn bè hoặc cuộc trò chuyện.',
             textAlign: TextAlign.center),
@@ -746,9 +779,17 @@ class _MailboxList extends StatelessWidget {
     return ListView.builder(
       key: const Key('chat-mailbox-friends'),
       padding: const EdgeInsets.only(bottom: 16),
-      itemCount: peerIds.length,
+      itemCount: groupConversations.length + peerIds.length,
       itemBuilder: (context, index) {
-        final peerId = peerIds[index];
+        if (index < groupConversations.length) {
+          final conversation = groupConversations[index];
+          return _GroupRow(
+            key: ValueKey('chat-mailbox-group-${conversation.groupId}'),
+            conversation: conversation,
+            onTap: () => onOpen('', conversation),
+          );
+        }
+        final peerId = peerIds[index - groupConversations.length];
         final profile = profileById[peerId];
         final conversation = conversationByPeer[peerId];
         return _FriendRow(
@@ -760,6 +801,67 @@ class _MailboxList extends StatelessWidget {
           onTap: () => onOpen(peerId, conversation),
         );
       },
+    );
+  }
+}
+
+class _GroupRow extends StatelessWidget {
+  const _GroupRow({
+    required this.conversation,
+    required this.onTap,
+    super.key,
+  });
+
+  final ChatConversation conversation;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = conversation.lastMessageText?.trim();
+    final access = conversation.groupArchived
+        ? 'Đã lưu trữ'
+        : conversation.groupMuted
+            ? 'Chỉ đọc'
+            : '${conversation.memberCount} thành viên';
+    final subtitle = text?.isNotEmpty == true ? text! : access;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF3E322E), width: 2),
+        boxShadow: const [
+          BoxShadow(color: Color(0xFF3E322E), offset: Offset(0, 4))
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: ListTile(
+          minVerticalPadding: 10,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          leading: const CircleAvatar(
+            backgroundColor: AppColors.mint,
+            child: Icon(Icons.groups_outlined, color: AppColors.ink),
+          ),
+          title: Text(
+            conversation.title!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          subtitle: Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0xFF9B877D), fontSize: 12),
+          ),
+          trailing: conversation.unreadCount == 0
+              ? const Icon(Icons.chevron_right)
+              : Badge(label: Text('${conversation.unreadCount}')),
+          onTap: onTap,
+        ),
+      ),
     );
   }
 }
@@ -806,7 +908,7 @@ class _FriendRow extends StatelessWidget {
         child: ListTile(
           minVerticalPadding: 10,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-          leading: _PeerAvatar(profile: profile, label: name),
+          leading: _PeerAvatar(profile: profile),
           title: Text(name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -852,32 +954,15 @@ class _FriendRow extends StatelessWidget {
 }
 
 class _PeerAvatar extends StatelessWidget {
-  const _PeerAvatar({required this.profile, required this.label});
+  const _PeerAvatar({required this.profile});
   final ChatPeerProfile? profile;
-  final String label;
 
   @override
-  Widget build(BuildContext context) {
-    final avatarUrl = profile?.avatarUrl.trim() ?? '';
-    final fallback = Center(
-      child: Text(label.isEmpty ? '?' : label.characters.first.toUpperCase(),
-          style: const TextStyle(fontWeight: FontWeight.w900)),
-    );
-    return Container(
-      width: 38,
-      height: 38,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AppColors.creamyYuzu,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.ink, width: 2),
-      ),
-      child: avatarUrl.isEmpty
-          ? fallback
-          : Image.network(avatarUrl,
-              fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback),
-    );
-  }
+  Widget build(BuildContext context) => AppUserAvatar(
+        avatarUrl: profile?.avatarUrl,
+        size: 38,
+        backgroundColor: AppColors.paleGold,
+      );
 }
 
 String _relativeTime(DateTime value) {
@@ -890,22 +975,36 @@ String _relativeTime(DateTime value) {
   return '${local.day}/${local.month}';
 }
 
+int _conversationOrder(ChatConversation left, ChatConversation right) {
+  final unread = right.unreadCount.compareTo(left.unreadCount);
+  if (unread != 0) return unread;
+  final leftAt = left.lastMessageAt;
+  final rightAt = right.lastMessageAt;
+  if (leftAt != null || rightAt != null) {
+    if (leftAt == null) return 1;
+    if (rightAt == null) return -1;
+    final recent = rightAt.compareTo(leftAt);
+    if (recent != 0) return recent;
+  }
+  return (left.title ?? '').compareTo(right.title ?? '');
+}
+
 class _MailboxConversationView extends ConsumerStatefulWidget {
   const _MailboxConversationView({
     super.key,
     required this.owner,
-    required this.conversationId,
-    required this.peerId,
+    required this.conversation,
     required this.profile,
+    required this.profileById,
     required this.onBack,
     required this.onClose,
     this.onDragUpdate,
   });
 
   final ChatOwner owner;
-  final String conversationId;
-  final String peerId;
+  final ChatConversation conversation;
   final ChatPeerProfile? profile;
+  final Map<String, ChatPeerProfile> profileById;
   final VoidCallback onBack;
   final VoidCallback onClose;
   final GestureDragUpdateCallback? onDragUpdate;
@@ -917,12 +1016,12 @@ class _MailboxConversationView extends ConsumerStatefulWidget {
 
 class _MailboxConversationViewState
     extends ConsumerState<_MailboxConversationView> {
-  static final Map<String, Uint8List> _localImageAttachments = {};
   final _text = TextEditingController();
-  Uint8List? _attachedImageBytes;
-  String? _attachedImageName;
   bool _saving = false;
   bool _markingRead = false;
+  String? _zoomedImageMessageId;
+  OperationalChatAlbumImageSelection? _selectedImage;
+  final _retryingMessageIds = <String>{};
 
   @override
   void dispose() {
@@ -930,65 +1029,39 @@ class _MailboxConversationViewState
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-        requestFullMetadata: false,
-      );
-      if (picked == null || !mounted) return;
-      final bytes = await picked.readAsBytes();
-      if (!mounted) return;
-      setState(() {
-        _attachedImageBytes = bytes;
-        _attachedImageName = picked.name;
-      });
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Không thể chọn ảnh từ thư viện thiết bị.'),
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _send() async {
     if (_saving || ref.read(operationalChatOwnerProvider) != widget.owner) {
       return;
     }
-    final imageBytes = _attachedImageBytes;
-    final imageName = _attachedImageName;
-    var raw = _text.text.trim();
-    if (imageBytes != null) {
-      final label = '📷 [Ảnh: ${imageName ?? 'image.jpg'}]';
-      raw = raw.isEmpty ? label : '$label\n$raw';
+    final raw = _text.text.trim();
+    if (_selectedImage == null && (raw.isEmpty || raw.runes.length > 4000)) {
+      return;
     }
-    if (raw.isEmpty || raw.runes.length > 4000) return;
     final coordinator =
         ref.read(operationalChatCoordinatorProvider).asData?.value;
     if (coordinator == null) return;
     setState(() => _saving = true);
     try {
-      final sent = await coordinator.enqueue(
-          conversationId: widget.conversationId, rawText: raw);
+      final selected = _selectedImage;
+      if (selected == null) {
+        await coordinator.enqueue(
+            conversationId: widget.conversation.id, rawText: raw);
+      } else {
+        await coordinator.enqueueAlbumImage(
+          conversationId: widget.conversation.id,
+          sourcePhotoNoteId: selected.photoNoteId,
+          localRelativePath: selected.localRelativePath,
+          mimeType: selected.mimeType,
+          byteSize: selected.byteSize,
+          labels: selected.labels,
+        );
+      }
       if (!mounted || ref.read(operationalChatOwnerProvider) != widget.owner) {
         return;
       }
-      if (imageBytes != null) {
-        _localImageAttachments[sent.id] = imageBytes;
-        _localImageAttachments[sent.clientGeneratedId] = imageBytes;
-      }
-      _text.clear();
-      setState(() {
-        _attachedImageBytes = null;
-        _attachedImageName = null;
-      });
+      if (selected == null) _text.clear();
+      _selectedImage = null;
+      setState(() {});
     } catch (_) {
       if (mounted && ref.read(operationalChatOwnerProvider) == widget.owner) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -997,6 +1070,34 @@ class _MailboxConversationViewState
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _pickAlbumImage() async {
+    if (_saving) return;
+    final selected = await showChatAlbumImagePicker(context);
+    if (selected != null && mounted) setState(() => _selectedImage = selected);
+  }
+
+  Future<void> _retryBlockedMessage(String messageId) async {
+    if (_retryingMessageIds.contains(messageId) ||
+        ref.read(operationalChatOwnerProvider) != widget.owner) {
+      return;
+    }
+    final coordinator =
+        ref.read(operationalChatCoordinatorProvider).asData?.value;
+    if (coordinator == null) return;
+    setState(() => _retryingMessageIds.add(messageId));
+    try {
+      await coordinator.retryBlockedMessage(messageId);
+    } catch (_) {
+      if (mounted && ref.read(operationalChatOwnerProvider) == widget.owner) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chưa thể gửi lại tin nhắn.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _retryingMessageIds.remove(messageId));
     }
   }
 
@@ -1009,7 +1110,7 @@ class _MailboxConversationViewState
     try {
       final store =
           await ref.read(operationalChatStoreProvider(widget.owner).future);
-      await store?.markConversationRead(widget.conversationId);
+      await store?.markConversationRead(widget.conversation.id);
     } finally {
       _markingRead = false;
     }
@@ -1021,30 +1122,57 @@ class _MailboxConversationViewState
     final rows = inbox.asData?.value;
     ChatConversation? conversation;
     for (final row in rows ?? <ChatConversation>[]) {
-      if (row.id == widget.conversationId) conversation = row;
+      if (row.id == widget.conversation.id) conversation = row;
+    }
+    final current = conversation;
+
+    if (current == null) {
+      return const Center(
+        child: Text('Bạn không còn quyền truy cập cuộc trò chuyện này.'),
+      );
     }
 
-    if (conversation != null && conversation.unreadCount > 0 && !_markingRead) {
+    if (current.unreadCount > 0 && !_markingRead) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
     }
 
     final source =
         ref.watch(operationalChatSourceProvider(widget.owner)).asData?.value;
     final runtime = ref.watch(operationalChatCoordinatorProvider);
-    final ready = source != null && runtime.asData?.value != null && !_saving;
-    final messages = ref.watch(
-        operationalChatMessagesProvider((widget.owner, widget.conversationId)));
+    final ready = source != null &&
+        runtime.asData?.value != null &&
+        current.canSend &&
+        !_saving;
+    final messages =
+        ref.watch(operationalChatMessagesProvider((widget.owner, current.id)));
+    final translations = ref
+        .watch(operationalChatTranslationsProvider((widget.owner, current.id)));
+    final translationsByMessage = {
+      for (final row
+          in translations.asData?.value ?? <OperationalChatTranslation>[])
+        row.messageId: row,
+    };
 
-    final peerName = widget.profile?.label ??
-        (widget.peerId.length >= 8
-            ? 'Bạn · ${widget.peerId.substring(widget.peerId.length - 8)}'
-            : (widget.peerId.isNotEmpty ? widget.peerId : 'Bạn'));
+    final peerId = current.directPeerId;
+    final peerName = current.isGroup
+        ? current.title!
+        : widget.profile?.label ??
+            'Bạn · ${peerId!.substring(peerId.length - 8)}';
 
     return Column(
       children: [
         _ConversationHeader(
           profile: widget.profile,
           peerName: peerName,
+          isGroup: current.isGroup,
+          memberCount: current.memberCount,
+          onGroupInfo: current.isSocialGroup
+              ? () => showOperationalSocialGroupSheet(
+                    context,
+                    owner: widget.owner,
+                    conversation: current,
+                  )
+              : null,
           onBack: widget.onBack,
           onClose: widget.onClose,
           onDragUpdate: widget.onDragUpdate,
@@ -1056,158 +1184,186 @@ class _MailboxConversationViewState
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (_, __) =>
                 const Center(child: Text('Không đọc được tin nhắn trên máy.')),
-            data: (msgList) => msgList.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Bắt đầu trò chuyện với bạn.',
-                      style: TextStyle(
-                        color: Color(0xFF9B877D),
-                        fontWeight: FontWeight.w700,
-                      ),
+            data: (msgList) {
+              if (msgList.isEmpty) {
+                return Center(
+                  child: Text(
+                    current.isGroup
+                        ? 'Chưa có tin nhắn trong nhóm.'
+                        : 'Bắt đầu trò chuyện với bạn.',
+                    style: const TextStyle(
+                      color: Color(0xFF9B877D),
+                      fontWeight: FontWeight.w700,
                     ),
-                  )
-                : ListView.builder(
-                    key: const Key('chat-mailbox-messages-list'),
-                    reverse: true,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    itemCount: msgList.length,
-                    itemBuilder: (context, index) {
-                      final message = msgList[msgList.length - index - 1];
-                      final mine = message.senderId == widget.owner.userId;
-                      final localAttachment =
-                          _localImageAttachments[message.id] ??
-                              _localImageAttachments[message.clientGeneratedId];
-                      final hasPhotoTag = message.rawText.contains('📷 [Ảnh:');
-                      String displayText = message.rawText;
-                      String? photoName;
-                      if (hasPhotoTag) {
-                        final match = RegExp(r'📷 \[Ảnh:\s*([^\]]+)\]')
-                            .firstMatch(message.rawText);
-                        photoName = match?.group(1);
-                        final lines = message.rawText.split('\n');
-                        if (lines.length > 1) {
-                          displayText = lines.sublist(1).join('\n').trim();
-                        } else {
-                          displayText = '';
-                        }
-                      }
-
-                      final statusText =
-                          mine ? _status(message.sendStatus) : null;
-                      return Align(
-                        alignment:
-                            mine ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Column(
-                            crossAxisAlignment: mine
-                                ? CrossAxisAlignment.end
-                                : CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                key: ValueKey(message.id),
-                                constraints:
-                                    const BoxConstraints(maxWidth: 280),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: mine ? AppColors.mint : Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: const Color(0xFF3E322E), width: 2),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0xFF3E322E),
-                                      offset: Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: mine
-                                      ? CrossAxisAlignment.end
-                                      : CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (localAttachment != null)
-                                      ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                          child: Image.memory(
-                                            localAttachment,
-                                            width: 220,
-                                            height: 140,
-                                            fit: BoxFit.cover,
-                                          ),
-                                      )
-                                    else if (hasPhotoTag)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: mine
-                                              ? const Color(0xFF56CFA9)
-                                              : const Color(0xFFF3ECE4),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(Icons.image_outlined,
-                                                size: 18,
-                                                color: AppColors.ink),
-                                            const SizedBox(width: 6),
-                                            Flexible(
-                                              child: Text(
-                                                photoName ?? 'Hình ảnh',
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 12,
-                                                  color: AppColors.ink,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    if (displayText.isNotEmpty) ...[
-                                      if (hasPhotoTag)
-                                        const SizedBox(height: 6),
-                                      SelectableText(
-                                        displayText,
+                  ),
+                );
+              }
+              OperationalChatMessage? zoomedMessage;
+              for (final message in msgList) {
+                if (message.id == _zoomedImageMessageId &&
+                    message.albumImage?.available == true) {
+                  zoomedMessage = message;
+                  break;
+                }
+              }
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: ListView.builder(
+                      key: const Key('chat-mailbox-messages-list'),
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      itemCount: msgList.length,
+                      itemBuilder: (context, index) {
+                        final message = msgList[msgList.length - index - 1];
+                        final mine = message.senderId == widget.owner.userId;
+                        final statusText =
+                            mine ? _status(message.sendStatus) : null;
+                        return Align(
+                          alignment: mine
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Column(
+                              crossAxisAlignment: mine
+                                  ? CrossAxisAlignment.end
+                                  : CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (current.isGroup && !mine)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                        left: 4, bottom: 3),
+                                    child: Text(
+                                        widget.profileById[message.senderId]
+                                                ?.label ??
+                                            'Thành viên · ${message.senderId.substring(message.senderId.length - 8)}',
                                         style: const TextStyle(
-                                          color: AppColors.ink,
-                                          fontSize: 14,
+                                            fontSize: 11,
+                                            color: AppColors.darkGreen,
+                                            fontWeight: FontWeight.w800)),
+                                  ),
+                                Container(
+                                  key: ValueKey(message.id),
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 280),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: mine ? AppColors.mint : Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: const Color(0xFF3E322E),
+                                        width: 2),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0xFF3E322E),
+                                        offset: Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: message.albumImage != null
+                                      ? OperationalChatAlbumImageMessage(
+                                          owner: widget.owner,
+                                          message: message,
+                                          onZoom: () => setState(() =>
+                                              _zoomedImageMessageId =
+                                                  message.id),
+                                        )
+                                      : OperationalChatMessageBody(
+                                          message: message,
+                                          viewerNativeLanguageCode: source,
+                                          translation:
+                                              translationsByMessage[message.id],
+                                          translationCacheLoading:
+                                              translations.isLoading,
+                                          translationCacheError:
+                                              translations.hasError,
+                                          primaryStyle: const TextStyle(
+                                            color: AppColors.ink,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                ),
+                                if (current.isDirect &&
+                                    message.albumImage == null)
+                                  SizedBox(
+                                    width: 280,
+                                    child: OperationalChatCorrectionPanel(
+                                      owner: widget.owner,
+                                      conversationId: widget.conversation.id,
+                                      message: message,
+                                      viewerNativeLanguageCode: source,
+                                    ),
+                                  ),
+                                const SizedBox(height: 3),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${_time(message.sentAt ?? message.clientCreatedAt)}${statusText != null ? ' · $statusText' : ''}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF7A6B63),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
+                                      if (mine &&
+                                          message.sendStatus ==
+                                              ChatSendStatus.blocked) ...[
+                                        const SizedBox(width: 6),
+                                        StickerButton(
+                                          key: ValueKey(
+                                              'chat-retry-${message.id}'),
+                                          label: _retryingMessageIds
+                                                  .contains(message.id)
+                                              ? 'Đang gửi'
+                                              : 'Gửi lại',
+                                          semanticLabel: 'Gửi lại tin nhắn',
+                                          onPressed: ready &&
+                                                  !_retryingMessageIds
+                                                      .contains(message.id)
+                                              ? () => _retryBlockedMessage(
+                                                  message.id)
+                                              : null,
+                                          surfaceColor: AppColors.yellow,
+                                          edgeColor: AppColors.duoOrange,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                          fontSize: 11,
+                                          radius: 9,
+                                          minHeight: 28,
+                                          flat: true,
+                                        ),
+                                      ],
                                     ],
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 4),
-                                child: Text(
-                                  '${_time(message.sentAt ?? message.clientCreatedAt)}${statusText != null ? ' · $statusText' : ''}',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Color(0xFF7A6B63),
-                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
+                  if (zoomedMessage != null)
+                    Positioned.fill(
+                      child: OperationalChatAlbumImageViewer(
+                        owner: widget.owner,
+                        message: zoomedMessage,
+                        onClose: () =>
+                            setState(() => _zoomedImageMessageId = null),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
         if (source == null)
@@ -1215,22 +1371,33 @@ class _MailboxConversationViewState
             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Text(
               'Cần cấu hình ngôn ngữ trong Cài đặt trước khi gửi.',
-              style: TextStyle(fontSize: 11, color: Color(0xFFE94141)),
+              style: TextStyle(fontSize: 12, color: Color(0xFFE94141)),
+            ),
+          ),
+        if (!current.canSend)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Text(
+              current.groupArchived
+                  ? current.isSocialGroup
+                      ? 'Nhóm đã đóng · lịch sử chỉ đọc.'
+                      : 'Nhóm đã lưu trữ · lịch sử chỉ đọc.'
+                  : 'Bạn đang bị tắt quyền gửi trong nhóm này.',
+              key: const Key('chat-mailbox-group-read-only'),
+              style: const TextStyle(fontSize: 12, color: Color(0xFFE94141)),
             ),
           ),
         _ConversationInput(
           controller: _text,
           saving: _saving,
           ready: ready,
+          enabled: current.canSend,
+          canPickImage: current.isDirect,
           onSend: _send,
           onChanged: () => setState(() {}),
-          onPickImage: _pickImage,
-          attachedImageBytes: _attachedImageBytes,
-          attachedImageName: _attachedImageName,
-          onRemoveAttachedImage: () => setState(() {
-            _attachedImageBytes = null;
-            _attachedImageName = null;
-          }),
+          selectedImage: _selectedImage,
+          onPickImage: _pickAlbumImage,
+          onRemoveImage: () => setState(() => _selectedImage = null),
         ),
       ],
     );
@@ -1241,6 +1408,9 @@ class _ConversationHeader extends StatelessWidget {
   const _ConversationHeader({
     required this.profile,
     required this.peerName,
+    required this.isGroup,
+    required this.memberCount,
+    this.onGroupInfo,
     required this.onBack,
     required this.onClose,
     this.onDragUpdate,
@@ -1248,6 +1418,9 @@ class _ConversationHeader extends StatelessWidget {
 
   final ChatPeerProfile? profile;
   final String peerName;
+  final bool isGroup;
+  final int memberCount;
+  final VoidCallback? onGroupInfo;
   final VoidCallback onBack;
   final VoidCallback onClose;
   final GestureDragUpdateCallback? onDragUpdate;
@@ -1262,18 +1435,24 @@ class _ConversationHeader extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
             decoration: const BoxDecoration(
               color: Color(0xFFFFF1C7),
-              border:
-                  Border(bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
+              border: Border(
+                  bottom: BorderSide(color: Color(0xFF3E322E), width: 3)),
             ),
             child: Row(
               children: [
                 IconButton(
                   key: const Key('chat-mailbox-back'),
                   tooltip: 'Quay lại danh sách',
-                  icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+                  icon: const Icon(Icons.arrow_back_rounded,
+                      color: AppColors.ink),
                   onPressed: onBack,
                 ),
-                _PeerAvatar(profile: profile, label: peerName),
+                if (isGroup)
+                  const CircleAvatar(
+                      backgroundColor: AppColors.mint,
+                      child: Icon(Icons.groups_outlined, color: AppColors.ink))
+                else
+                  _PeerAvatar(profile: profile),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -1299,22 +1478,27 @@ class _ConversationHeader extends StatelessWidget {
                               size: 14, color: Color(0xFF9B877D)),
                         ],
                       ),
-                      const Text(
-                        'Chỉ text gốc, chưa dịch',
-                        style: TextStyle(
-                          color: Color(0xFF9B877D),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                      if (isGroup)
+                        Text('$memberCount thành viên · bản dịch theo hồ sơ',
+                            style: const TextStyle(
+                                color: Color(0xFF9B877D),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
+                if (onGroupInfo != null)
+                  IconButton(
+                    key: const Key('chat-mailbox-social-group-manage'),
+                    tooltip: 'Thông tin và quản lý nhóm',
+                    onPressed: onGroupInfo,
+                    icon: const Icon(Icons.info_outline, color: AppColors.ink),
+                  ),
                 IconButton(
                   key: const Key('chat-mailbox-close-conv'),
                   tooltip: 'Đóng hộp thư',
                   onPressed: onClose,
-                  icon: const Icon(Icons.close, color: AppColors.ink),
+                  icon: const Icon(Icons.close_rounded, color: AppColors.ink),
                 ),
               ],
             ),
@@ -1328,30 +1512,31 @@ class _ConversationInput extends StatelessWidget {
     required this.controller,
     required this.saving,
     required this.ready,
+    required this.enabled,
+    required this.canPickImage,
     required this.onSend,
     required this.onChanged,
+    required this.selectedImage,
     required this.onPickImage,
-    this.attachedImageBytes,
-    this.attachedImageName,
-    this.onRemoveAttachedImage,
+    required this.onRemoveImage,
   });
 
   final TextEditingController controller;
   final bool saving;
   final bool ready;
+  final bool enabled;
+  final bool canPickImage;
   final VoidCallback onSend;
   final VoidCallback onChanged;
+  final OperationalChatAlbumImageSelection? selectedImage;
   final VoidCallback onPickImage;
-  final Uint8List? attachedImageBytes;
-  final String? attachedImageName;
-  final VoidCallback? onRemoveAttachedImage;
+  final VoidCallback onRemoveImage;
 
   @override
   Widget build(BuildContext context) {
     final hasText = controller.text.trim().isNotEmpty &&
         controller.text.runes.length <= 4000;
-    final hasImage = attachedImageBytes != null;
-    final canSend = ready && (hasText || hasImage);
+    final canSend = ready && (hasText || selectedImage != null);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -1364,191 +1549,136 @@ class _ConversationInput extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (attachedImageBytes != null)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF3E322E), width: 1.5),
-                boxShadow: const [
-                  BoxShadow(color: Color(0xFF3E322E), offset: Offset(0, 2)),
-                ],
-              ),
+          if (selectedImage != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: Image.memory(
-                      attachedImageBytes!,
-                      width: 38,
-                      height: 38,
-                      fit: BoxFit.cover,
-                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(selectedImage!.previewBytes,
+                        width: 56, height: 56, fit: BoxFit.cover),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Đã đính kèm ảnh',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        Text(
-                          attachedImageName ?? 'anh_album.jpg',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF9B877D),
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: Text(selectedImage!.title,
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
                   ),
-                  Semantics(
-                    button: true,
-                    label: 'Hủy đính kèm ảnh',
-                    child: InkWell(
-                      key: const Key('chat-remove-attached-image'),
-                      onTap: onRemoveAttachedImage,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(0xFFF1EAE4),
-                        ),
-                        child: const Icon(Icons.close,
-                            size: 14, color: AppColors.ink),
-                      ),
-                    ),
+                  _StickerIconButton(
+                    key: const Key('chat-remove-album-image'),
+                    semanticLabel: 'Bỏ ảnh đã chọn',
+                    onPressed: saving ? null : onRemoveImage,
+                    icon: Icons.close_rounded,
+                    surfaceColor: const Color(0xFFFFE6DE),
+                    flat: true,
                   ),
                 ],
               ),
             ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Semantics(
-                button: true,
-                label: 'Chọn ảnh từ album gửi bạn bè',
-                child: InkWell(
-                  key: const Key('chat-pick-image'),
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: saving ? null : onPickImage,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border:
-                          Border.all(color: const Color(0xFF3E322E), width: 2),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0xFF3E322E),
-                          offset: Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.photo_library_rounded,
-                      color: AppColors.ink,
-                      size: 20,
-                    ),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            _StickerIconButton(
+              key: const Key('chat-pick-album-image'),
+              semanticLabel: 'Chọn một ảnh từ Album',
+              onPressed:
+                  !enabled || !canPickImage || saving ? null : onPickImage,
+              icon: Icons.photo_library_outlined,
+              surfaceColor: AppColors.yellow,
+              edgeColor: AppColors.duoOrange,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFF3E322E), width: 2),
+                ),
+                child: TextField(
+                  key: const Key('chat-compose'),
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 4,
+                  enabled: enabled && !saving && selectedImage == null,
+                  onChanged: (_) => onChanged(),
+                  style: const TextStyle(fontSize: 14, color: AppColors.ink),
+                  decoration: const InputDecoration(
+                    hintText: 'Tin nhắn gốc (chưa dịch)...',
+                    hintStyle:
+                        TextStyle(fontSize: 13, color: Color(0xFF9B877D)),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border:
-                        Border.all(color: const Color(0xFF3E322E), width: 2),
-                  ),
-                  child: TextField(
-                    key: const Key('chat-compose'),
-                    controller: controller,
-                    minLines: 1,
-                    maxLines: 4,
-                    enabled: !saving,
-                    onChanged: (_) => onChanged(),
-                    style:
-                        const TextStyle(fontSize: 14, color: AppColors.ink),
-                    decoration: const InputDecoration(
-                      hintText: 'Tin nhắn gốc (chưa dịch)...',
-                      hintStyle:
-                          TextStyle(fontSize: 13, color: Color(0xFF9B877D)),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Semantics(
-                button: true,
-                label: 'Gửi tin nhắn',
-                child: InkWell(
-                  key: const Key('chat-send'),
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: canSend ? onSend : null,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: canSend
-                          ? AppColors.mint
-                          : const Color(0xFFE0D8CE),
-                      shape: BoxShape.circle,
-                      border:
-                          Border.all(color: const Color(0xFF3E322E), width: 2),
-                      boxShadow: canSend
-                          ? const [
-                              BoxShadow(
-                                color: Color(0xFF3E322E),
-                                offset: Offset(0, 3),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: saving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFF3E322E),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.send_rounded,
-                            size: 18,
-                            color: Color(0xFF3E322E),
-                          ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            _StickerIconButton(
+              key: const Key('chat-send'),
+              semanticLabel: 'Gửi tin nhắn',
+              onPressed: canSend ? onSend : null,
+              icon: Icons.send_rounded,
+              customIcon: saving
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.ink,
+                      ),
+                    )
+                  : null,
+              surfaceColor: canSend ? AppColors.mint : const Color(0xFFE0D8CE),
+              edgeColor: canSend ? const Color(0xFF43A989) : null,
+            ),
+          ]),
         ],
       ),
     );
   }
+}
+
+class _StickerIconButton extends StatelessWidget {
+  const _StickerIconButton({
+    required this.semanticLabel,
+    required this.icon,
+    required this.onPressed,
+    this.customIcon,
+    this.surfaceColor = AppColors.softWhite,
+    this.edgeColor,
+    this.flat = false,
+    this.showShadow = true,
+    super.key,
+  });
+
+  final String semanticLabel;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Widget? customIcon;
+  final Color surfaceColor;
+  final Color? edgeColor;
+  final bool flat;
+  final bool showShadow;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: semanticLabel,
+        child: SizedBox.square(
+          dimension: 48,
+          child: StickerButton(
+            semanticLabel: semanticLabel,
+            icon: customIcon ?? Icon(icon, size: 18),
+            onPressed: onPressed,
+            surfaceColor: surfaceColor,
+            edgeColor: edgeColor,
+            padding: const EdgeInsets.all(10),
+            minHeight: 44,
+            radius: 14,
+            flat: flat,
+            showShadow: showShadow,
+          ),
+        ),
+      );
 }
 
 String? _status(ChatSendStatus status) => switch (status) {

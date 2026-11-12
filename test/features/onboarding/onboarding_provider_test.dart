@@ -4,13 +4,14 @@ import 'package:capy_vocab/features/onboarding/data/repositories/onboarding_repo
 import 'package:capy_vocab/features/onboarding/application/onboarding_status_store.dart';
 import 'package:capy_vocab/features/onboarding/domain/entities/onboarding_data.dart';
 import 'package:capy_vocab/features/onboarding/presentation/providers/onboarding_provider.dart';
+import 'package:capy_vocab/features/auth/data/repositories/account_phone_verification_gateway.dart';
 import 'package:capy_vocab/features/language_profile/application/language_profile_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('wizard validate và chuyển đúng thứ tự 7 bước', () async {
+  test('wizard validate và chuyển đúng thứ tự 6 bước', () async {
     final repository = _FakeOnboardingRepository();
-    final notifier = OnboardingNotifier(repository: repository);
+    final notifier = _buildNotifier(repository);
     addTearDown(notifier.dispose);
     await notifier.loadInitialData();
 
@@ -28,52 +29,46 @@ void main() {
 
     expect(notifier.state.data.interfaceLocale, 'vi-VN');
     expect(notifier.state.data.learningLocale, 'en-US');
+    expect(notifier.state.data.nativeLanguageCode, 'vi');
+    expect(notifier.state.data.learningLanguageCode, 'en');
     notifier.updateInterfaceLocale('en-GB');
-    notifier.updateLearningLocale('ja-JP');
+    notifier.updateLearningLocale('en-US');
+    expect(await notifier.nextStep(), isFalse);
+    expect(
+      notifier.state.fieldErrors['learningLocale'],
+      contains('phải khác'),
+    );
+
+    notifier.updateLearningLocale('vi-VN');
+    notifier.updateProficiencyLevel('intermediate');
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 2);
+    expect(notifier.state.data.nativeLanguageCode, 'en');
+    expect(notifier.state.data.learningLanguageCode, 'vi');
 
     notifier.updateAge(0);
     notifier.updatePhone('123');
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['age'], contains('1 đến 120'));
-    expect(notifier.state.fieldErrors['phone'], contains('đúng 10 số'));
+    expect(notifier.state.fieldErrors['phone'], isNull);
 
     notifier.updateAge(20);
-    notifier.updatePhone('0987654321');
     repository.phoneAvailable = false;
-    expect(await notifier.nextStep(), isFalse);
-    expect(notifier.state.currentStep, 2);
-    expect(
-        notifier.state.fieldErrors['phone'], 'Số điện thoại đã được sử dụng.');
-
-    repository.phoneAvailable = true;
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 3);
-    expect(repository.checkedPhone, '0987654321');
+    expect(repository.checkedPhone, isNull);
 
     expect(await notifier.nextStep(), isFalse);
     expect(notifier.state.fieldErrors['accountRole'], isNotNull);
 
-    notifier.updateAccountRole('personal');
+    notifier.updateAccountRole('admin');
+    expect(await notifier.nextStep(), isFalse);
+    expect(notifier.state.currentStep, 3);
+
+    notifier.updateAccountRole('teacher');
     expect(await notifier.nextStep(), isTrue);
     expect(notifier.state.currentStep, 4);
-
-    expect(await notifier.nextStep(), isFalse);
-    expect(notifier.state.fieldErrors['nativeLanguageCode'], isNotNull);
-
-    notifier.updateNativeLanguage('vi');
-    notifier.updateLearningLanguage('vi');
-    expect(await notifier.nextStep(), isFalse);
-    expect(
-      notifier.state.fieldErrors['learningLanguageCode'],
-      contains('phải khác'),
-    );
-
-    notifier.updateLearningLanguage('en');
-    notifier.updateProficiencyLevel('intermediate');
-    expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 5);
+    expect(notifier.state.data.accountRole, 'teacher');
 
     notifier.updateReminderTime('25:00');
     expect(await notifier.nextStep(), isFalse);
@@ -89,7 +84,7 @@ void main() {
 
     notifier.updateStudyTimeRange(start: '22:00', end: '02:00');
     expect(await notifier.nextStep(), isTrue);
-    expect(notifier.state.currentStep, 6);
+    expect(notifier.state.currentStep, 5);
 
     notifier.updateDailyTargetWords(0);
     expect(await notifier.validateCurrentStep(), isFalse);
@@ -107,17 +102,16 @@ void main() {
 
   test('dữ liệu được giữ nguyên khi quay lại bước trước', () async {
     final repository = _FakeOnboardingRepository();
-    final notifier = OnboardingNotifier(repository: repository);
+    final notifier = _buildNotifier(repository);
     addTearDown(notifier.dispose);
     await notifier.loadInitialData();
 
     notifier.updateUsername('capy_may');
     await notifier.nextStep();
     notifier.updateInterfaceLocale('en-GB');
-    notifier.updateLearningLocale('ja-JP');
+    notifier.updateLearningLocale('vi-VN');
     await notifier.nextStep();
     notifier.updateAge(18);
-    notifier.updatePhone('0912345678');
     await notifier.nextStep();
 
     notifier.previousStep();
@@ -125,15 +119,15 @@ void main() {
     expect(notifier.state.currentStep, 2);
     expect(notifier.state.data.username, 'capy_may');
     expect(notifier.state.data.interfaceLocale, 'en-GB');
-    expect(notifier.state.data.learningLocale, 'ja-JP');
+    expect(notifier.state.data.learningLocale, 'vi-VN');
     expect(notifier.state.data.age, 18);
-    expect(notifier.state.data.phone, '0912345678');
+    expect(notifier.state.data.phone, isEmpty);
   });
 
   test('chặn submit lặp trong lúc đang lưu', () async {
     final repository = _FakeOnboardingRepository()
       ..completeCompleter = Completer<void>();
-    final notifier = OnboardingNotifier(repository: repository);
+    final notifier = _buildNotifier(repository);
     addTearDown(notifier.dispose);
     await notifier.loadInitialData();
     await _moveToFinalStep(notifier);
@@ -157,6 +151,7 @@ void main() {
     final languageStore = MemoryLanguageProfileStore();
     final notifier = OnboardingNotifier(
       repository: repository,
+      phoneVerificationGateway: _FakePhoneVerificationGateway(),
       onboardingStatusStore: store,
       languageProfileStore: languageStore,
       currentUserId: () => 'user-a',
@@ -180,13 +175,13 @@ void main() {
       ..completeError = const OnboardingRepositoryException(
         'Không thể lưu thông tin thiết lập. Vui lòng thử lại.',
       );
-    final notifier = OnboardingNotifier(repository: repository);
+    final notifier = _buildNotifier(repository);
     addTearDown(notifier.dispose);
     await notifier.loadInitialData();
     await _moveToFinalStep(notifier);
 
     expect(await notifier.completeOnboarding(), isFalse);
-    expect(notifier.state.currentStep, 6);
+    expect(notifier.state.currentStep, 5);
     expect(notifier.state.isSaving, isFalse);
     expect(notifier.state.saveError, contains('thử lại'));
   });
@@ -212,7 +207,7 @@ void main() {
     (
       field: OnboardingConflictField.email,
       message: 'Email đã được sử dụng. Vui lòng dùng email khác.',
-      expectedStep: 6,
+      expectedStep: 5,
       expectedErrorKey: null,
     ),
   ]) {
@@ -222,7 +217,7 @@ void main() {
           testCase.message,
           conflictingField: testCase.field,
         );
-      final notifier = OnboardingNotifier(repository: repository);
+      final notifier = _buildNotifier(repository);
       addTearDown(notifier.dispose);
       await notifier.loadInitialData();
       await _moveToFinalStep(notifier);
@@ -242,19 +237,42 @@ void main() {
 Future<void> _moveToFinalStep(OnboardingNotifier notifier) async {
   notifier.updateUsername('capy_may');
   expect(await notifier.nextStep(), isTrue);
+  notifier.updateInterfaceLocale('vi-VN');
+  notifier.updateLearningLocale('en-US');
+  notifier.updateProficiencyLevel('beginner');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAge(20);
-  notifier.updatePhone('0987654321');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateAccountRole('personal');
-  expect(await notifier.nextStep(), isTrue);
-  notifier.updateNativeLanguage('vi');
-  notifier.updateLearningLanguage('en');
-  notifier.updateProficiencyLevel('beginner');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateStudyTimeRange(start: '20:00', end: '21:00');
   expect(await notifier.nextStep(), isTrue);
   notifier.updateDailyTargetWords(10);
+}
+
+OnboardingNotifier _buildNotifier(OnboardingRepository repository) {
+  return OnboardingNotifier(
+    repository: repository,
+    phoneVerificationGateway: _FakePhoneVerificationGateway(),
+  );
+}
+
+class _FakePhoneVerificationGateway implements AccountPhoneVerificationGateway {
+  String? _verifiedPhone;
+
+  @override
+  String? get verifiedPhone => _verifiedPhone;
+
+  @override
+  Future<void> requestCode(String phone, {String? currentPassword}) async {}
+
+  @override
+  Future<void> verifyCode({required String phone, required String code}) async {
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      throw const AccountPhoneVerificationException('Mã không hợp lệ.');
+    }
+    _verifiedPhone = phone;
+  }
 }
 
 class _FakeOnboardingRepository implements OnboardingRepository {

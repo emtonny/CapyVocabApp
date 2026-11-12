@@ -5,7 +5,9 @@ import 'core/services/supabase_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/onboarding/application/onboarding_status_store.dart';
 import 'features/library/presentation/widgets/library_sync_runtime.dart';
+import 'features/mini_games/presentation/widgets/lesson_completion_sync_runtime.dart';
 import 'features/chat/presentation/operational_chat_runtime.dart';
+import 'features/home/presentation/widgets/daily_mission_runtime.dart';
 import 'features/onboarding/presentation/widgets/onboarding_status_runtime.dart';
 import 'shared/widgets/top_notification.dart';
 
@@ -55,18 +57,25 @@ class _CapyVocabAppState extends State<CapyVocabApp> {
   @override
   Widget build(BuildContext context) {
     Widget app = OperationalChatRuntime(
-        child: LibrarySyncRuntime(
-      child: MaterialApp.router(
-        title: 'Deery Vocab',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        builder: (context, child) => TopNotificationHost(
-          child: child ?? const SizedBox.shrink(),
+      child: LibrarySyncRuntime(
+        child: LessonCompletionSyncRuntime(
+          child: DailyMissionRuntime(
+            currentUserId: () => SupabaseService.auth.currentUser?.id,
+            authUserIds: _authUserIds,
+            child: MaterialApp.router(
+              title: 'Deery Vocab',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              builder: (context, child) => TopNotificationHost(
+                child: child ?? const SizedBox.shrink(),
+              ),
+              routerConfig: _appRouter.router,
+            ),
+          ),
         ),
-        routerConfig: _appRouter.router,
       ),
-    ));
+    );
 
     final refresher = widget.onboardingStatusRefresher;
     if (refresher != null) {

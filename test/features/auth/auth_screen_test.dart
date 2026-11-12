@@ -91,7 +91,8 @@ void main() {
 
     expect(repository.receivedDisplayName, 'Nguyễn Văn An');
     expect(find.byKey(const Key('sign-up-display-name-field')), findsNothing);
-    expect(find.byKey(const Key('email-confirmation-card')), findsNothing);
+    expect(find.byKey(const Key('email-confirmation-card')), findsOneWidget);
+    expect(find.text('Email chưa được xác nhận'), findsOneWidget);
     expect(
       tester
           .widget<TextFormField>(find.byKey(const Key('email-field')))

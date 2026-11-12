@@ -18,10 +18,14 @@ const _avatarYellow = Color(0xFFFFC928);
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({super.key});
 
+  /// Height above the system safe area, including the raised scan action.
+  static const contentHeight = 110.0;
+
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
-    final activeIndex = _tabRoutes.indexOf(location).clamp(0, 3);
+    final activeIndex =
+        location == '/groups' ? 3 : _tabRoutes.indexOf(location).clamp(0, 3);
 
     return SafeArea(
       top: false,
@@ -31,7 +35,7 @@ class BottomNavBar extends StatelessWidget {
         child: SizedBox(
           key: const Key('bottom-nav-responsive-frame'),
           width: 720,
-          height: 110,
+          height: contentHeight,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,

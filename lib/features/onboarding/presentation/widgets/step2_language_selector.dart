@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../language_profile/domain/entities/language_profile.dart';
 import '../../domain/entities/language_country_option.dart';
 import '../providers/onboarding_provider.dart';
 
@@ -19,7 +20,7 @@ class Step2LanguageSelector extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '2. Chọn ngôn ngữ của bạn 🌏',
+          '2. Chọn ngôn ngữ và trình độ 🌏',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w900,
@@ -29,7 +30,8 @@ class Step2LanguageSelector extends ConsumerWidget {
         ),
         const SizedBox(height: 6),
         const Text(
-          'Bạn có thể tìm theo tên quốc gia hoặc ngôn ngữ.',
+          'Ngôn ngữ giao diện sẽ tự dùng ngôn ngữ giao tiếp. '
+          'Bạn có thể đổi lại trong Cài đặt.',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
@@ -40,8 +42,8 @@ class Step2LanguageSelector extends ConsumerWidget {
         const SizedBox(height: 18),
         _LanguageSelectorCard(
           controlKey: 'interface-language',
-          title: 'Ngôn ngữ giao diện',
-          subtitle: 'Ngôn ngữ dùng cho menu và hướng dẫn',
+          title: 'Ngôn ngữ giao tiếp',
+          subtitle: 'Đồng thời là ngôn ngữ giao diện',
           icon: Icons.translate_rounded,
           badgeColor: const Color(0xFFBAE6FD),
           option: interfaceOption,
@@ -60,6 +62,42 @@ class Step2LanguageSelector extends ConsumerWidget {
           errorText: state.fieldErrors['learningLocale'],
           enabled: !state.isBusy,
           onSelected: notifier.updateLearningLocale,
+        ),
+        const SizedBox(height: 14),
+        const Text(
+          'Trình độ hiện tại',
+          style: TextStyle(
+            fontFamily: 'Nunito',
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
+          ),
+        ),
+        const SizedBox(height: 7),
+        DropdownButtonFormField<String>(
+          key: const Key('proficiency-level-field'),
+          isExpanded: true,
+          initialValue: supportedProficiencyLevels.contains(
+            state.data.proficiencyLevel,
+          )
+              ? state.data.proficiencyLevel
+              : 'beginner',
+          decoration: InputDecoration(
+            errorText: state.fieldErrors['proficiencyLevel'],
+          ),
+          items: supportedProficiencyLevels
+              .map(
+                (level) => DropdownMenuItem(
+                  value: level,
+                  child: Text(proficiencyLabel(level)),
+                ),
+              )
+              .toList(growable: false),
+          onChanged: state.isBusy
+              ? null
+              : (value) {
+                  if (value != null) notifier.updateProficiencyLevel(value);
+                },
         ),
       ],
     );
@@ -272,8 +310,11 @@ class _LanguageCountryPickerDialogState
 
   List<LanguageCountryOption> get _filteredOptions {
     final query = _normalize(_query.trim());
-    if (query.isEmpty) return kLanguageCountries;
-    return kLanguageCountries.where((option) {
+    final supportedOptions = kLanguageCountries.where(
+      (option) => supportedLanguageCodes.contains(option.languageCode),
+    );
+    if (query.isEmpty) return supportedOptions.toList(growable: false);
+    return supportedOptions.where((option) {
       return _normalize(option.countryName).contains(query) ||
           _normalize(option.languageName).contains(query) ||
           option.countryCode.toLowerCase().contains(query) ||

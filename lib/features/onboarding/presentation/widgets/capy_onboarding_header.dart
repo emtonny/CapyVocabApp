@@ -17,7 +17,8 @@ class CapyOnboardingHeader extends StatefulWidget {
     },
     {
       'title': 'Bạn muốn dùng ngôn ngữ nào? 🌏',
-      'subtitle': 'Chọn ngôn ngữ giao diện và ngôn ngữ bạn muốn học trước nhé!',
+      'subtitle':
+          'Chọn ngôn ngữ giao tiếp, ngôn ngữ muốn học và trình độ hiện tại!',
     },
     {
       'title': 'Thông tin độ tuổi & SĐT 📱',
@@ -26,10 +27,6 @@ class CapyOnboardingHeader extends StatefulWidget {
     {
       'title': 'Chọn vai trò tài khoản 👥',
       'subtitle': 'Bạn dùng ứng dụng làm cá nhân hay phụ huynh theo dõi con?',
-    },
-    {
-      'title': 'Chọn ngôn ngữ trò chuyện 🌏',
-      'subtitle': 'Để câu gốc và câu dịch luôn nằm đúng vị trí dành cho bạn!',
     },
     {
       'title': 'Lên lịch học tập ⏰',

@@ -18,6 +18,8 @@ import 'package:capy_vocab/features/library/presentation/providers/library_provi
 import 'package:capy_vocab/features/library/presentation/providers/library_cloud_media_restore_provider.dart';
 import 'package:capy_vocab/features/library/presentation/providers/library_media_integrity_provider.dart';
 import 'package:capy_vocab/features/library/presentation/screens/storage_album_screen.dart';
+import 'package:capy_vocab/features/mini_games/application/lesson_question_builder.dart';
+import 'package:capy_vocab/features/mini_games/application/lesson_session_controller.dart';
 import 'package:capy_vocab/features/ai_scan/presentation/widgets/vocab_canvas_overlay.dart';
 import 'package:capy_vocab/core/constants/app_colors.dart';
 import 'package:capy_vocab/shared/widgets/sticker_button.dart';
@@ -1347,6 +1349,71 @@ void main() {
     );
   });
 
+  testWidgets('initial capture range uses UTC half-open mission boundaries', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final startsAt = DateTime.utc(2026, 9, 27, 17);
+    final endsAt = DateTime.utc(2026, 9, 28, 17);
+    final before = _snapshot(
+      noteId: _firstNoteId,
+      suffix: '1',
+      title: 'Before range',
+      syncStatus: SyncStatus.localOnly,
+      detectionCount: 1,
+      createdAt: startsAt.add(const Duration(hours: 1)),
+      capturedAt: startsAt.subtract(const Duration(milliseconds: 1)),
+    );
+    final inside = _snapshot(
+      noteId: _secondNoteId,
+      suffix: '2',
+      title: 'Inside range',
+      syncStatus: SyncStatus.localOnly,
+      detectionCount: 1,
+      createdAt: endsAt.add(const Duration(hours: 8)),
+      capturedAt: startsAt,
+    );
+    final atExclusiveEnd = _snapshot(
+      noteId: _thirdNoteId,
+      suffix: '3',
+      title: 'At exclusive end',
+      syncStatus: SyncStatus.localOnly,
+      detectionCount: 1,
+      createdAt: startsAt.add(const Duration(hours: 2)),
+      capturedAt: endsAt,
+    );
+    final snapshots = [before, inside, atExclusiveEnd];
+    final repository = _FakeLibraryRepository(
+      notes: snapshots.map((item) => item.photoNote).toList(),
+      snapshots: {for (final item in snapshots) item.photoNote.id: item},
+    );
+
+    await _pumpLibrary(
+      tester,
+      repository: repository,
+      loader: _FakeMediaLoader(),
+      screen: StorageAlbumScreen(
+        initialCapturedRange: DateTimeRange(start: startsAt, end: endsAt),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('library-photo-note-$_firstNoteId')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('library-photo-note-$_secondNoteId')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('library-photo-note-$_thirdNoteId')),
+      findsNothing,
+    );
+  });
+
   testWidgets('Trash restores a note and queues explicit permanent deletion',
       (tester) async {
     tester.view.physicalSize = const Size(360, 800);
@@ -1600,6 +1667,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Nguồn nhận diện: gemini-test'), findsOneWidget);
     expect(repository.snapshotReadCount, greaterThanOrEqualTo(1));
+  });
+
+  testWidgets('starts a reward-free Library review with the chosen game mode',
+      (tester) async {
+    final snapshot = _snapshot(
+      noteId: _firstNoteId,
+      suffix: '1',
+      title: 'Cup, table',
+      syncStatus: SyncStatus.synced,
+      detectionCount: 2,
+    );
+    Object? lessonRequest;
+
+    await _pumpLibrary(
+      tester,
+      repository: _FakeLibraryRepository(
+        notes: [snapshot.photoNote],
+        snapshots: {snapshot.photoNote.id: snapshot},
+      ),
+      loader: _FakeMediaLoader(),
+      screen: LibraryPhotoNoteDetailScreen(photoNoteId: snapshot.photoNote.id),
+      location: '/storage/${snapshot.photoNote.id}',
+      onLessonRequest: (request) => lessonRequest = request,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('library-review-photo-note')),
+      300,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('library-photo-note-detail')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('library-review-photo-note')));
+    await tester.pumpAndSettle();
+    expect(find.text('Chọn cách ôn lại'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('library-review-fill')));
+    await tester.pumpAndSettle();
+
+    expect(lessonRequest, isA<ReviewLessonStartRequest>());
+    final request = lessonRequest! as ReviewLessonStartRequest;
+    expect(request.userId, _userId);
+    expect(request.photoNoteIds, [snapshot.photoNote.id]);
+    expect(request.preference, LessonGamePreference.fill);
   });
 
   testWidgets('keeps vocabulary visible when the local image is missing',
@@ -1953,6 +2065,7 @@ Future<void> _pumpLibrary(
   LibraryMediaRecoveryService? recoveryService,
   LibraryMediaRecoverySnapshot? recoverySnapshot,
   LibraryCloudMediaRestoreService? cloudMediaRestoreService,
+  ValueChanged<Object?>? onLessonRequest,
 }) async {
   final router = GoRouter(
     initialLocation: location,
@@ -1977,6 +2090,13 @@ Future<void> _pumpLibrary(
       GoRoute(
         path: '/scan',
         builder: (context, state) => const Scaffold(body: Text('Scan')),
+      ),
+      GoRoute(
+        path: '/lesson',
+        builder: (context, state) {
+          onLessonRequest?.call(state.extra);
+          return const Scaffold(body: Text('Lesson'));
+        },
       ),
     ],
   );
@@ -2082,6 +2202,7 @@ PhotoNoteSnapshot _snapshot({
   required SyncStatus syncStatus,
   required int detectionCount,
   DateTime? createdAt,
+  DateTime? capturedAt,
   DateTime? deletedAt,
   String? remoteDisplayPath,
   Uint8List? mediaBytes,
@@ -2140,7 +2261,7 @@ PhotoNoteSnapshot _snapshot({
       byteSizeDisplay: mediaBytes?.length ?? 68,
       preprocessingVersion: 'scan-jpeg-v1',
       captureSource: CaptureSource.camera,
-      capturedAt: _createdAt,
+      capturedAt: capturedAt ?? createdAt ?? _createdAt,
       createdAt: _createdAt,
       syncStatus: syncStatus,
     ),
@@ -2410,6 +2531,18 @@ final class _FakeLibraryRepository implements LibraryRepository {
     return Stream.value(
       notes.where((note) {
         if (permanentDeletionIds.contains(note.id)) return false;
+        final capturedAt = snapshots[note.id]?.mediaAsset.capturedAt ??
+            snapshots[note.id]?.mediaAsset.createdAt;
+        if (query.capturedFromInclusive != null &&
+            (capturedAt == null ||
+                capturedAt.isBefore(query.capturedFromInclusive!))) {
+          return false;
+        }
+        if (query.capturedToExclusive != null &&
+            (capturedAt == null ||
+                !capturedAt.isBefore(query.capturedToExclusive!))) {
+          return false;
+        }
         final albumIds =
             query.albumId == null ? null : albumPhotoNoteIds[query.albumId];
         if (albumIds != null && !albumIds.contains(note.id)) return false;

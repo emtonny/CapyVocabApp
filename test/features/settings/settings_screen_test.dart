@@ -10,7 +10,10 @@ import 'package:capy_vocab/features/language_profile/data/language_profile_repos
 import 'package:capy_vocab/features/language_profile/domain/entities/language_profile.dart';
 import 'package:capy_vocab/features/language_profile/presentation/language_profile_provider.dart';
 import 'package:capy_vocab/features/settings/presentation/providers/cloud_backup_consent_provider.dart';
+import 'package:capy_vocab/features/settings/presentation/providers/current_user_profile_provider.dart';
 import 'package:capy_vocab/features/settings/presentation/screens/settings_screen.dart';
+import 'package:capy_vocab/features/settings/presentation/widgets/settings_toggle.dart';
+import 'package:capy_vocab/shared/widgets/app_user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +28,35 @@ void main() {
       url: 'https://example.supabase.co',
       publishableKey: 'sb_publishable_test',
     );
+  });
+
+  testWidgets('missing database avatar does not show a demo image',
+      (tester) async {
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      currentUserProfile: const CurrentUserProfile(
+        id: _userId,
+        displayName: 'Capy DB',
+        avatarUrl: null,
+      ),
+    );
+
+    final avatar = find.byKey(const Key('settings-user-avatar'));
+    expect(find.text('Capy DB'), findsOneWidget);
+    expect(find.descendant(of: avatar, matching: find.byType(Image)),
+        findsNothing);
+    expect(
+      find.descendant(
+        of: avatar,
+        matching: find.byKey(const Key('default-user-avatar')),
+      ),
+      findsOneWidget,
+    );
+    final avatarWidget = tester.widget<AppUserAvatar>(avatar);
+    expect(avatarWidget.avatarUrl, isNull);
+    expect(avatarWidget.borderRadius, isNull);
   });
 
   testWidgets('hủy dialog không reset onboarding', (tester) async {
@@ -216,11 +248,16 @@ void main() {
     );
 
     expect(
-      find.text('Tiếng Việt → Tiếng Anh · Mới bắt đầu'),
+      find.text('Giao tiếp: Tiếng Việt · Muốn học: Tiếng Anh\nMới bắt đầu'),
       findsOneWidget,
     );
-    await tester.tap(find.text('Tiếng Việt → Tiếng Anh · Mới bắt đầu'));
+    await tester.tap(
+      find.text('Giao tiếp: Tiếng Việt · Muốn học: Tiếng Anh\nMới bắt đầu'),
+    );
     await tester.pumpAndSettle();
+
+    expect(find.text('Ngôn ngữ giao tiếp'), findsOneWidget);
+    expect(find.text('Ngôn ngữ muốn học'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const Key('settings-native-language-field')),
@@ -242,6 +279,97 @@ void main() {
     expect(languageRepository.saved.single.nativeLanguageCode, 'en');
     expect(languageRepository.saved.single.learningLanguageCode, 'vi');
     expect(find.text('Đã cập nhật ngôn ngữ của bạn.'), findsOneWidget);
+  });
+
+  testWidgets('chọn hai ngôn ngữ vừa màn 320px và chữ lớn', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 740);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.platformDispatcher.clearAllTestValues);
+
+    final store = MemoryLanguageProfileStore();
+    addTearDown(store.dispose);
+    const profile = LanguageProfile(
+      userId: _userId,
+      nativeLanguageCode: 'vi',
+      learningLanguageCode: 'en',
+    );
+    await store.setProfile(profile);
+
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      languageUserId: _userId,
+      languageStore: store,
+      languageRepository: _LanguageProfileRepository(profile),
+    );
+
+    await tester.tap(find.text('Ngôn ngữ giao tiếp và học'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('settings-native-language-field')),
+        findsOneWidget);
+    expect(find.byKey(const Key('settings-learning-language-field')),
+        findsOneWidget);
+    expect(
+        find.byKey(const Key('save-language-profile-button')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('đổi tài khoản chỉ hiển thị hồ sơ ngôn ngữ của owner mới',
+      (tester) async {
+    const secondUserId = '20000000-0000-4000-8000-000000000002';
+    const firstProfile = LanguageProfile(
+      userId: _userId,
+      nativeLanguageCode: 'vi',
+      learningLanguageCode: 'en',
+    );
+    const secondProfile = LanguageProfile(
+      userId: secondUserId,
+      nativeLanguageCode: 'en',
+      learningLanguageCode: 'vi',
+      proficiencyLevel: 'advanced',
+    );
+    final store = MemoryLanguageProfileStore();
+    addTearDown(store.dispose);
+    await store.setProfile(firstProfile);
+    await store.setProfile(secondProfile);
+
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      languageUserId: _userId,
+      languageStore: store,
+      languageRepository: _LanguageProfileRepository(firstProfile),
+    );
+    expect(
+      find.text('Giao tiếp: Tiếng Việt · Muốn học: Tiếng Anh\nMới bắt đầu'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+      languageUserId: secondUserId,
+      languageStore: store,
+      languageRepository: _LanguageProfileRepository(secondProfile),
+    );
+
+    expect(
+      find.text('Giao tiếp: Tiếng Anh · Muốn học: Tiếng Việt\nNâng cao'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Giao tiếp: Tiếng Việt · Muốn học: Tiếng Anh\nMới bắt đầu'),
+      findsNothing,
+    );
   });
 
   testWidgets('bật cloud backup cần xác nhận rõ trước khi ghi consent',
@@ -365,7 +493,7 @@ void main() {
     expect(consentChanges, isEmpty);
     expect(
       tester
-          .widget<SwitchListTile>(
+          .widget<SettingsToggle>(
             find.byKey(const Key('cloud-backup-switch')),
           )
           .onChanged,
@@ -377,6 +505,23 @@ void main() {
       find.text('Đã xếp 2 bài cũ để sao lưu; bỏ qua 1 bài thiếu ảnh.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('settings does not expose contact-based friend discovery',
+      (tester) async {
+    await _pumpSettingsScreen(
+      tester,
+      repository: _RecordingAuthRepository(),
+      resetOnboarding: () async {},
+    );
+
+    expect(find.byKey(const Key('friend-discovery-card')), findsNothing);
+    expect(
+        find.byKey(const Key('friend-discovery-email-switch')), findsNothing);
+    expect(
+        find.byKey(const Key('friend-discovery-phone-switch')), findsNothing);
+    expect(find.text('Cho phép tìm bằng email'), findsNothing);
+    expect(find.text('Cho phép tìm bằng số điện thoại'), findsNothing);
   });
 }
 
@@ -408,6 +553,7 @@ Future<void> _pumpSettingsScreen(
   String? languageUserId,
   LanguageProfileStore? languageStore,
   LanguageProfileRepository? languageRepository,
+  CurrentUserProfile? currentUserProfile,
 }) async {
   final router = GoRouter(
     initialLocation: '/settings',
@@ -428,6 +574,9 @@ Future<void> _pumpSettingsScreen(
       overrides: [
         authRepositoryProvider.overrideWithValue(repository),
         resetOnboardingProvider.overrideWithValue(resetOnboarding),
+        currentUserProfileProvider.overrideWith(
+          (ref) async => currentUserProfile,
+        ),
         if (languageUserId != null)
           currentLanguageProfileUserIdProvider.overrideWithValue(
             languageUserId,

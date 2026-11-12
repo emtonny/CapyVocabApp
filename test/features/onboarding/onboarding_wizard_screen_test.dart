@@ -1,3 +1,4 @@
+import 'package:capy_vocab/features/auth/data/repositories/account_phone_verification_gateway.dart';
 import 'package:capy_vocab/features/onboarding/data/repositories/onboarding_repository.dart';
 import 'package:capy_vocab/features/onboarding/domain/entities/onboarding_data.dart';
 import 'package:capy_vocab/features/onboarding/presentation/providers/onboarding_provider.dart';
@@ -22,6 +23,7 @@ void main() {
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
@@ -43,12 +45,13 @@ void main() {
     );
   });
 
-  testWidgets('hiển thị và điều hướng đúng thứ tự 7 bước', (tester) async {
+  testWidgets('hiển thị và điều hướng đúng thứ tự 6 bước', (tester) async {
     final repository = _WidgetTestRepository();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
@@ -64,9 +67,10 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
-    expect(find.text('2. Chọn ngôn ngữ của bạn 🌏'), findsOneWidget);
-    expect(find.text('Ngôn ngữ giao diện'), findsOneWidget);
+    expect(find.text('2. Chọn ngôn ngữ và trình độ 🌏'), findsOneWidget);
+    expect(find.text('Ngôn ngữ giao tiếp'), findsOneWidget);
     expect(find.text('Ngôn ngữ muốn học'), findsOneWidget);
+    expect(find.text('Trình độ hiện tại'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const Key('onboarding-learning-language-selector')),
@@ -78,31 +82,38 @@ void main() {
       'nhat ban',
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('language-country-JP')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('language-country-JP')));
+    expect(find.byKey(const Key('language-country-JP')), findsNothing);
+    await tester.enterText(
+      find.byKey(const Key('onboarding-learning-language-search')),
+      'vuong quoc anh',
+    );
     await tester.pumpAndSettle();
-    expect(find.text('Tiếng Nhật'), findsOneWidget);
+    expect(find.byKey(const Key('language-country-GB')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('language-country-GB')));
+    await tester.pumpAndSettle();
+    expect(find.text('Tiếng Anh'), findsWidgets);
 
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
+    expect(find.text('Độ tuổi'), findsOneWidget);
+    expect(find.byKey(const Key('onboarding-phone-field')), findsNothing);
+    expect(
+      find.byKey(const Key('onboarding-request-phone-code')),
+      findsNothing,
+    );
 
     final step2Card = tester.getRect(
       find.byKey(const Key('onboarding-step-content-card')),
     );
-    final phoneField = tester.getRect(
-      find.byKey(const Key('onboarding-phone-field')),
+    final ageField = tester.getRect(
+      find.byKey(const Key('onboarding-age-field')),
     );
-    expect(step2Card.bottom - phoneField.bottom, closeTo(22.5, 0.1));
+    expect(step2Card.bottom, greaterThan(ageField.bottom));
 
     await tester.enterText(
       find.byKey(const Key('onboarding-age-field')),
       '20',
-    );
-    await tester.enterText(
-      find.byKey(const Key('onboarding-phone-field')),
-      '0987654321',
     );
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
@@ -113,15 +124,18 @@ void main() {
     );
     expect(find.byType(Radio<String>), findsNothing);
     expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.byKey(const Key('role-personal-card')), findsOneWidget);
+    expect(find.byKey(const Key('role-teacher-card')), findsOneWidget);
+    expect(find.byKey(const Key('role-parent-card')), findsNothing);
+    expect(find.text('Giáo viên / Quản lý lớp'), findsOneWidget);
+    expect(find.text('Phụ huynh'), findsNothing);
+    expect(
+      find.text('Tạo lớp sau khi tài khoản được xác minh'),
+      findsOneWidget,
+    );
 
     await tester.ensureVisible(find.byKey(const Key('role-personal-card')));
     await tester.tap(find.byKey(const Key('role-personal-card')));
-    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
-    await tester.tap(find.byKey(const Key('onboarding-next-button')));
-    await tester.pumpAndSettle();
-    expect(find.text('Ngôn ngữ của bạn'), findsWidgets);
-
-    await _selectLanguages(tester);
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -137,11 +151,6 @@ void main() {
     await tester.tap(find.byKey(const Key('onboarding-back-button')));
     await tester.pumpAndSettle();
     expect(find.text('Chọn giờ học hằng ngày'), findsOneWidget);
-
-    await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
-    await tester.tap(find.byKey(const Key('onboarding-back-button')));
-    await tester.pumpAndSettle();
-    expect(find.text('Ngôn ngữ của bạn'), findsWidgets);
 
     await tester.ensureVisible(find.byKey(const Key('onboarding-back-button')));
     await tester.tap(find.byKey(const Key('onboarding-back-button')));
@@ -188,16 +197,18 @@ void main() {
       find.byKey(const Key('onboarding-learning-language-selector')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('proficiency-level-field')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('hiện lỗi và không cho qua bước 3 khi SĐT đã được sử dụng',
+  testWidgets('ẩn SMS và không kiểm tra số điện thoại ở bước tuổi',
       (tester) async {
     final repository = _WidgetTestRepository()..phoneAvailable = false;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
@@ -218,16 +229,19 @@ void main() {
       find.byKey(const Key('onboarding-age-field')),
       '20',
     );
-    await tester.enterText(
-      find.byKey(const Key('onboarding-phone-field')),
-      '0987654321',
+    expect(find.byKey(const Key('onboarding-phone-field')), findsNothing);
+    expect(
+      find.byKey(const Key('onboarding-request-phone-code')),
+      findsNothing,
     );
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Số điện thoại đã được sử dụng.'), findsOneWidget);
-    expect(find.text('Độ tuổi và số điện thoại'), findsOneWidget);
+    expect(
+      find.text('Bạn sử dụng ứng dụng với vai trò nào?'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('tùy chỉnh khung giờ lưu cả giờ bắt đầu và kết thúc',
@@ -237,13 +251,14 @@ void main() {
       ProviderScope(
         overrides: [
           onboardingRepositoryProvider.overrideWithValue(repository),
+          accountPhoneVerificationGatewayProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(home: OnboardingWizardScreen()),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Đi qua bước danh tính, locale, tuổi/liên hệ, vai trò và hồ sơ ngôn ngữ.
+    // Đi qua bước danh tính, ngôn ngữ/trình độ, tuổi/liên hệ và vai trò.
     await tester.enterText(
       find.byKey(const Key('onboarding-username-field')),
       'capy_may',
@@ -257,10 +272,6 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byKey(const Key('onboarding-age-field')), '20');
-    await tester.enterText(
-      find.byKey(const Key('onboarding-phone-field')),
-      '0987654321',
-    );
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -271,12 +282,7 @@ void main() {
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
 
-    await _selectLanguages(tester);
-    await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
-    await tester.tap(find.byKey(const Key('onboarding-next-button')));
-    await tester.pumpAndSettle();
-
-    // Bước 6: mở picker, thay đổi giờ kết thúc và xác nhận.
+    // Bước 5: mở picker, thay đổi giờ kết thúc và xác nhận.
     expect(find.text('Tùy chỉnh khung giờ'), findsOneWidget);
     expect(find.byKey(const Key('custom-study-time-card')), findsOneWidget);
 
@@ -361,7 +367,7 @@ void main() {
       const Color(0xFFEADECF),
     );
 
-    // Cảnh báo không chặn Next sang Bước 6.
+    // Cảnh báo không chặn Next sang bước mục tiêu.
     await tester.ensureVisible(find.byKey(const Key('onboarding-next-button')));
     await tester.tap(find.byKey(const Key('onboarding-next-button')));
     await tester.pumpAndSettle();
@@ -402,20 +408,6 @@ void main() {
   });
 }
 
-Future<void> _selectLanguages(WidgetTester tester) async {
-  await tester.ensureVisible(find.byKey(const Key('native-language-field')));
-  await tester.tap(find.byKey(const Key('native-language-field')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Tiếng Việt').last);
-  await tester.pumpAndSettle();
-
-  await tester.ensureVisible(find.byKey(const Key('learning-language-field')));
-  await tester.tap(find.byKey(const Key('learning-language-field')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Tiếng Anh').last);
-  await tester.pumpAndSettle();
-}
-
 Color _cardBorderColor(WidgetTester tester, Key cardKey) {
   final animatedContainer = find.descendant(
     of: find.byKey(cardKey),
@@ -427,8 +419,21 @@ Color _cardBorderColor(WidgetTester tester, Key cardKey) {
   return decoration.border!.top.color;
 }
 
-class _WidgetTestRepository implements OnboardingRepository {
+class _WidgetTestRepository
+    implements OnboardingRepository, AccountPhoneVerificationGateway {
   bool phoneAvailable = true;
+  String? _verifiedPhone;
+
+  @override
+  String? get verifiedPhone => _verifiedPhone;
+
+  @override
+  Future<void> requestCode(String phone, {String? currentPassword}) async {}
+
+  @override
+  Future<void> verifyCode({required String phone, required String code}) async {
+    _verifiedPhone = phone;
+  }
 
   @override
   Future<OnboardingData> loadDraft() async {

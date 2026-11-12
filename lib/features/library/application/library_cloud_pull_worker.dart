@@ -67,6 +67,18 @@ final class LibraryCloudPullWorker {
     var hasMore = false;
     var cursor = await _local.getLibraryPullCursor(userId: userId);
     while (batches < maxBatches) {
+      if (_remote.authenticatedUserId != userId) {
+        throw const LibrarySyncFailure.auth('pull_auth_required');
+      }
+      if (!await _local.isCloudBackupEnabled(userId: userId)) {
+        return LibraryCloudPullResult(
+          batches: batches,
+          snapshots: snapshots,
+          deletions: deletions,
+          hasMore: hasMore,
+          skippedForConsent: true,
+        );
+      }
       final delta = await _remote.pullLibraryDelta(
         userId: userId,
         afterCursor: cursor,
@@ -75,15 +87,27 @@ final class LibraryCloudPullWorker {
       if (delta.userId != userId || delta.previousCursor != cursor) {
         throw const LibrarySyncFailure.contract('invalid_pull_cursor');
       }
+      if (_remote.authenticatedUserId != userId) {
+        throw const LibrarySyncFailure.auth('pull_auth_required');
+      }
+      if (!await _local.isCloudBackupEnabled(userId: userId)) {
+        return LibraryCloudPullResult(
+          batches: batches,
+          snapshots: snapshots,
+          deletions: deletions,
+          hasMore: true,
+          skippedForConsent: true,
+        );
+      }
+      if (delta.hasMore && delta.nextCursor == cursor) {
+        throw const LibrarySyncFailure.contract('pull_cursor_not_advanced');
+      }
       await _local.applyLibraryCloudDelta(delta);
       batches++;
       snapshots += delta.snapshots.length;
       deletions += delta.deletions.length;
       hasMore = delta.hasMore;
       if (!hasMore) break;
-      if (delta.nextCursor == cursor) {
-        throw const LibrarySyncFailure.contract('pull_cursor_not_advanced');
-      }
       cursor = delta.nextCursor;
     }
     return LibraryCloudPullResult(

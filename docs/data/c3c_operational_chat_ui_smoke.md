@@ -94,7 +94,8 @@ evidence only; bidirectional raw relay and offline restart are still pending.
 
 ## Scope / contract
 
-- Only exact Staging `nxteaznowkfennxpqjmt` + `CHAT_RELAY_ENABLED=true` + signed-in.
+- Only exact Staging `nxteaznowkfennxpqjmt` + resolved
+  `CHAT_RELAY_ENABLED=true` (source default) + signed-in.
   Default/Production does not enable operational relay or access C1/C2 chat tables.
 - Bạn bè → Trò chuyện · Staging → inbox `/chat` → detail `/chat/:conversationId`.
 - Lists/history are local SQLite reads, independent of foreground network refresh.
